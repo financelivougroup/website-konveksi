@@ -41,29 +41,31 @@ function StatusBadge({ status }: { status: ProductionStatus }) {
 // ===== Kanban Card =====
 function KanbanCard({ wo, statusOverride }: { wo: WorkOrder; statusOverride?: { label: string; color: string } }) {
   return (
-    <div className="bg-white rounded-[18px] border border-gray-200 p-5 hover:shadow-lg hover:-translate-y-0.5 hover:scale-[1.01] transition-all duration-200 ease-out cursor-pointer">
+    <div className="bg-white rounded-[14px] border border-[#E5E7EB] shadow-sm p-4 hover:-translate-y-0.5 hover:scale-[1.01] hover:shadow-md transition-all duration-200 ease-out cursor-pointer w-full max-w-[320px]">
       {/* Header: Product Note + Status Badge */}
-      <div className="flex items-start justify-between mb-4">
-        <span className="text-[18px] font-bold text-slate-900">{wo.productNoteFull}</span>
+      <div className="flex items-start justify-between gap-2 mb-[10px]">
+        <span className="text-[16px] font-bold leading-[1.3] text-slate-900 truncate flex-1 min-w-0">{wo.productNoteFull}</span>
         {statusOverride ? (
-          <span className={cn('inline-block px-2 py-0.5 rounded text-[10px] font-semibold', statusOverride.color)}>
+          <span className={cn('inline-block shrink-0 rounded-full text-[11px] font-semibold leading-none px-2 py-1', statusOverride.color)}>
             {statusOverride.label}
           </span>
         ) : (
-          <StatusBadge status={wo.productionStatus} />
+          <span className={cn('inline-block shrink-0 rounded-full text-[11px] font-semibold leading-none px-2 py-1', productionStatusColor[wo.productionStatus] || 'bg-gray-100 text-gray-700')}>
+            {productionStatusLabel[wo.productionStatus] || wo.productionStatus}
+          </span>
         )}
       </div>
 
       {/* Body: Brand + Product */}
-      <div className="mb-5">
-        <div className="text-[14px] font-medium text-[#6B7280] mb-3">{wo.brand}</div>
-        <div className="text-[16px] font-semibold text-slate-800">{wo.product}</div>
+      <div className="flex flex-col gap-1 mb-3">
+        <span className="text-[13px] font-medium text-[#6B7280]">{wo.brand}</span>
+        <span className="text-[15px] font-semibold leading-[1.4] text-slate-800">{wo.product}</span>
       </div>
 
       {/* Footer: Quantity */}
-      <div>
-        <div className="text-[12px] uppercase text-gray-500 mb-1">QUANTITY</div>
-        <div className="text-[18px] font-bold text-slate-900">{wo.quantity} pcs</div>
+      <div className="flex flex-col gap-0.5">
+        <span className="text-[11px] uppercase tracking-wide text-[#9CA3AF]">QUANTITY</span>
+        <span className="text-[20px] font-bold text-slate-900">{wo.quantity} pcs</span>
       </div>
     </div>
   );
@@ -662,7 +664,7 @@ export default function ProductionMonitoring({ onOpenSewingEntry }: { onOpenSewi
               ] as const).map((col) => {
                 const columnWOs = filteredWO.filter(w => w.productionStatus === col.status);
                 return (
-                  <div key={col.status} className="w-[340px] flex flex-col">
+                  <div key={col.status} className="w-[300px] flex flex-col">
                     <div className={cn('rounded-t-lg px-4 py-3 flex items-center justify-between', col.color)}>
                       <span className="text-[13px] font-semibold">{col.label}</span>
                       <span className="text-[11px] font-bold bg-white/30 px-2 py-0.5 rounded-full">{columnWOs.length}</span>
@@ -685,7 +687,7 @@ export default function ProductionMonitoring({ onOpenSewingEntry }: { onOpenSewi
                   w.invoiceStatus !== 'NONE'
                 );
                 return (
-                  <div className="w-[340px] flex flex-col">
+                  <div className="w-[300px] flex flex-col">
                     <div className="rounded-t-lg px-4 py-3 flex items-center justify-between bg-gray-100 text-gray-700">
                       <span className="text-[13px] font-semibold">Invoiced</span>
                       <span className="text-[11px] font-bold bg-white/30 px-2 py-0.5 rounded-full">{invoicedWOs.length}</span>
