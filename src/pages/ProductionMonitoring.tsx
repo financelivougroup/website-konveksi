@@ -641,6 +641,62 @@ export default function ProductionMonitoring({ onOpenSewingEntry }: { onOpenSewi
             </div>
           </div>
         )}
+
+        {/* ===== KANBAN VIEW ===== */}
+        {activeTab === 'kanban' && (
+          <div className="h-full overflow-x-auto">
+            <div className="grid grid-cols-7 gap-4 min-w-max pb-4">
+              {([
+                { status: 'CUTTING_PENDING' as const, label: productionStatusLabel.CUTTING_PENDING, color: productionStatusColor.CUTTING_PENDING },
+                { status: 'CUTTING_COMPLETE' as const, label: productionStatusLabel.CUTTING_COMPLETE, color: productionStatusColor.CUTTING_COMPLETE },
+                { status: 'SEWING_IN_PROGRESS' as const, label: productionStatusLabel.SEWING_IN_PROGRESS, color: productionStatusColor.SEWING_IN_PROGRESS },
+                { status: 'SEWING_COMPLETE' as const, label: productionStatusLabel.SEWING_COMPLETE, color: productionStatusColor.SEWING_COMPLETE },
+                { status: 'FINISHING_IN_PROGRESS' as const, label: productionStatusLabel.FINISHING_IN_PROGRESS, color: productionStatusColor.FINISHING_IN_PROGRESS },
+                { status: 'FINISHING_COMPLETE' as const, label: productionStatusLabel.FINISHING_COMPLETE, color: productionStatusColor.FINISHING_COMPLETE },
+              ] as const).map((col) => {
+                const columnWOs = filteredWO.filter(w => w.productionStatus === col.status);
+                return (
+                  <div key={col.status} className="w-[340px] flex flex-col">
+                    <div className={cn('rounded-t-lg px-4 py-3 flex items-center justify-between', col.color)}>
+                      <span className="text-[13px] font-semibold">{col.label}</span>
+                      <span className="text-[11px] font-bold bg-white/30 px-2 py-0.5 rounded-full">{columnWOs.length}</span>
+                    </div>
+                    <div className="flex-1 bg-slate-50 rounded-b-lg p-3 space-y-3 max-h-[calc(100vh-280px)] overflow-y-auto">
+                      {columnWOs.length === 0 ? (
+                        <div className="text-center py-8 text-slate-400 text-[12px]">No work orders</div>
+                      ) : (
+                        columnWOs.map(wo => <KanbanCard key={wo.id} wo={wo} />)
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* Invoiced Column */}
+              {(() => {
+                const invoicedWOs = filteredWO.filter(w =>
+                  w.productionStatus === 'FINISHING_COMPLETE' &&
+                  w.invoiceStatus !== 'NONE'
+                );
+                return (
+                  <div className="w-[340px] flex flex-col">
+                    <div className="rounded-t-lg px-4 py-3 flex items-center justify-between bg-gray-100 text-gray-700">
+                      <span className="text-[13px] font-semibold">Invoiced</span>
+                      <span className="text-[11px] font-bold bg-white/30 px-2 py-0.5 rounded-full">{invoicedWOs.length}</span>
+                    </div>
+                    <div className="flex-1 bg-slate-50 rounded-b-lg p-3 space-y-3 max-h-[calc(100vh-280px)] overflow-y-auto">
+                      {invoicedWOs.length === 0 ? (
+                        <div className="text-center py-8 text-slate-400 text-[12px]">No work orders</div>
+                      ) : (
+                        invoicedWOs.map(wo => <KanbanCard key={wo.id} wo={wo} />)
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        )}
       </div>
     </div>
 
