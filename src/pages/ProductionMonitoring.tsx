@@ -40,12 +40,6 @@ function StatusBadge({ status }: { status: ProductionStatus }) {
 
 // ===== Kanban Card =====
 function KanbanCard({ wo, statusOverride }: { wo: WorkOrder; statusOverride?: { label: string; color: string } }) {
-  const cutting = getCuttingForWO(wo.id);
-  const jahit = getSewingTotal(wo.id);
-  const cuttingTotal = cutting?.totalCutting ?? 0;
-  const jahitTotal = jahit;
-  const sisa = cuttingTotal - jahitTotal;
-
   return (
     <div className="bg-white rounded-[14px] border border-[#E5E7EB] shadow-sm p-[14px] hover:-translate-y-0.5 hover:scale-[1.01] hover:shadow-md transition-all duration-200 ease-out cursor-pointer w-full max-w-[350px]">
       {/* Header: Product Note + Status Badge */}
@@ -62,18 +56,11 @@ function KanbanCard({ wo, statusOverride }: { wo: WorkOrder; statusOverride?: { 
         )}
       </div>
 
-      {/* Body */}
+      {/* Body: Brand + Product + Quantity */}
       <div className="flex flex-col gap-1">
         <span className="text-[12px] font-medium text-[#6B7280]">{wo.brand}</span>
         <span className="text-[12px] font-semibold leading-[1.4] text-slate-800">{wo.product}</span>
-        {/* Cutting | Jahit | Sisa */}
-        <div className="flex items-center gap-3 text-[12px]">
-          <span className="text-slate-600">C: <span className="font-semibold text-slate-800">{cuttingTotal}</span></span>
-          <span className="text-slate-600">J: <span className="font-semibold text-slate-800">{jahitTotal}</span></span>
-          <span className="text-slate-600">S: <span className="font-semibold text-slate-800">{sisa}</span></span>
-        </div>
-        {/* Qty (Finish Good) */}
-        <span className="text-[12px] text-slate-600">Qty: <span className="font-bold text-slate-900">{wo.quantity} pcs</span></span>
+        <span className="text-[12px] font-bold text-slate-900">{wo.quantity} pcs</span>
       </div>
     </div>
   );
@@ -346,10 +333,10 @@ export default function ProductionMonitoring({ onOpenSewingEntry }: { onOpenSewi
                     <th className="text-left py-2 px-2.5 font-semibold text-slate-600">Warna</th>
                     <th className="text-left py-2 px-2.5 font-semibold text-slate-600">Size</th>
                     <th className="text-left py-2 px-2.5 font-semibold text-slate-600">Brand</th>
-                    <th className="text-right py-2 px-2.5 font-semibold text-slate-600">Qty</th>
                     <th className="text-right py-2 px-2.5 font-semibold text-slate-600">Cutting</th>
-                    <th className="text-right py-2 px-2.5 font-semibold text-slate-600">Sisa</th>
                     <th className="text-right py-2 px-2.5 font-semibold text-slate-600">Jahit</th>
+                    <th className="text-right py-2 px-2.5 font-semibold text-slate-600">Sisa</th>
+                    <th className="text-right py-2 px-2.5 font-semibold text-slate-600">Qty</th>
                     <th className="text-center py-2 px-2.5 font-semibold text-slate-600">Prod. Status</th>
                   </tr>
                 </thead>
@@ -362,6 +349,8 @@ export default function ProductionMonitoring({ onOpenSewingEntry }: { onOpenSewi
                   {filteredWO.map((wo) => {
                     const cutting = getCuttingForWO(wo.id);
                     const sewingTotal = getSewingTotal(wo.id);
+                    const cuttingVal = cutting?.totalCutting ?? 0;
+                    const sisaVal = cuttingVal - sewingTotal;
                     return (
                       <tr key={wo.id} className={cn('border-b border-gray-100 hover:bg-slate-50/50', selectedRows.has(wo.id) && 'bg-blue-50/40')}>
                         <td className="py-2 px-2 text-center">
@@ -380,16 +369,12 @@ export default function ProductionMonitoring({ onOpenSewingEntry }: { onOpenSewi
                         <td className="py-2 px-2.5 text-slate-600">{wo.warna}</td>
                         <td className="py-2 px-2.5 text-slate-600">{wo.size}</td>
                         <td className="py-2 px-2.5 text-slate-600">{wo.brand}</td>
-                        <td className="py-2 px-2.5 text-right font-semibold">{wo.quantity}</td>
                         <td className="py-2 px-2.5 text-right">
                           {cutting ? (
                             <span className="text-green-600 font-semibold">{cutting.totalCutting} ✓</span>
                           ) : (
                             <span className="text-slate-300">—</span>
                           )}
-                        </td>
-                        <td className="py-2 px-2.5 text-right text-slate-500">
-                          {cutting ? cutting.sisaCutting : '—'}
                         </td>
                         <td className="py-2 px-2.5 text-right">
                           {sewingTotal > 0 ? (
@@ -400,6 +385,16 @@ export default function ProductionMonitoring({ onOpenSewingEntry }: { onOpenSewi
                             <span className="text-slate-300">—</span>
                           )}
                         </td>
+                        <td className="py-2 px-2.5 text-right text-slate-500">
+                          {cutting ? sisaVal : '—'}
+                        </td>
+                        <td className="py-2 px-2.5 text-right font-semibold">{wo.quantity}</td>
+                        <td className="py-2 px-2.5 text-center">
+                          <StatusBadge status={wo.productionStatus} />
+                        </td>
+                      </tr>
+                    );
+                  })}
                         <td className="py-2 px-2.5 text-center">
                           <StatusBadge status={wo.productionStatus} />
                         </td>
