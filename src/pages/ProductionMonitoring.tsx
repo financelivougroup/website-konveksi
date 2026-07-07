@@ -24,7 +24,7 @@ import type { WorkOrder } from '@/types/pipeline';
 import type { ProductionStatus } from '@/types/pipeline';
 import { productionStatusLabel, productionStatusColor } from '@/types/pipeline';
 
-type TabType = 'raw' | 'cutting' | 'sewing';
+type TabType = 'raw' | 'cutting' | 'sewing' | 'kanban';
 
 
 // ===== Status Badge =====
@@ -185,6 +185,7 @@ export default function ProductionMonitoring({ onOpenSewingEntry }: { onOpenSewi
     { id: 'raw', label: 'RAW DATA', icon: '📋' },
     { id: 'cutting', label: 'Cutting Log', icon: '✂️' },
     { id: 'sewing', label: 'Sewing Log', icon: '🧵' },
+    { id: 'kanban', label: 'Kanban', icon: '📊' },
   ];
 
   return (
