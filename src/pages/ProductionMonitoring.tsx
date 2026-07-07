@@ -40,6 +40,12 @@ function StatusBadge({ status }: { status: ProductionStatus }) {
 
 // ===== Kanban Card =====
 function KanbanCard({ wo, statusOverride }: { wo: WorkOrder; statusOverride?: { label: string; color: string } }) {
+  const cutting = getCuttingForWO(wo.id);
+  const jahit = getSewingTotal(wo.id);
+  const cuttingTotal = cutting?.totalCutting ?? 0;
+  const jahitTotal = jahit;
+  const sisa = cuttingTotal - jahitTotal;
+
   return (
     <div className="bg-white rounded-[14px] border border-[#E5E7EB] shadow-sm p-[14px] hover:-translate-y-0.5 hover:scale-[1.01] hover:shadow-md transition-all duration-200 ease-out cursor-pointer w-full max-w-[350px]">
       {/* Header: Product Note + Status Badge */}
@@ -56,11 +62,18 @@ function KanbanCard({ wo, statusOverride }: { wo: WorkOrder; statusOverride?: { 
         )}
       </div>
 
-      {/* Body: Brand + Product + Quantity */}
+      {/* Body */}
       <div className="flex flex-col gap-1">
         <span className="text-[12px] font-medium text-[#6B7280]">{wo.brand}</span>
         <span className="text-[12px] font-semibold leading-[1.4] text-slate-800">{wo.product}</span>
-        <span className="text-[12px] font-bold text-slate-900">{wo.quantity} pcs</span>
+        {/* Cutting | Jahit | Sisa */}
+        <div className="flex items-center gap-3 text-[12px]">
+          <span className="text-slate-600">C: <span className="font-semibold text-slate-800">{cuttingTotal}</span></span>
+          <span className="text-slate-600">J: <span className="font-semibold text-slate-800">{jahitTotal}</span></span>
+          <span className="text-slate-600">S: <span className="font-semibold text-slate-800">{sisa}</span></span>
+        </div>
+        {/* Qty (Finish Good) */}
+        <span className="text-[12px] text-slate-600">Qty: <span className="font-bold text-slate-900">{wo.quantity} pcs</span></span>
       </div>
     </div>
   );
