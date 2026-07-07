@@ -44,7 +44,7 @@ function KanbanCard({ wo, statusOverride }: { wo: WorkOrder; statusOverride?: { 
     <div className="bg-white rounded-[18px] border border-gray-200 p-5 hover:shadow-lg hover:-translate-y-0.5 hover:scale-[1.01] transition-all duration-200 ease-out cursor-pointer">
       {/* Header: Product Note + Status Badge */}
       <div className="flex items-start justify-between mb-4">
-        <span className="text-[18px] font-bold text-slate-900">{wo.productNote}</span>
+        <span className="text-[18px] font-bold text-slate-900">{wo.productNoteFull}</span>
         {statusOverride ? (
           <span className={cn('inline-block px-2 py-0.5 rounded text-[10px] font-semibold', statusOverride.color)}>
             {statusOverride.label}
