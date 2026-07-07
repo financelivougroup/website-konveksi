@@ -41,10 +41,10 @@ function StatusBadge({ status }: { status: ProductionStatus }) {
 // ===== Kanban Card =====
 function KanbanCard({ wo, statusOverride }: { wo: WorkOrder; statusOverride?: { label: string; color: string } }) {
   return (
-    <div className="bg-white rounded-[14px] border border-[#E5E7EB] shadow-sm p-4 hover:-translate-y-0.5 hover:scale-[1.01] hover:shadow-md transition-all duration-200 ease-out cursor-pointer w-full max-w-[320px]">
+    <div className="bg-white rounded-[14px] border border-[#E5E7EB] shadow-sm p-[14px] hover:-translate-y-0.5 hover:scale-[1.01] hover:shadow-md transition-all duration-200 ease-out cursor-pointer w-full max-w-[320px]">
       {/* Header: Product Note + Status Badge */}
       <div className="flex items-start justify-between gap-2 mb-[10px]">
-        <span className="text-[16px] font-bold leading-[1.3] text-slate-900 truncate flex-1 min-w-0">{wo.productNoteFull}</span>
+        <span className="text-[12px] font-bold leading-[1.3] text-slate-900 truncate flex-1 min-w-0">{wo.productNoteFull}</span>
         {statusOverride ? (
           <span className={cn('inline-block shrink-0 rounded-full text-[11px] font-semibold leading-none px-2 py-1', statusOverride.color)}>
             {statusOverride.label}
@@ -58,15 +58,12 @@ function KanbanCard({ wo, statusOverride }: { wo: WorkOrder; statusOverride?: { 
 
       {/* Body: Brand + Product */}
       <div className="flex flex-col gap-1 mb-3">
-        <span className="text-[13px] font-medium text-[#6B7280]">{wo.brand}</span>
-        <span className="text-[15px] font-semibold leading-[1.4] text-slate-800">{wo.product}</span>
+        <span className="text-[9px] font-medium text-[#6B7280]">{wo.brand}</span>
+        <span className="text-[9px] font-semibold leading-[1.4] text-slate-800">{wo.product}</span>
       </div>
 
       {/* Footer: Quantity */}
-      <div className="flex flex-col gap-0.5">
-        <span className="text-[11px] uppercase tracking-wide text-[#9CA3AF]">QUANTITY</span>
-        <span className="text-[20px] font-bold text-slate-900">{wo.quantity} pcs</span>
-      </div>
+      <span className="text-[9px] font-bold text-slate-900">{wo.quantity} pcs</span>
     </div>
   );
 }
