@@ -350,7 +350,13 @@ export default function ProductionMonitoring({ onOpenSewingEntry }: { onOpenSewi
                     const cutting = getCuttingForWO(wo.id);
                     const sewingTotal = getSewingTotal(wo.id);
                     const cuttingVal = cutting?.totalCutting ?? 0;
-                    const sisaVal = cuttingVal - sewingTotal;
+                    const sisaVal = cuttingVal > 0 ? cuttingVal - sewingTotal : 0;
+                    // Qty logic: kalau CUTTING_PENDING → 0, else min(jahit, quantity) karena qty ga bisa > jahit
+                    const displayQty = wo.productionStatus === 'CUTTING_PENDING'
+                      ? 0
+                      : sewingTotal > 0
+                        ? Math.min(wo.quantity, sewingTotal)
+                        : 0;
                     return (
                       <tr key={wo.id} className={cn('border-b border-gray-100 hover:bg-slate-50/50', selectedRows.has(wo.id) && 'bg-blue-50/40')}>
                         <td className="py-2 px-2 text-center">
@@ -388,13 +394,7 @@ export default function ProductionMonitoring({ onOpenSewingEntry }: { onOpenSewi
                         <td className="py-2 px-2.5 text-right text-slate-500">
                           {cutting ? sisaVal : '—'}
                         </td>
-                        <td className="py-2 px-2.5 text-right font-semibold">{wo.quantity}</td>
-                        <td className="py-2 px-2.5 text-center">
-                          <StatusBadge status={wo.productionStatus} />
-                        </td>
-                      </tr>
-                    );
-                  })}
+                        <td className="py-2 px-2.5 text-right font-semibold">{displayQty}</td>
                         <td className="py-2 px-2.5 text-center">
                           <StatusBadge status={wo.productionStatus} />
                         </td>
