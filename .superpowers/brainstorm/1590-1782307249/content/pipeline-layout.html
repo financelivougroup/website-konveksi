@@ -1,0 +1,172 @@
+<h2>Arsitektur Pipeline — Layout Halaman</h2>
+<p class="subtitle">Struktur navigasi untuk Production Module + Konveksi Module (4 phase pipeline)</p>
+
+<div class="mockup" style="margin-top:16px;">
+  <div class="mockup-header">
+    <span>🔵 Konveksi Pro — Production Pipeline</span>
+    <span style="font-size:11px;background:#3b82f6;color:white;padding:2px 10px;border-radius:6px;">Dev: Admin View</span>
+  </div>
+  <div class="mockup-body" style="padding:0;">
+    <div style="display:flex;min-height:400px;">
+      <!-- SIDEBAR -->
+      <div class="mock-sidebar" style="width:200px;border-right:1px solid #e5e7eb;padding:12px;">
+        <div style="font-size:11px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">Production</div>
+        <div style="padding:6px 10px;background:#dbeafe;border-radius:6px;font-size:13px;font-weight:500;margin-bottom:4px;">📋 Production Order</div>
+
+        <div style="font-size:11px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;margin:12px 0 8px;">Pipeline</div>
+        <div style="padding:6px 10px;border-radius:6px;font-size:13px;color:#6b7280;margin-bottom:2px;">✂️ Cutting Phase</div>
+        <div style="padding:6px 10px;border-radius:6px;font-size:13px;color:#6b7280;margin-bottom:2px;">🧵 Sewing Phase</div>
+        <div style="padding:6px 10px;border-radius:6px;font-size:13px;color:#6b7280;margin-bottom:2px;">✨ Finishing Sync</div>
+        <div style="padding:6px 10px;border-radius:6px;font-size:13px;color:#6b7280;margin-bottom:2px;">📄 Invoicing</div>
+
+        <div style="font-size:11px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;margin:12px 0 8px;">Master Data</div>
+        <div style="padding:6px 10px;border-radius:6px;font-size:13px;color:#9ca3af;margin-bottom:2px;">📦 Master Product</div>
+        <div style="padding:6px 10px;border-radius:6px;font-size:13px;color:#9ca3af;margin-bottom:2px;">📊 Raw Monitoring</div>
+        <div style="padding:6px 10px;border-radius:6px;font-size:13px;color:#9ca3af;margin-bottom:2px;">🚚 Master Import</div>
+
+        <div style="font-size:11px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;margin:12px 0 8px;">Legacy</div>
+        <div style="padding:6px 10px;border-radius:6px;font-size:13px;color:#9ca3af;margin-bottom:2px;">📐 Target Jahit</div>
+      </div>
+
+      <!-- MAIN CONTENT -->
+      <div style="flex:1;padding:16px;text-align:left;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+          <div>
+            <h3 style="margin:0;font-size:16px;">Production Order</h3>
+            <p style="margin:4px 0 0;font-size:12px;color:#6b7280;">Manage orders — Create, Pull to Konveksi, Cancel</p>
+          </div>
+          <div style="display:flex;gap:6px;">
+            <span class="mock-button" style="padding:4px 12px;font-size:12px;">+ New Order</span>
+            <span style="font-size:11px;background:#f3f4f6;padding:4px 10px;border-radius:6px;border:1px solid #e5e7eb;">
+              👤 Admin
+            </span>
+          </div>
+        </div>
+
+        <!-- Pipeline Pipeline Visualization -->
+        <div style="display:flex;gap:6px;margin-bottom:16px;padding:12px;background:#f8fafc;border-radius:8px;border:1px solid #e5e7eb;">
+          <div style="flex:1;padding:8px;background:#dbeafe;border-radius:6px;text-align:center;font-size:11px;font-weight:600;">📋 ORDER</div>
+          <div style="padding:8px 4px;color:#9ca3af;font-size:16px;">→</div>
+          <div style="flex:1;padding:8px;background:#e5e7eb;border-radius:6px;text-align:center;font-size:11px;font-weight:600;color:#9ca3af;">✂️ CUTTING</div>
+          <div style="padding:8px 4px;color:#9ca3af;font-size:16px;">→</div>
+          <div style="flex:1;padding:8px;background:#e5e7eb;border-radius:6px;text-align:center;font-size:11px;font-weight:600;color:#9ca3af;">🧵 SEWING</div>
+          <div style="padding:8px 4px;color:#9ca3af;font-size:16px;">→</div>
+          <div style="flex:1;padding:8px;background:#e5e7eb;border-radius:6px;text-align:center;font-size:11px;font-weight:600;color:#9ca3af;">✨ FINISH</div>
+          <div style="padding:8px 4px;color:#9ca3af;font-size:16px;">→</div>
+          <div style="flex:1;padding:8px;background:#e5e7eb;border-radius:6px;text-align:center;font-size:11px;font-weight:600;color:#9ca3af;">📄 INVOICE</div>
+        </div>
+
+        <!-- Table placeholder -->
+        <div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
+          <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 80px;padding:8px 12px;background:#f9fafb;border-bottom:1px solid #e5e7eb;font-size:11px;font-weight:600;color:#6b7280;">
+            <span>Work Code / Product</span><span>Brand</span><span>Qty</span><span>Status</span><span></span>
+          </div>
+          <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 80px;padding:10px 12px;border-bottom:1px solid #f3f4f6;font-size:12px;">
+            <span><strong>Produksi - Awal | Rue Top | Black | M</strong><br><span style="color:#6b7280;font-size:11px;">B-00 | Rue Top | Black | M</span></span>
+            <span>Cassca</span><span>100</span><span><span style="background:#dbeafe;color:#2563eb;padding:2px 8px;border-radius:4px;font-size:11px;">PLANNING</span></span>
+            <span><span class="mock-button" style="padding:2px 8px;font-size:11px;">Pull ▶</span></span>
+          </div>
+          <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 80px;padding:10px 12px;border-bottom:1px solid #f3f4f6;font-size:12px;">
+            <span><strong>Restock-02 | Rhea Top | White | L</strong></span>
+            <span>Livou</span><span>50</span><span><span style="background:#fef3c7;color:#d97706;padding:2px 8px;border-radius:4px;font-size:11px;">PULLED</span></span>
+            <span><span style="color:#9ca3af;font-size:11px;">—</span></span>
+          </div>
+          <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 80px;padding:10px 12px;font-size:12px;">
+            <span><strong>Produksi - Awal | Aera Dress | Blue | XL</strong></span>
+            <span>Livou</span><span>200</span><span><span style="background:#dcfce7;color:#16a34a;padding:2px 8px;border-radius:4px;font-size:11px;">CUTTING_COMPLETE</span></span>
+            <span><span style="color:#9ca3af;font-size:11px;">✓</span></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Two independent status axes -->
+<div class="section" style="margin-top:20px;">
+  <h3>Dua Status Axis Independen</h3>
+  <div class="split">
+    <div class="mockup">
+      <div class="mockup-header" style="font-size:12px;">🏭 Production Status</div>
+      <div class="mockup-body" style="font-size:12px;padding:12px;">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+          <span style="background:#e5e7eb;padding:3px 8px;border-radius:4px;">PENDING</span>
+          <span style="color:#9ca3af;">→</span>
+          <span style="background:#dbeafe;padding:3px 8px;border-radius:4px;">CUTTING</span>
+          <span style="color:#9ca3af;">→</span>
+          <span style="background:#dbeafe;padding:3px 8px;border-radius:4px;">SEWING</span>
+          <span style="color:#9ca3af;">→</span>
+          <span style="background:#dbeafe;padding:3px 8px;border-radius:4px;">FINISH</span>
+          <span style="color:#9ca3af;">→</span>
+          <span style="background:#dcfce7;padding:3px 8px;border-radius:4px;">✓ DONE</span>
+        </div>
+      </div>
+    </div>
+    <div class="mockup">
+      <div class="mockup-header" style="font-size:12px;">💰 Invoice Status</div>
+      <div class="mockup-body" style="font-size:12px;padding:12px;">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+          <span style="background:#e5e7eb;padding:3px 8px;border-radius:4px;">NONE</span>
+          <span style="color:#9ca3af;">→</span>
+          <span style="background:#fef3c7;padding:3px 8px;border-radius:4px;">WAITING</span>
+          <span style="color:#9ca3af;">→</span>
+          <span style="background:#dbeafe;padding:3px 8px;border-radius:4px;">INVOICED</span>
+          <span style="color:#9ca3af;">→</span>
+          <span style="background:#fef3c7;padding:3px 8px;border-radius:4px;">PARTIAL</span>
+          <span style="color:#9ca3af;">→</span>
+          <span style="background:#dcfce7;padding:3px 8px;border-radius:4px;">✓ PAID</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Approaches -->
+<div class="section" style="margin-top:20px;">
+  <h3>Pendekatan Implementasi</h3>
+  <p class="subtitle">Tiga opsi untuk struktur kode — rekomendasi ada di opsi 1</p>
+
+  <div class="options">
+    <div class="option" data-choice="1" onclick="toggleSelect(this)">
+      <div class="letter">1</div>
+      <div class="content">
+        <h3>✅ Modular Pages (Rekomendasi)</h3>
+        <p><strong>Struktur:</strong> Setiap pipeline phase jadi page folder sendiri</p>
+        <ul style="font-size:12px;margin-top:4px;">
+          <li>src/pages/production-order/ — form create, pull action</li>
+          <li>src/pages/cutting-phase/ — input totalCutting, locked view</li>
+          <li>src/pages/sewing-phase/ — entry log + progress bar</li>
+          <li>src/pages/finishing-sync/ — import batch form</li>
+          <li>src/pages/invoicing/ — invoice list, payment form</li>
+          <li>src/data/pipelineData.ts — semua tipe + mock data baru</li>
+        </ul>
+        <p style="font-size:12px;color:#6b7280;margin-top:8px;">Mudah dipahami, scalable, dan mudah ditambah auth nanti.</p>
+      </div>
+    </div>
+
+    <div class="option" data-choice="2" onclick="toggleSelect(this)">
+      <div class="letter">2</div>
+      <div class="content">
+        <h3>Feature Slices</h3>
+        <p><strong>Struktur:</strong> src/features/<em>production-order/</em>, src/features/<em>cutting/</em>, dll</p>
+        <ul style="font-size:12px;margin-top:4px;">
+          <li>Setiap feature punya components/, hooks/, types/ sendiri</li>
+          <li>Lebih terisolasi, cocok untuk tim besar</li>
+          <li>Overhead boilerplate lebih banyak</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="option" data-choice="3" onclick="toggleSelect(this)">
+      <div class="letter">3</div>
+      <div class="content">
+        <h3>Semua di App.tsx (Tidak Direkomendasikan)</h3>
+        <p><strong>Cara:</strong> Tambah state management + render logic di App.tsx</p>
+        <ul style="font-size:12px;margin-top:4px;">
+          <li>App.tsx sudah 677 lines — akan jadi ribuan lines</li>
+          <li>Sulit dipelihara. Hanya untuk prototype cepat.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,522 @@
+<h2>Production Monitoring — Data Views + Sewing Entry Form</h2>
+<p class="subtitle">Sewing Log adalah database read-only. Form input Sewing punya halaman terpisah.</p>
+
+<!-- ===== FULL PAGE MOCKUP ===== -->
+<div class="mockup" style="margin-top:12px;">
+  <div class="mockup-header">
+    <span style="display:flex;align-items:center;gap:8px;">
+      <span>📊 Production Monitoring</span>
+      <span style="font-size:10px;background:#dbeafe;color:#2563eb;padding:2px 8px;border-radius:4px;font-weight:500;">ERP Module</span>
+    </span>
+    <span style="font-size:11px;background:#059669;color:white;padding:2px 10px;border-radius:6px;">👤 Spv Konveksi</span>
+  </div>
+  <div class="mockup-body" style="padding:0;">
+    <div style="display:flex;min-height:620px;">
+      <!-- SIDEBAR -->
+      <div style="width:48px;border-right:1px solid #e5e7eb;background:#f8fafc;padding:8px 0;display:flex;flex-direction:column;align-items:center;gap:2px;">
+        <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#0ea5e9,#0284c7);display:flex;align-items:center;justify-content:center;margin-bottom:8px;">
+          <span style="color:white;font-size:14px;">🏭</span>
+        </div>
+        <div style="width:32px;height:32px;border-radius:8px;background:#dbeafe;display:flex;align-items:center;justify-content:center;">
+          <span style="font-size:16px;">📊</span>
+        </div>
+        <div style="width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;opacity:0.4;">
+          <span style="font-size:16px;">📦</span>
+        </div>
+      </div>
+
+      <!-- MAIN CONTENT -->
+      <div style="flex:1;padding:16px 20px;text-align:left;">
+
+        <!-- Breadcrumb -->
+        <div style="font-size:11px;color:#94a3b8;margin-bottom:2px;">
+          Production › Production Monitoring › <span style="color:#334155;font-weight:500;">Sewing Log</span>
+        </div>
+
+        <!-- Title + Actions -->
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+          <div>
+            <h3 style="margin:0;font-size:18px;font-weight:700;">Sewing Log</h3>
+            <p style="margin:2px 0 0;font-size:11px;color:#64748b;">
+              Database hasil jahitan yang sudah melalui QC Supervisor — <strong>read-only</strong>
+            </p>
+          </div>
+          <div style="display:flex;gap:6px;">
+            <span class="mock-button" style="padding:6px 14px;font-size:11px;background:#0ea5e9;color:white;border:none;">
+              ➕ Entry Jahitan Baru
+            </span>
+            <span class="mock-button" style="padding:6px 14px;font-size:11px;">📤 Export</span>
+          </div>
+        </div>
+
+        <!-- Pipeline Summary Cards -->
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:16px;">
+          <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 12px;">
+            <div style="font-size:10px;color:#16a34a;font-weight:600;text-transform:uppercase;">📋 Orders</div>
+            <div style="font-size:22px;font-weight:700;color:#15803d;margin:2px 0;">12</div>
+            <div style="font-size:10px;color:#16a34a;">3 ready to pull</div>
+          </div>
+          <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 12px;">
+            <div style="font-size:10px;color:#2563eb;font-weight:600;text-transform:uppercase;">✂️ Cutting</div>
+            <div style="font-size:22px;font-weight:700;color:#1d4ed8;margin:2px 0;">5</div>
+            <div style="font-size:10px;color:#2563eb;">2 pending input</div>
+          </div>
+          <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 12px;">
+            <div style="font-size:10px;color:#d97706;font-weight:600;text-transform:uppercase;">🧵 Sewing</div>
+            <div style="font-size:22px;font-weight:700;color:#b45309;margin:2px 0;">8</div>
+            <div style="font-size:10px;color:#d97706;">6 in progress</div>
+          </div>
+          <div style="background:#fdf2f8;border:1px solid #fbcfe8;border-radius:8px;padding:10px 12px;">
+            <div style="font-size:10px;color:#db2777;font-weight:600;text-transform:uppercase;">✨ Finishing</div>
+            <div style="font-size:22px;font-weight:700;color:#be185d;margin:2px 0;">4</div>
+            <div style="font-size:10px;color:#db2777;">3 pending import</div>
+          </div>
+          <div style="background:#f5f3ff;border:1px solid #ddd6fe;border-radius:8px;padding:10px 12px;">
+            <div style="font-size:10px;color:#7c3aed;font-weight:600;text-transform:uppercase;">✅ Complete</div>
+            <div style="font-size:22px;font-weight:700;color:#6d28d9;margin:2px 0;">3</div>
+            <div style="font-size:10px;color:#7c3aed;">Awaiting invoice</div>
+          </div>
+        </div>
+
+        <!-- ===== DATA VIEW TABS ===== -->
+        <div style="display:flex;gap:1px;margin-bottom:0;border-bottom:2px solid #e2e8f0;">
+          <div style="padding:9px 18px;font-size:12px;font-weight:500;color:#64748b;cursor:pointer;">
+            📋 RAW DATA
+          </div>
+          <div style="padding:9px 18px;font-size:12px;font-weight:500;color:#64748b;cursor:pointer;">
+            ✂️ Cutting Queue
+          </div>
+          <div style="padding:9px 18px;font-size:12px;font-weight:600;color:#2563eb;border-bottom:2px solid #2563eb;margin-bottom:-2px;cursor:pointer;background:white;border-radius:6px 6px 0 0;">
+            🧵 Sewing Log
+          </div>
+          <div style="padding:9px 18px;font-size:12px;font-weight:500;color:#64748b;cursor:pointer;">
+            ✨ Finishing Sync
+          </div>
+          <div style="flex:1;text-align:right;font-size:10px;color:#94a3b8;padding:9px 4px;">
+            24 entries recorded
+          </div>
+        </div>
+
+        <!-- ===== SEWING LOG TABLE (read-only) ===== -->
+        <div style="margin-top:0;">
+
+          <!-- Toolbar -->
+          <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #f1f5f9;flex-wrap:wrap;">
+            <span style="padding:3px 10px;font-size:11px;border:1px solid #e2e8f0;border-radius:5px;cursor:pointer;">🔍 Filter</span>
+            <span style="padding:3px 10px;font-size:11px;border:1px solid #e2e8f0;border-radius:5px;cursor:pointer;">↕ Sort</span>
+            <span style="padding:3px 10px;font-size:11px;border:1px solid #e2e8f0;border-radius:5px;cursor:pointer;">📅 Date Range</span>
+            <span style="margin-left:auto;font-size:11px;color:#94a3b8;">
+              <span style="display:inline-flex;align-items:center;gap:4px;background:#f1f5f9;padding:3px 10px;border-radius:5px;">
+                👤 Role: <strong>Spv Konveksi</strong> <span style="color:#3b82f6;">↕</span>
+              </span>
+            </span>
+          </div>
+
+          <!-- Banner: link to Sewing Entry Form -->
+          <div style="margin:8px 0;padding:8px 14px;background:#f0f9ff;border:1px dashed #93c5fd;border-radius:8px;font-size:11px;color:#0369a1;display:flex;align-items:center;justify-content:space-between;">
+            <span>📝 Untuk input jahitan baru (setelah QC), buka form entry terpisah</span>
+            <span class="mock-button" style="padding:5px 14px;font-size:11px;background:#0ea5e9;color:white;border:none;">
+              ➕ Buka Form Entry Jahitan →
+            </span>
+          </div>
+
+          <!-- Table -->
+          <div style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:8px;">
+            <table style="width:100%;border-collapse:collapse;font-size:11px;">
+              <thead>
+                <tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0;">
+                  <th style="text-align:left;padding:8px 10px;font-weight:600;color:#475569;">Date</th>
+                  <th style="text-align:left;padding:8px 10px;font-weight:600;color:#475569;">Work Code</th>
+                  <th style="text-align:left;padding:8px 10px;font-weight:600;color:#475569;">PIC Penjahit</th>
+                  <th style="text-align:right;padding:8px 10px;font-weight:600;color:#475569;">Qty Selesai</th>
+                  <th style="text-align:center;padding:8px 10px;font-weight:600;color:#475569;">QC Status</th>
+                  <th style="text-align:left;padding:8px 10px;font-weight:600;color:#475569;">QC Note</th>
+                  <th style="text-align:left;padding:8px 10px;font-weight:600;color:#475569;">Input By</th>
+                  <th style="text-align:center;padding:8px 10px;font-weight:600;color:#475569;"></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr style="border-bottom:1px solid #f1f5f9;">
+                  <td style="padding:8px 10px;">22 Jun 2026</td>
+                  <td style="padding:8px 10px;font-weight:500;">Rue Top | Black | M</td>
+                  <td style="padding:8px 10px;">Budi Santoso</td>
+                  <td style="padding:8px 10px;text-align:right;font-weight:600;">35</td>
+                  <td style="padding:8px 10px;text-align:center;">
+                    <span style="background:#dcfce7;color:#16a34a;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600;">✅ LULUS QC</span>
+                  </td>
+                  <td style="padding:8px 10px;color:#64748b;">—</td>
+                  <td style="padding:8px 10px;color:#64748b;">Spv. Ani</td>
+                  <td style="padding:8px 10px;text-align:center;color:#94a3b8;">👁️</td>
+                </tr>
+                <tr style="border-bottom:1px solid #f1f5f9;">
+                  <td style="padding:8px 10px;">22 Jun 2026</td>
+                  <td style="padding:8px 10px;font-weight:500;">Rue Top | Black | M</td>
+                  <td style="padding:8px 10px;">Ani Wulandari</td>
+                  <td style="padding:8px 10px;text-align:right;font-weight:600;">25</td>
+                  <td style="padding:8px 10px;text-align:center;">
+                    <span style="background:#dcfce7;color:#16a34a;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600;">✅ LULUS QC</span>
+                  </td>
+                  <td style="padding:8px 10px;color:#64748b;">—</td>
+                  <td style="padding:8px 10px;color:#64748b;">Spv. Ani</td>
+                  <td style="padding:8px 10px;text-align:center;color:#94a3b8;">👁️</td>
+                </tr>
+                <tr style="border-bottom:1px solid #f1f5f9;background:#fffbeb;">
+                  <td style="padding:8px 10px;">21 Jun 2026</td>
+                  <td style="padding:8px 10px;font-weight:500;">Miles Jacket | Grey | M</td>
+                  <td style="padding:8px 10px;">Caca</td>
+                  <td style="padding:8px 10px;text-align:right;font-weight:600;">30</td>
+                  <td style="padding:8px 10px;text-align:center;">
+                    <span style="background:#fee2e2;color:#dc2626;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600;">❌ REJECT</span>
+                  </td>
+                  <td style="padding:8px 10px;color:#dc2626;font-size:10px;">Jahitan samping terbuka, 5 pcs perlu diperbaiki</td>
+                  <td style="padding:8px 10px;color:#64748b;">Spv. Rudi</td>
+                  <td style="padding:8px 10px;text-align:center;color:#94a3b8;">👁️</td>
+                </tr>
+                <tr style="border-bottom:1px solid #f1f5f9;">
+                  <td style="padding:8px 10px;">21 Jun 2026</td>
+                  <td style="padding:8px 10px;font-weight:500;">Rhea Top | White | L</td>
+                  <td style="padding:8px 10px;">Caca</td>
+                  <td style="padding:8px 10px;text-align:right;font-weight:600;">15</td>
+                  <td style="padding:8px 10px;text-align:center;">
+                    <span style="background:#dcfce7;color:#16a34a;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600;">✅ LULUS QC</span>
+                  </td>
+                  <td style="padding:8px 10px;color:#64748b;">—</td>
+                  <td style="padding:8px 10px;color:#64748b;">Spv. Rudi</td>
+                  <td style="padding:8px 10px;text-align:center;color:#94a3b8;">👁️</td>
+                </tr>
+                <tr style="border-bottom:1px solid #f1f5f9;background:#f0fdf4;">
+                  <td style="padding:8px 10px;">20 Jun 2026</td>
+                  <td style="padding:8px 10px;font-weight:500;">Miles Jacket | Grey | M</td>
+                  <td style="padding:8px 10px;">Budi Santoso</td>
+                  <td style="padding:8px 10px;text-align:right;font-weight:600;">25</td>
+                  <td style="padding:8px 10px;text-align:center;">
+                    <span style="background:#dcfce7;color:#16a34a;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600;">✅ LULUS QC</span>
+                  </td>
+                  <td style="padding:8px 10px;color:#64748b;">—</td>
+                  <td style="padding:8px 10px;color:#64748b;">Spv. Rudi</td>
+                  <td style="padding:8px 10px;text-align:center;color:#94a3b8;">👁️</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Progress Summary -->
+          <div style="margin-top:8px;display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px;font-size:11px;">
+              <div style="font-weight:600;color:#15803d;">📈 Sewing Progress — Miles Jacket</div>
+              <div style="display:flex;align-items:center;gap:10px;margin-top:6px;">
+                <div style="flex:1;background:#e2e8f0;border-radius:10px;height:20px;overflow:hidden;">
+                  <div style="background:#d97706;width:27.5%;height:100%;border-radius:10px;display:flex;align-items:center;justify-content:center;">
+                    <span style="color:white;font-size:9px;font-weight:600;">55/200</span>
+                  </div>
+                </div>
+                <span style="font-weight:600;color:#d97706;">27.5%</span>
+              </div>
+              <div style="font-size:10px;color:#64748b;margin-top:4px;">PIC: Budi (25+30), Caca (30), Rejected: 5</div>
+            </div>
+            <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px;font-size:11px;">
+              <div style="font-weight:600;color:#92400e;">⚠️ Perlu Tindak Lanjut</div>
+              <div style="font-size:10px;color:#64748b;margin-top:4px;">
+                • <strong>Miles Jacket</strong> — 5 pcs REJECT dari Caca (21 Jun)<br>
+                • Perbaikan: jahitan samping terbuka
+              </div>
+            </div>
+          </div>
+
+          <!-- Pagination -->
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;font-size:11px;color:#64748b;">
+            <span>Showing 1-5 of 24 entries</span>
+            <div style="display:flex;gap:4px;">
+              <span style="padding:3px 10px;border:1px solid #e2e8f0;border-radius:4px;cursor:pointer;">‹ Prev</span>
+              <span style="padding:3px 10px;background:#2563eb;color:white;border-radius:4px;">1</span>
+              <span style="padding:3px 10px;border:1px solid #e2e8f0;border-radius:4px;cursor:pointer;">2</span>
+              <span style="padding:3px 10px;border:1px solid #e2e8f0;border-radius:4px;cursor:pointer;">3</span>
+              <span style="padding:3px 10px;border:1px solid #e2e8f0;border-radius:4px;cursor:pointer;">Next ›</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================= -->
+<!-- SEPARATE SECTION: Sewing Entry Form Mockup    -->
+<!-- ============================================= -->
+<div class="section" style="margin-top:24px;">
+  <h3>🗂️ Halaman Terpisah: Sewing Entry Form</h3>
+  <p class="subtitle">Dibuka dari tombol "Entry Jahitan Baru" di Sewing Log atau dari menu sidebar. Ini adalah halaman form input tersendiri.</p>
+
+  <div class="mockup">
+    <div class="mockup-header">
+      <span style="display:flex;align-items:center;gap:6px;">
+        <span style="font-size:14px;">🧵</span>
+        <span>Sewing Entry Form</span>
+        <span style="font-size:10px;background:#fef3c7;color:#92400e;padding:1px 8px;border-radius:4px;">Supervisor Only</span>
+      </span>
+      <span style="font-size:10px;color:#64748b;">Spv Konveksi · Ani Wulandari</span>
+    </div>
+    <div class="mockup-body" style="padding:0;text-align:left;">
+
+      <!-- Breadcrumb -->
+      <div style="padding:10px 16px 0;font-size:11px;color:#94a3b8;">
+        Production › Sewing › <span style="color:#334155;font-weight:500;">New Entry</span>
+      </div>
+
+      <div style="padding:12px 16px 16px;">
+        <!-- Title -->
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+          <div>
+            <h3 style="margin:0;font-size:16px;font-weight:700;">Entry Jahitan Baru</h3>
+            <p style="margin:2px 0 0;font-size:11px;color:#64748b;">
+              Input hasil jahitan yang sudah lolos <strong>QC Supervisor</strong>
+            </p>
+          </div>
+          <div>
+            <span class="mock-button" style="padding:5px 12px;font-size:11px;background:#64748b;color:white;border:none;">← Kembali ke Sewing Log</span>
+          </div>
+        </div>
+
+        <!-- FORM CARD -->
+        <div style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.04);">
+
+          <!-- Form Header -->
+          <div style="padding:12px 16px;background:#f8fafc;border-bottom:1px solid #e2e8f0;font-size:12px;font-weight:600;color:#334155;">
+            📋 Form Data Jahitan
+          </div>
+
+          <div style="padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+
+            <!-- Left Column -->
+            <div>
+              <!-- Work Order -->
+              <div style="margin-bottom:10px;">
+                <label style="display:block;font-size:10px;font-weight:600;color:#475569;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.3px;">
+                  Work Order <span style="color:#dc2626;">*</span>
+                </label>
+                <div style="position:relative;">
+                  <select style="width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;background:white;appearance:none;outline:none;">
+                    <option>— Pilih Work Order —</option>
+                    <option>Produksi - Awal | Rue Top | Black | M (Qty: 120)</option>
+                    <option selected>Produksi - Awal | Miles Jacket | Grey | M (Qty: 200)</option>
+                    <option>Restock-02 | Rhea Top | White | L (Qty: 50)</option>
+                  </select>
+                  <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:10px;color:#94a3b8;">▼</span>
+                </div>
+                <div style="font-size:10px;color:#64748b;margin-top:3px;">
+                  🔗 Hanya WO dengan status <strong>CUTTING_COMPLETE</strong> atau <strong>SEWING_IN_PROGRESS</strong>
+                </div>
+              </div>
+
+              <!-- Order Info (read-only, auto-fill) -->
+              <div style="margin-bottom:10px;padding:8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;font-size:11px;">
+                <div style="font-weight:600;color:#334155;margin-bottom:4px;">📄 Order Info (auto-fill)</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:10px;">
+                  <span style="color:#64748b;">Product:</span><span><strong>Miles Jacket</strong></span>
+                  <span style="color:#64748b;">Brand / Size:</span><span>Cassca / Grey / M</span>
+                  <span style="color:#64748b;">Qty Order:</span><span><strong>200</strong> pcs</span>
+                  <span style="color:#64748b;">Total Cutting:</span><span><strong>220</strong> pcs (sisa: 20)</span>
+                  <span style="color:#64748b;">Sudah Terjahit:</span><span><strong>55</strong> pcs (termasuk reject: 5)</span>
+                  <span style="color:#64748b;">Sisa Jahit:</span><span style="color:#d97706;font-weight:600;">145 pcs</span>
+                </div>
+              </div>
+
+              <!-- PIC Penjahit -->
+              <div style="margin-bottom:10px;">
+                <label style="display:block;font-size:10px;font-weight:600;color:#475569;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.3px;">
+                  PIC Penjahit <span style="color:#dc2626;">*</span>
+                </label>
+                <select style="width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;background:white;appearance:none;outline:none;">
+                  <option>— Pilih Penjahit —</option>
+                  <option>Budi Santoso — 🎯 Target: 1000/bln (Progress: 85%)</option>
+                  <option>Ani Wulandari — 🎯 Target: 2000/bln (Progress: 90%)</option>
+                  <option selected>Caca — 🎯 Target: 875/bln (Progress: 80%)</option>
+                </select>
+                <div style="font-size:10px;color:#64748b;margin-top:3px;">
+                  💡 Data target dari module <strong>Target Jahit</strong> (read-only reference)
+                </div>
+              </div>
+            </div>
+
+            <!-- Right Column -->
+            <div>
+              <!-- Quantity -->
+              <div style="margin-bottom:10px;">
+                <label style="display:block;font-size:10px;font-weight:600;color:#475569;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.3px;">
+                  Jumlah Selesai Jahit (pcs) <span style="color:#dc2626;">*</span>
+                </label>
+                <input type="number" placeholder="Contoh: 30" value="30" style="width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;outline:none;background:white;">
+              </div>
+
+              <!-- QC Result -->
+              <div style="margin-bottom:10px;">
+                <label style="display:block;font-size:10px;font-weight:600;color:#475569;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.3px;">
+                  Hasil QC <span style="color:#dc2626;">*</span>
+                </label>
+                <div style="display:flex;gap:8px;">
+                  <div style="flex:1;padding:8px;border:2px solid #16a34a;border-radius:6px;text-align:center;background:#f0fdf4;cursor:pointer;">
+                    <div style="font-size:16px;">✅</div>
+                    <div style="font-size:11px;font-weight:600;color:#15803d;">LULUS QC</div>
+                    <div style="font-size:9px;color:#16a34a;">Semua sesuai standar</div>
+                  </div>
+                  <div style="flex:1;padding:8px;border:2px solid #e2e8f0;border-radius:6px;text-align:center;cursor:pointer;">
+                    <div style="font-size:16px;">❌</div>
+                    <div style="font-size:11px;font-weight:600;color:#dc2626;">REJECT</div>
+                    <div style="font-size:9px;color:#64748b;">Ada cacat produksi</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- QC Notes (visible only if REJECT selected) -->
+              <div style="margin-bottom:10px;padding:8px;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;">
+                <label style="display:block;font-size:10px;font-weight:600;color:#dc2626;margin-bottom:4px;">
+                  Catatan QC (REJECT)
+                </label>
+                <textarea rows="2" placeholder="Jelaskan cacat yang ditemukan..." style="width:100%;padding:6px 10px;border:1px solid #fecaca;border-radius:6px;font-size:11px;outline:none;resize:none;background:white;font-family:inherit;"></textarea>
+              </div>
+
+              <!-- Date -->
+              <div style="margin-bottom:10px;">
+                <label style="display:block;font-size:10px;font-weight:600;color:#475569;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.3px;">
+                  Tanggal Laporan
+                </label>
+                <input type="text" placeholder="dd/mm/yyyy" value="22/06/2026" style="width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;outline:none;background:white;">
+                <div style="font-size:10px;color:#64748b;margin-top:3px;">Default: hari ini. Bisa backdate untuk missed entry.</div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Form Footer -->
+          <div style="padding:12px 16px;background:#f8fafc;border-top:1px solid #e2e8f0;display:flex;justify-content:flex-end;gap:8px;">
+            <span class="mock-button" style="padding:6px 16px;font-size:11px;color:#64748b;">Batal</span>
+            <span class="mock-button" style="padding:6px 16px;font-size:11px;background:#0ea5e9;color:white;border:none;">✅ Simpan Entry</span>
+          </div>
+
+        </div>
+
+        <!-- SIP (System Interface Protocol) hint -->
+        <div style="margin-top:8px;padding:8px 14px;background:#f0f9ff;border-radius:8px;border:1px solid #bae6fd;font-size:11px;color:#0369a1;">
+          📡 <strong>SIP:</strong> Setelah disimpan, data masuk ke Sewing Log (read-only).
+          Progress bar otomatis terupdate. Jika SUM(qty) = qty order, status WO → <strong>SEWING_COMPLETE</strong>.
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ============================================= -->
+<!-- OTHER VIEWS MINI MOCKUP                      -->
+<!-- ============================================= -->
+<div class="section" style="margin-top:20px;">
+  <h3>📋 Preview Data View Lainnya</h3>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px;">
+
+    <!-- RAW DATA -->
+    <div class="mockup">
+      <div class="mockup-header" style="font-size:11px;">📋 RAW DATA</div>
+      <div class="mockup-body" style="padding:10px;font-size:10px;text-align:left;">
+        <div style="display:grid;grid-template-columns:1.2fr 50px 50px 50px 50px 60px;padding:4px 0;border-bottom:1px solid #f1f5f9;font-weight:600;color:#475569;">
+          <span>Work Code</span><span>Qty</span><span>Cut</span><span>Sew</span><span>Fin</span><span>Status</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1.2fr 50px 50px 50px 50px 60px;padding:4px 0;font-size:9px;">
+          <span><strong>Rue Top</strong></span><span>120</span><span>✓</span><span>✓</span><span>✓</span><span><span style="background:#16a34a;color:white;padding:1px 4px;border-radius:2px;font-size:8px;">DONE</span></span>
+        </div>
+        <div style="display:grid;grid-template-columns:1.2fr 50px 50px 50px 50px 60px;padding:4px 0;font-size:9px;">
+          <span><strong>Rhea Top</strong></span><span>50</span><span>✓</span><span>35</span><span>—</span><span><span style="background:#d97706;color:white;padding:1px 4px;border-radius:2px;font-size:8px;">SEW</span></span>
+        </div>
+        <div style="margin-top:6px;color:#64748b;font-size:9px;">Semua kolom Cutting/Sewing/Finishing inline dalam 1 baris</div>
+      </div>
+    </div>
+
+    <!-- CUTTING QUEUE -->
+    <div class="mockup">
+      <div class="mockup-header" style="font-size:11px;">✂️ Cutting Queue</div>
+      <div class="mockup-body" style="padding:10px;font-size:10px;text-align:left;">
+        <div style="display:grid;grid-template-columns:1.5fr 50px 60px;padding:4px 0;border-bottom:1px solid #f1f5f9;font-weight:600;color:#475569;">
+          <span>WO</span><span>Qty</span><span style="text-align:center;">Cutting</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1.5fr 50px 60px;padding:4px 0;font-size:9px;">
+          <span>Aera Dress</span><span>60</span><span style="text-align:center;"><span style="background:#2563eb;color:white;padding:1px 6px;border-radius:2px;">Input</span></span>
+        </div>
+        <div style="display:grid;grid-template-columns:1.5fr 50px 60px;padding:4px 0;font-size:9px;color:#94a3b8;">
+          <span>Rue Top ✓</span><span>120</span><span style="text-align:center;">🔒 Locked</span>
+        </div>
+        <div style="margin-top:6px;color:#64748b;font-size:9px;">Single-shot input + lock. Oke kaya sekarang.</div>
+      </div>
+    </div>
+
+    <!-- FINISHING SYNC -->
+    <div class="mockup">
+      <div class="mockup-header" style="font-size:11px;">✨ Finishing Sync</div>
+      <div class="mockup-body" style="padding:10px;font-size:10px;text-align:left;">
+        <div style="display:grid;grid-template-columns:1.5fr 40px 50px 50px;padding:4px 0;border-bottom:1px solid #f1f5f9;font-weight:600;color:#475569;">
+          <span>WO</span><span>Qty</span><span>Total</span><span>Sync</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1.5fr 40px 50px 50px;padding:4px 0;font-size:9px;">
+          <span>Miles Jacket</span><span>50</span><span>90/220</span><span>✓</span>
+        </div>
+        <div style="margin-top:6px;color:#64748b;font-size:9px;">Batch import per POS sync.</div>
+      </div>
+    </div>
+
+    <!-- INVOICE -->
+    <div class="mockup">
+      <div class="mockup-header" style="font-size:11px;">💰 Invoicing (Finance)</div>
+      <div class="mockup-body" style="padding:10px;font-size:10px;text-align:left;">
+        <div style="display:grid;grid-template-columns:1.5fr 50px 40px 50px;padding:4px 0;border-bottom:1px solid #f1f5f9;font-weight:600;color:#475569;">
+          <span>WO</span><span>Amount</span><span>Paid</span><span>Status</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1.5fr 50px 40px 50px;padding:4px 0;font-size:9px;">
+          <span>Rue Top</span><span>24jt</span><span>✓</span><span><span style="background:#16a34a;color:white;padding:1px 4px;border-radius:2px;font-size:8px;">PAID</span></span>
+        </div>
+        <div style="margin-top:6px;color:#64748b;font-size:9px;">Terpisah — ranah finance.</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ===== STRUCTURE SUMMARY ===== -->
+<div class="section" style="margin-top:20px;padding:14px;background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0;">
+  <h3 style="margin:0 0 8px;font-size:14px;">🏗️ Struktur Halaman</h3>
+  <table style="width:100%;font-size:11px;border-collapse:collapse;">
+    <tr>
+      <td style="padding:4px 8px;font-weight:600;width:30%;">Production Monitoring</td>
+      <td style="padding:4px 8px;color:#64748b;">Module utama — berisi semua tab data view</td>
+    </tr>
+    <tr>
+      <td style="padding:4px 8px;padding-left:24px;">📋 RAW DATA</td>
+      <td style="padding:4px 8px;color:#64748b;">Semua WO dalam 1 tabel (Cutting/Sewing/Finishing inline)</td>
+    </tr>
+    <tr>
+      <td style="padding:4px 8px;padding-left:24px;">✂️ Cutting Queue</td>
+      <td style="padding:4px 8px;color:#64748b;">Input cutting (single-shot + lock) — OK kaya sekarang</td>
+    </tr>
+    <tr style="background:#f0f9ff;">
+      <td style="padding:4px 8px;padding-left:24px;font-weight:600;">🧵 Sewing Log</td>
+      <td style="padding:4px 8px;color:#64748b;">
+        <strong>Read-only database</strong> hasil entry jahitan. Ada QC Status (LULUS/REJECT),
+        tombol "+ Entry Jahitan Baru" → buka halaman form terpisah
+      </td>
+    </tr>
+    <tr style="background:#fef3c7;">
+      <td style="padding:4px 8px;padding-left:24px;font-weight:600;">🧵 Sewing Entry Form</td>
+      <td style="padding:4px 8px;color:#64748b;">
+        <strong>Halaman TERPISAH</strong> — form input jahitan + QC oleh supervisor.
+        Buka dari Sewing Log atau dari shortcut navigasi. Bukan modal!
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:4px 8px;padding-left:24px;">✨ Finishing Sync</td>
+      <td style="padding:4px 8px;color:#64748b;">Import hasil finishing per batch</td>
+    </tr>
+    <tr>
+      <td style="padding:4px 8px;font-weight:600;color:#7c3aed;">💰 Invoicing</td>
+      <td style="padding:4px 8px;color:#64748b;">Module terpisah di Finance, bukan di Production</td>
+    </tr>
+  </table>
+</div>

@@ -1,0 +1,405 @@
+import type { ViewConfig, ModuleId } from '@/types';
+
+export const viewConfig: Record<ModuleId, ViewConfig> = {
+  'selesai-finishing': {
+    title: 'Selesai Finishing',
+    editable: true,
+    sync: false,
+    columns: [
+      { key: 'productNote', label: 'Product Note', width: '100px', icon: 'FileText' },
+      { key: 'product', label: 'Product', width: '130px', icon: 'Box' },
+      { key: 'informationVariation', label: 'Information Variation', width: '180px', icon: 'Info' },
+      { key: 'warna', label: 'Warna', width: '80px', icon: 'Palette' },
+      { key: 'size', label: 'Size', width: '60px', icon: 'Ruler' },
+      { key: 'workCode', label: 'Work Code', width: '220px', icon: 'RefreshCw' },
+      { key: 'brand', label: 'Brand', width: '80px', icon: 'Tag' },
+      { key: 'quantity', label: 'Quantity', width: '80px', align: 'right', icon: 'Hash' },
+      { key: 'totalCutting', label: 'Total Cutting', width: '100px', align: 'right', icon: 'Scissors' },
+      { key: 'sisaCutting', label: 'Sisa Cutting', width: '100px', align: 'right', icon: 'Flame' },
+      { key: 'totalSelesaiJahit', label: 'Total Selesai Jahit', width: '130px', align: 'right', icon: 'CheckCircle' },
+      { key: 'cutVsUpload', label: 'Cut vs Upload', width: '120px', badge: true, icon: 'GitCompare' },
+      { key: 'jahitVsFinish', label: 'Jahit vs Finish', width: '120px', badge: true, icon: 'GitCompare' },
+      { key: 'statusStock', label: 'STATUS STOCK', width: '150px', badge: true, icon: 'ClipboardList' },
+    ],
+  },
+  'selesai-jahit': {
+    title: 'Selesai Jahit',
+    editable: true,
+    sync: false,
+    columns: [
+      { key: 'workCode', label: 'Work Code', width: '150px', icon: 'RefreshCw' },
+      { key: 'product', label: 'Product', width: '120px', icon: 'Box' },
+      { key: 'warna', label: 'Warna', width: '80px', icon: 'Palette' },
+      { key: 'size', label: 'Size', width: '60px', icon: 'Ruler' },
+      { key: 'brand', label: 'Brand', width: '80px', icon: 'Tag' },
+      { key: 'totalSelesaiJahit', label: 'Total Selesai Jahit', width: '130px', align: 'right', icon: 'CheckCircle' },
+      { key: 'picPenjahit', label: 'PIC Penjahit', width: '130px', icon: 'User' },
+      { key: 'tanggalLaporan', label: 'Tanggal Laporan', width: '120px', icon: 'Calendar' },
+      { key: 'bulanTahun', label: 'Bulan Tahun', width: '110px', icon: 'CalendarDays' },
+      { key: 'tanggal', label: 'Tanggal', width: '80px', icon: 'Calendar' },
+      { key: 'buktiBarang', label: 'Bukti Barang', width: '100px', icon: 'Camera' },
+    ],
+  },
+  'target-jahit': {
+    title: 'Target Jahit',
+    editable: true,
+    sync: false,
+    columns: [
+      { key: 'bulanTahun', label: 'Bulan Tahun', width: '110px', icon: 'CalendarDays' },
+      { key: 'nama', label: 'Nama', width: '130px', icon: 'User' },
+      { key: 'posisi', label: 'Posisi', width: '90px', badge: true, icon: 'Briefcase' },
+      { key: 'salary', label: 'Salary', width: '100px', align: 'right', format: 'currency', icon: 'Banknote' },
+      { key: 'totalHariKerja', label: 'Hari Kerja Efektif', width: '110px', align: 'right', icon: 'CalendarCheck' },
+      { key: 'hariKerjaHariIni', label: 'Hari Kerja Hari Ini', width: '110px', align: 'right', icon: 'CalendarCheck' },
+      { key: 'sisaHari', label: 'Sisa Hari', width: '80px', align: 'right', icon: 'Hourglass' },
+      { key: 'targetDaily', label: 'Target Daily', width: '90px', align: 'right', icon: 'Target' },
+      { key: 'targetNgebutHari', label: 'Target Ngebut/Hari', width: '120px', align: 'right', icon: 'Zap' },
+      { key: 'targetMonthly', label: 'Target Monthly', width: '110px', align: 'right', icon: 'TrendingUp' },
+      { key: 'realisasiMonthly', label: 'Realisasi Monthly', width: '120px', align: 'right', icon: 'CheckCircle' },
+      { key: 'sisaTargetMonthly', label: 'Sisa Target', width: '90px', align: 'right', icon: 'MinusCircle' },
+      { key: 'progressMonthly', label: 'Progress', width: '80px', align: 'right', format: 'percent', icon: 'Percent' },
+      { key: 'statusFinal', label: 'Status Final', width: '130px', badge: true, icon: 'Award' },
+    ],
+  },
+  'register-jahit': {
+    title: 'Register Jahit',
+    editable: true,
+    sync: false,
+    columns: [
+      { key: 'bulanTahun', label: 'Bulan Tahun', width: '110px', icon: 'CalendarDays' },
+      { key: 'hariKerjaEfektif', label: 'Hari Kerja Efektif', width: '120px', align: 'right', icon: 'CalendarCheck' },
+      { key: 'targetTotalProduksi', label: 'Target Total Produksi', width: '140px', align: 'right', icon: 'TrendingUp' },
+      { key: 'costLeaderTarget', label: 'Cost Leader Target', width: '130px', align: 'right', format: 'currency', icon: 'Banknote' },
+      { key: 'costPenjahitTarget', label: 'Cost Penjahit Target', width: '140px', align: 'right', format: 'currency', icon: 'Banknote' },
+      { key: 'costFinishingTarget', label: 'Cost Finishing Target', width: '140px', align: 'right', format: 'currency', icon: 'Banknote' },
+      { key: 'totalCostTarget', label: 'Total Cost Target', width: '130px', align: 'right', format: 'currency', icon: 'Banknote' },
+      { key: 'realisasiTotalProduksi', label: 'Realisasi Total', width: '110px', align: 'right', icon: 'CheckCircle' },
+      { key: 'totalCostRealisasi', label: 'Total Cost Realisasi', width: '140px', align: 'right', format: 'currency', icon: 'Banknote' },
+      { key: 'aTotalCostTarget', label: 'A. Total Cost Target', width: '140px', align: 'right', format: 'currency', icon: 'BarChart' },
+      { key: 'aTotalCostRealisasi', label: 'A. Total Cost Realisasi', width: '150px', align: 'right', format: 'currency', icon: 'BarChart' },
+    ],
+  },
+  'daftar-libur': {
+    title: 'Daftar Libur',
+    editable: true,
+    sync: false,
+    columns: [
+      { key: 'tanggal', label: 'Tanggal', width: '110px', icon: 'Calendar' },
+      { key: 'hari', label: 'Hari', width: '100px', icon: 'CalendarDays' },
+      { key: 'keterangan', label: 'Keterangan', width: '250px', icon: 'FileText' },
+    ],
+  },
+  'register-penjahit': {
+    title: 'Register Penjahit',
+    editable: true,
+    sync: false,
+    columns: [
+      { key: 'picPenjahit', label: 'PIC Penjahit', width: '180px', icon: 'User' },
+      { key: 'konveksiTeam', label: 'Konveksi Team', width: '150px', icon: 'Users' },
+      { key: 'status', label: 'Status', width: '100px', badge: true, icon: 'Activity' },
+    ],
+  },
+  'master-product': {
+    title: 'Master Data Product',
+    editable: false,
+    sync: true,
+    columns: [
+      { key: 'id', label: 'ID', width: '50px', align: 'right', icon: 'Hash' },
+      { key: 'brand', label: 'Brand', width: '80px', icon: 'Tag' },
+      { key: 'productId', label: 'Product ID', width: '100px', icon: 'Fingerprint' },
+      { key: 'product', label: 'Product', width: '150px', icon: 'Box' },
+      { key: 'category', label: 'Category', width: '100px', badge: true, icon: 'Folder' },
+      { key: 'statusProduct', label: 'Status Product', width: '120px', badge: true, icon: 'Power' },
+      { key: 'warningStock', label: 'Warning Stock', width: '120px', badge: true, icon: 'AlertTriangle' },
+    ],
+  },
+  'raw-monitoring': {
+    title: 'Raw Product Monitoring',
+    editable: false,
+    sync: true,
+    columns: [
+      { key: 'productId', label: 'Product ID', width: '100px', icon: 'Fingerprint' },
+      { key: 'product', label: 'Product', width: '120px', icon: 'Box' },
+      { key: 'warna', label: 'Warna', width: '80px', icon: 'Palette' },
+      { key: 'size', label: 'Size', width: '60px', icon: 'Ruler' },
+      { key: 'availableQuantity', label: 'Available Qty', width: '100px', align: 'right', icon: 'Hash' },
+      { key: 'statusStockFinal', label: 'Status Stock Final', width: '150px', badge: true, icon: 'BarChart' },
+      { key: 'sisaCutting', label: 'Sisa Cutting', width: '100px', align: 'right', icon: 'Flame' },
+      { key: 'prioritasDalamProses', label: 'Prioritas Proses', width: '110px', align: 'right', icon: 'BarChart' },
+      { key: 'prioritasTungguPRDN', label: 'Prioritas PRDN', width: '100px', align: 'right', icon: 'Clock' },
+      { key: 'prioritasTungguWHLB', label: 'Prioritas WHLB', width: '100px', align: 'right', icon: 'Clock' },
+      { key: 'brand', label: 'Brand', width: '80px', icon: 'Tag' },
+      { key: 'source', label: 'Source', width: '80px', badge: true, icon: 'MapPin' },
+    ],
+  },
+  'master-import': {
+    title: 'Master Data Import',
+    editable: false,
+    sync: true,
+    columns: [
+      { key: 'supplier', label: 'Supplier', width: '140px', icon: 'Building' },
+      { key: 'note', label: 'Note', width: '200px', icon: 'FileText' },
+      { key: 'sourceProduct', label: 'Source', width: '80px', badge: true, icon: 'MapPin' },
+      { key: 'productId', label: 'Product ID', width: '100px', icon: 'Fingerprint' },
+      { key: 'kodeProduksi', label: 'Kode Produksi', width: '120px', icon: 'Hash' },
+      { key: 'status', label: 'Status', width: '120px', badge: true, icon: 'Activity' },
+      { key: 'receivedAt', label: 'Received At', width: '110px', icon: 'Calendar' },
+    ],
+  },
+  // Combined view: the actual columns/data shown come from the active sub-tab
+  // (register-jahit / daftar-libur / register-penjahit) selected in App.tsx.
+  // This entry mirrors 'register-jahit' (the default sub-tab) so it stays valid
+  // if anything reads it directly before App.tsx resolves the effective module.
+  'production-data': {
+    title: 'Production Data',
+    editable: true,
+    sync: false,
+    columns: [
+      { key: 'bulanTahun', label: 'Bulan Tahun', width: '110px', icon: 'CalendarDays' },
+      { key: 'hariKerjaEfektif', label: 'Hari Kerja Efektif', width: '120px', align: 'right', icon: 'CalendarCheck' },
+      { key: 'targetTotalProduksi', label: 'Target Total Produksi', width: '140px', align: 'right', icon: 'TrendingUp' },
+      { key: 'totalCostTarget', label: 'Total Cost Target', width: '130px', align: 'right', format: 'currency', icon: 'Banknote' },
+      { key: 'realisasiTotalProduksi', label: 'Realisasi Total', width: '110px', align: 'right', icon: 'CheckCircle' },
+      { key: 'totalCostRealisasi', label: 'Total Cost Realisasi', width: '140px', align: 'right', format: 'currency', icon: 'Banknote' },
+    ],
+  },
+};
+
+// ===== Selesai Finishing row builder =====
+// Auto-computes every derived field from raw inputs so mockup data stays
+// consistent with the AppSheet formulas:
+//   - workCode      : generated via generateWorkCode() (the IF/CONCATENATE formula)
+//   - sisaCutting   : Total Cutting - Quantity
+//   - cutVsUpload   : "" / "LENGKAP" / "ON PROGRESS" (the IF/ISNULL/AND formula)
+//   - jahitVsFinish : "BALANCE" if Quantity = Total Selesai Jahit, else "MASALAH"
+//   - alertTrigger   : derived from cutting / trigger-form / cut-vs-upload state
+//   - statusStock   : "DALAM PROSES PRODUKSI" if Trigger Form terisi, else "TUNGGU KEPUTUSAN"
+interface FinishingInput {
+  id: number;
+  productNote: string;
+  product: string;
+  informationVariation: string;
+  warna: string;
+  size: string;
+  brand: string;
+  quantity: number;
+  totalCutting: number;
+  totalSelesaiJahit: number;
+  triggerForm?: string; // override; defaults to auto-generated workCode when in production
+}
+
+function toBlankAware(v: unknown): number | null {
+  if (v === undefined || v === null || v === '') return null;
+  const n = typeof v === 'number' ? v : Number(v);
+  return Number.isNaN(n) ? null : n;
+}
+
+function buildFinishingRow(input: FinishingInput): Record<string, unknown> {
+  const { productNote, product, warna, size } = input;
+
+  // Work Code — from the AppSheet IF/CONCATENATE formula
+  const workCode = generateWorkCode(productNote, product, warna, size);
+
+  // Sisa Cutting = Total Cutting - Quantity
+  const sisaCutting = input.totalCutting - input.quantity;
+
+  // Cut vs Upload — IF(ISNULL(Total Cutting),"", IF(AND(Qty=SelesaiJahit, SelesaiJahit=TotalCutting),"LENGKAP","ON PROGRESS"))
+  const tc = toBlankAware(input.totalCutting);
+  let cutVsUpload = '';
+  if (tc !== null) {
+    const balanced = input.quantity === input.totalSelesaiJahit && input.totalSelesaiJahit === input.totalCutting;
+    cutVsUpload = balanced ? 'LENGKAP' : 'ON PROGRESS';
+  }
+
+  // Jahit vs Finish — "BALANCE" if Quantity = Total Selesai Jahit, else "MASALAH"
+  const jahitVsFinish = input.quantity === input.totalSelesaiJahit ? 'BALANCE' : 'MASALAH';
+
+  // Trigger Form — defaults to the generated workCode while in production
+  // (kept empty when there's no Product Note / Work Code)
+  const triggerForm = input.triggerForm !== undefined ? input.triggerForm : '';
+
+  // Alert Trigger logic (kept for the "Need Invoice" filter view)
+  const hasTrigger = Boolean(triggerForm);
+  let alertTrigger = '';
+  if (tc === null || tc === 0) {
+    alertTrigger = 'PERLU ISI - CUTTING';
+  } else if (cutVsUpload === 'ON PROGRESS') {
+    alertTrigger = hasTrigger
+      ? (triggerForm === workCode ? 'SUDAH ISI - TRIGGER' : 'PERLU HAPUS - TRIGGER')
+      : 'PERLU ISI - TRIGGER';
+  } else {
+    // LENGKAP path
+    alertTrigger = hasTrigger ? 'PERLU HAPUS - TRIGGER' : 'CLEAR FINISH';
+  }
+  // Special case: fully balanced + ready for invoice registration
+  if (cutVsUpload === 'LENGKAP' && jahitVsFinish === 'BALANCE' && hasTrigger) {
+    alertTrigger = 'PERLU REGISTER INVOICE';
+  }
+
+  // STATUS STOCK — ON PROGRESS -> DALAM PROSES PRODUKSI, selainnya -> TUNGGU KEPUTUSAN
+  const statusStock = cutVsUpload === 'ON PROGRESS' ? 'DALAM PROSES PRODUKSI' : 'TUNGGU KEPUTUSAN';
+
+  return {
+    id: input.id,
+    productNote,
+    product,
+    informationVariation: input.informationVariation,
+    warna,
+    size,
+    workCode,
+    brand: input.brand,
+    quantity: input.quantity,
+    totalCutting: input.totalCutting,
+    sisaCutting,
+    totalSelesaiJahit: input.totalSelesaiJahit,
+    cutVsUpload,
+    jahitVsFinish,
+    alertTrigger,
+    statusStock,
+    triggerForm,
+  };
+}
+
+export const mockData: Record<ModuleId, Record<string, unknown>[]> = {
+  'selesai-finishing': [
+    // ===== RAW: Normal records =====
+    // Work Code is auto-generated via the AppSheet IF/CONCATENATE formula;
+    // sisaCutting, cutVsUpload, jahitVsFinish, alertTrigger & statusStock are derived.
+    buildFinishingRow({ id: 1, productNote: 'B-00', product: 'Rue Top', informationVariation: 'Colour: Black Size: M', warna: 'Black', size: 'M', brand: 'Cassca', quantity: 100, totalCutting: 120, totalSelesaiJahit: 85, triggerForm: 'Produksi - Awal | Rue Top | Black | M' }),
+    buildFinishingRow({ id: 2, productNote: 'B-01', product: 'Rhea Top', informationVariation: 'Colour: White Size: L', warna: 'White', size: 'L', brand: 'Livou', quantity: 50, totalCutting: 50, totalSelesaiJahit: 30, triggerForm: '' }),
+    buildFinishingRow({ id: 3, productNote: 'B-02', product: 'Rue Top', informationVariation: 'Colour: Navy Size: XL', warna: 'Navy', size: 'XL', brand: 'Cassca', quantity: 80, totalCutting: 90, totalSelesaiJahit: 80, triggerForm: 'Restock-02 | Rue Top | Navy | XL' }),
+    buildFinishingRow({ id: 4, productNote: 'B-03', product: 'Aera Dress', informationVariation: 'Colour: Red Size: S', warna: 'Red', size: 'S', brand: 'Livou', quantity: 60, totalCutting: 0, totalSelesaiJahit: 0, triggerForm: '' }),
+    buildFinishingRow({ id: 5, productNote: 'B-00', product: 'Miles Jacket', informationVariation: 'Colour: Grey Size: M', warna: 'Grey', size: 'M', brand: 'Cassca', quantity: 45, totalCutting: 50, totalSelesaiJahit: 45, triggerForm: 'TYPO-123' }),
+    buildFinishingRow({ id: 6, productNote: '', product: 'Siena Blouse', informationVariation: 'Colour: Beige Size: L', warna: 'Beige', size: 'L', brand: 'Cassca', quantity: 30, totalCutting: 0, totalSelesaiJahit: 0, triggerForm: '' }),
+    // ===== PERLU REGISTER INVOICE (LENGKAP + BALANCE + trigger terisi) =====
+    buildFinishingRow({ id: 7, productNote: 'B-04', product: 'Rue Top', informationVariation: 'Colour: Cream Size: S', warna: 'Cream', size: 'S', brand: 'Cassca', quantity: 120, totalCutting: 120, totalSelesaiJahit: 120, triggerForm: 'Restock-04 | Rue Top | Cream | S' }),
+    buildFinishingRow({ id: 8, productNote: 'B-05', product: 'Rhea Top', informationVariation: 'Colour: Pink Size: M', warna: 'Pink', size: 'M', brand: 'Livou', quantity: 75, totalCutting: 75, totalSelesaiJahit: 75, triggerForm: 'Restock-05 | Rhea Top | Pink | M' }),
+    buildFinishingRow({ id: 9, productNote: 'B-00', product: 'Aera Dress', informationVariation: 'Colour: Blue Size: XL', warna: 'Blue', size: 'XL', brand: 'Livou', quantity: 200, totalCutting: 200, totalSelesaiJahit: 200, triggerForm: 'Produksi - Awal | Aera Dress | Blue | XL' }),
+  ],
+  'selesai-jahit': [
+    { id: 1, workCode: 'CSC-001-Black-M', product: 'Kaos Polos', warna: 'Black', size: 'M', brand: 'Cassca', totalSelesaiJahit: 25, picPenjahit: 'Budi Santoso', tanggalLaporan: '2026-06-05', bulanTahun: 'Juni 2026', tanggal: '05 Jun', buktiBarang: 'img1.jpg' },
+    { id: 2, workCode: 'LVU-002-White-L', product: 'Kemeja', warna: 'White', size: 'L', brand: 'Livou', totalSelesaiJahit: 15, picPenjahit: 'Ani Wulandari', tanggalLaporan: '2026-06-05', bulanTahun: 'Juni 2026', tanggal: '05 Jun', buktiBarang: 'img2.jpg' },
+    { id: 3, workCode: 'CSC-001-Black-M', product: 'Kaos Polos', warna: 'Black', size: 'M', brand: 'Cassca', totalSelesaiJahit: 30, picPenjahit: 'Caca', tanggalLaporan: '2026-06-04', bulanTahun: 'Juni 2026', tanggal: '04 Jun', buktiBarang: 'img3.jpg' },
+    { id: 4, workCode: 'CSC-003-Navy-XL', product: 'Celana', warna: 'Navy', size: 'XL', brand: 'Cassca', totalSelesaiJahit: 40, picPenjahit: 'Budi Santoso', tanggalLaporan: '2026-06-05', bulanTahun: 'Juni 2026', tanggal: '05 Jun', buktiBarang: 'img4.jpg' },
+  ],
+  'target-jahit': [
+    { id: 1, bulanTahun: 'Juni 2026', nama: 'Budi Santoso', posisi: 'Penjahit', salary: 4000000, totalHariKerja: 22, hariKerjaHariIni: 5, sisaHari: 17, targetDaily: 45, targetNgebutHari: 52, targetMonthly: 1000, realisasiMonthly: 850, sisaTargetMonthly: 150, progressMonthly: 85, statusFinal: 'SEDANG MENGEJAR', targetCostPosisi: 4000, realisasiCostPosisi: 4705, targetAccum: 5000, realisasiAccum: 4500, selisihAccum: 500, targetNgebutHariAkumulasi: 50, progressAccum: 90, statusFinalAkumulasi: 'SEDANG MENGEJAR' },
+    { id: 2, bulanTahun: 'Juni 2026', nama: 'Ani Wulandari', posisi: 'Leader', salary: 8000000, totalHariKerja: 22, hariKerjaHariIni: 5, sisaHari: 17, targetDaily: 90, targetNgebutHari: 105, targetMonthly: 2000, realisasiMonthly: 1800, sisaTargetMonthly: 200, progressMonthly: 90, statusFinal: 'SEDANG MENGEJAR', targetCostPosisi: 4000, realisasiCostPosisi: 4444, targetAccum: 12000, realisasiAccum: 10800, selisihAccum: 1200, targetNgebutHariAkumulasi: 75, progressAccum: 90, statusFinalAkumulasi: 'SEDANG MENGEJAR' },
+    { id: 3, bulanTahun: 'Juni 2026', nama: 'Caca', posisi: 'Finishing', salary: 3500000, totalHariKerja: 22, hariKerjaHariIni: 5, sisaHari: 17, targetDaily: 39, targetNgebutHari: 46, targetMonthly: 875, realisasiMonthly: 700, sisaTargetMonthly: 175, progressMonthly: 80, statusFinal: 'SEDANG MENGEJAR', targetCostPosisi: 4000, realisasiCostPosisi: 5000, targetAccum: 3500, realisasiAccum: 2800, selisihAccum: 700, targetNgebutHariAkumulasi: 58, progressAccum: 80, statusFinalAkumulasi: 'SEDANG MENGEJAR' },
+  ],
+  'register-jahit': [
+    { id: 1, bulanTahun: 'Juni 2026', hariKerjaEfektif: 22, targetTotalProduksi: 10000, costLeaderTarget: 800, costPenjahitTarget: 400, costFinishingTarget: 200, totalCostTarget: 1400, realisasiTotalProduksi: 8500, totalCostRealisasi: 1647, aTotalCostTarget: 1500, aTotalCostRealisasi: 1800 },
+    { id: 2, bulanTahun: 'Mei 2026', hariKerjaEfektif: 21, targetTotalProduksi: 9500, costLeaderTarget: 842, costPenjahitTarget: 421, costFinishingTarget: 210, totalCostTarget: 1473, realisasiTotalProduksi: 9000, totalCostRealisasi: 1555, aTotalCostTarget: 1600, aTotalCostRealisasi: 1700 },
+  ],
+  'daftar-libur': [
+    { id: 1, tanggal: '2026-06-01', hari: 'Senin', keterangan: 'Hari Libur Nasional' },
+    { id: 2, tanggal: '2026-06-17', hari: 'Rabu', keterangan: 'Idul Fitri' },
+    { id: 3, tanggal: '2026-06-18', hari: 'Kamis', keterangan: 'Idul Fitri' },
+  ],
+  'register-penjahit': [
+    { id: 1, picPenjahit: 'Budi Santoso', konveksiTeam: 'Budi', status: 'Aktif' },
+    { id: 2, picPenjahit: 'Ani Wulandari', konveksiTeam: 'Ani', status: 'Aktif' },
+    { id: 3, picPenjahit: 'Caca', konveksiTeam: 'Caca', status: 'Aktif' },
+    { id: 4, picPenjahit: 'Dedi Kurniawan', konveksiTeam: 'Dedi', status: 'Non-Aktif' },
+  ],
+  'master-product': [
+    { id: 1, brand: 'Cassca', productId: 'CSC-001', product: 'Kaos Polos', category: 'Atasan', statusProduct: 'Aktif', warningStock: '-' },
+    { id: 2, brand: 'Livou', productId: 'LVU-002', product: 'Kemeja', category: 'Atasan', statusProduct: 'Aktif', warningStock: 'Stok Menipis' },
+    { id: 3, brand: 'Cassca', productId: 'CSC-003', product: 'Celana', category: 'Bawahan', statusProduct: 'Aktif', warningStock: '-' },
+    { id: 4, brand: 'Livou', productId: 'LVU-004', product: 'Dress', category: 'Atasan', statusProduct: 'Non-Aktif', warningStock: '-' },
+    { id: 5, brand: 'Cassca', productId: 'CSC-005', product: 'Jaket', category: 'Outer', statusProduct: 'Aktif', warningStock: '-' },
+  ],
+  'raw-monitoring': [
+    { id: 1, productId: 'CSC-001', product: 'Kaos Polos', warna: 'Black', size: 'M', availableQuantity: 5, statusStockFinal: 'DALAM PROSES PRODUKSI', sisaCutting: 20, prioritasDalamProses: 1, prioritasTungguPRDN: '-', prioritasTungguWHLB: '-', brand: 'Cassca', source: 'PRDN' },
+    { id: 2, productId: 'LVU-002', product: 'Kemeja', warna: 'White', size: 'L', availableQuantity: 2, statusStockFinal: 'MENUNGGU KEPUTUSAN', sisaCutting: 0, prioritasDalamProses: '-', prioritasTungguPRDN: 1, prioritasTungguWHLB: '-', brand: 'Livou', source: 'WHLB' },
+    { id: 3, productId: 'CSC-003', product: 'Celana', warna: 'Navy', size: 'XL', availableQuantity: 15, statusStockFinal: 'DALAM PROSES PRODUKSI', sisaCutting: 5, prioritasDalamProses: 2, prioritasTungguPRDN: '-', prioritasTungguWHLB: '-', brand: 'Cassca', source: 'PRDN' },
+    { id: 4, productId: 'LVU-004', product: 'Dress', warna: 'Red', size: 'S', availableQuantity: 8, statusStockFinal: 'MENUNGGU KEPUTUSAN', sisaCutting: 0, prioritasDalamProses: '-', prioritasTungguPRDN: 2, prioritasTungguWHLB: '-', brand: 'Livou', source: 'WHLB' },
+  ],
+  'master-import': [
+    { id: 1, supplier: 'PT Kain Jaya', note: '`ABC123` CSC-001-Black', sourceProduct: 'CSC', productId: 'CSC-001', kodeProduksi: 'ABC123', status: 'Diterima', receivedAt: '2026-05-20' },
+    { id: 2, supplier: 'CV Benang', note: '`XYZ789` LVU-002-White', sourceProduct: 'LVU', productId: 'LVU-002', kodeProduksi: 'XYZ789', status: 'Diterima', receivedAt: '2026-05-22' },
+    { id: 3, supplier: 'PT Kain Jaya', note: '`DEF456` CSC-003-Navy', sourceProduct: 'CSC', productId: 'CSC-003', kodeProduksi: 'DEF456', status: 'Dalam Perjalanan', receivedAt: '-' },
+  ],
+  // Combined view: actual rows come from the active sub-tab resolved in App.tsx.
+  // This empty fallback keeps the Record<ModuleId, ...> type valid.
+  'production-data': [],
+};
+
+export const supabaseWorkCodes = [
+  { value: 'Produksi - Awal | Rue Top | Black | M', productNote: 'B-00', product: 'Rue Top', informationVariation: 'Colour: Black Size: M', warna: 'Black', size: 'M', brand: 'Cassca', quantity: 100 },
+  { value: 'Restock-01 | Rhea Top | White | L', productNote: 'B-01', product: 'Rhea Top', informationVariation: 'Colour: White Size: L', warna: 'White', size: 'L', brand: 'Livou', quantity: 50 },
+  { value: 'Restock-02 | Rue Top | Navy | XL', productNote: 'B-02', product: 'Rue Top', informationVariation: 'Colour: Navy Size: XL', warna: 'Navy', size: 'XL', brand: 'Cassca', quantity: 80 },
+  { value: 'Restock-03 | Aera Dress | Red | S', productNote: 'B-03', product: 'Aera Dress', informationVariation: 'Colour: Red Size: S', warna: 'Red', size: 'S', brand: 'Livou', quantity: 60 },
+  { value: 'Produksi - Awal | Miles Jacket | Grey | M', productNote: 'B-00', product: 'Miles Jacket', informationVariation: 'Colour: Grey Size: M', warna: 'Grey', size: 'M', brand: 'Cassca', quantity: 45 },
+  { value: 'Restock-04 | Siena Blouse | Beige | L', productNote: 'B-04', product: 'Siena Blouse', informationVariation: 'Colour: Beige Size: L', warna: 'Beige', size: 'L', brand: 'Cassca', quantity: 30 },
+];
+
+// Helper: Parse warna and size from Information Variation string
+export function parseInformationVariation(iv: string): { warna: string; size: string } {
+  const colourMatch = iv.match(/Colour:\s*([^]+?)\s*Size:/i);
+  const sizeMatch = iv.match(/Size:\s*(\S+)/i);
+  return {
+    warna: colourMatch ? colourMatch[1].trim() : '',
+    size: sizeMatch ? sizeMatch[1].trim() : '',
+  };
+}
+
+// Helper: Generate Work Code from the AppSheet formula:
+//   IF(ISBLANK([Product note]), "",
+//     CONCATENATE(
+//       IF([Product note].CONTAINTEXT("B-00"), "Produksi - Awal",
+//         "Restock-" & IF(FIND("B-",[Product note])=-1, "",
+//           MID([Product note], FIND("B-",[Product note])+2, 2))),
+//       " | ", [Product], " | ", [Warna], " | ", [Size]))
+// NOTE: AppSheet MID(str, start, length) is 1-indexed; FIND returns 1-indexed position.
+// JS indexOf is 0-indexed, so the +2 offset maps correctly (B- at idx 0 -> start at char 3 in 1-indexed = idx 2).
+export function generateWorkCode(productNote: string, product: string, warna: string, size: string): string {
+  if (!productNote) return '';
+  let prefix: string;
+  if (productNote.includes('B-00')) {
+    prefix = 'Produksi - Awal';
+  } else {
+    const bIndex = productNote.indexOf('B-');
+    if (bIndex === -1) {
+      prefix = 'Restock-';
+    } else {
+      // MID(note, FIND+2, 2) in 1-indexed -> JS substring(bIndex+2, bIndex+4)
+      prefix = `Restock-${productNote.substring(bIndex + 2, bIndex + 4)}`;
+    }
+  }
+  return `${prefix} | ${product} | ${warna} | ${size}`;
+}
+
+export const penjahitList = ['Budi Santoso', 'Ani Wulandari', 'Caca', 'Dedi Kurniawan'];
+export const bulanList = ['Januari 2026', 'Februari 2026', 'Maret 2026', 'April 2026', 'Mei 2026', 'Juni 2026'];
+
+export const navGroups = [
+  {
+    label: '',
+    items: [
+      { id: 'production-monitoring' as const, label: 'Production Monitoring', icon: 'Layers', dot: '#2563EB' },
+    ],
+  },
+  {
+    label: 'Master Data',
+    items: [
+      { id: 'master-product' as const, label: 'Master Data Product', icon: 'Package', locked: true },
+      { id: 'raw-monitoring' as const, label: 'Raw Product Monitoring', icon: 'Package', locked: true },
+      { id: 'master-import' as const, label: 'Master Data Import', icon: 'Package', locked: true },
+      { id: 'target-jahit' as const, label: 'Target Jahit', icon: 'Target' },
+    ],
+  },
+  {
+    label: 'Finance',
+    items: [
+      { id: 'invoicing' as const, label: 'Invoicing', icon: 'BarChart3' },
+    ],
+  },
+  {
+    label: 'System',
+    items: [
+      { id: 'reports' as const, label: 'Reports', icon: 'BarChart3' },
+      { id: 'settings' as const, label: 'Settings', icon: 'Settings' },
+    ],
+  },
+];
