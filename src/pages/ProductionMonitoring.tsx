@@ -41,7 +41,7 @@ function StatusBadge({ status }: { status: ProductionStatus }) {
 // ===== Kanban Card =====
 function KanbanCard({ wo, statusOverride }: { wo: WorkOrder; statusOverride?: { label: string; color: string } }) {
   return (
-    <div className="bg-white rounded-[14px] border border-[#E5E7EB] shadow-sm p-[14px] hover:-translate-y-0.5 hover:scale-[1.01] hover:shadow-md transition-all duration-200 ease-out cursor-pointer w-full max-w-[320px]">
+    <div className="bg-white rounded-[14px] border border-[#E5E7EB] shadow-sm p-[14px] hover:-translate-y-0.5 hover:scale-[1.01] hover:shadow-md transition-all duration-200 ease-out cursor-pointer w-full max-w-[350px]">
       {/* Header: Product Note + Status Badge */}
       <div className="flex items-start justify-between gap-2 mb-[10px]">
         <span className="text-[12px] font-bold leading-[1.3] text-slate-900 truncate flex-1 min-w-0">{wo.productNoteFull}</span>
@@ -56,14 +56,12 @@ function KanbanCard({ wo, statusOverride }: { wo: WorkOrder; statusOverride?: { 
         )}
       </div>
 
-      {/* Body: Brand + Product */}
-      <div className="flex flex-col gap-1 mb-3">
-        <span className="text-[9px] font-medium text-[#6B7280]">{wo.brand}</span>
-        <span className="text-[9px] font-semibold leading-[1.4] text-slate-800">{wo.product}</span>
+      {/* Body: Brand + Product + Quantity */}
+      <div className="flex flex-col gap-1">
+        <span className="text-[12px] font-medium text-[#6B7280]">{wo.brand}</span>
+        <span className="text-[12px] font-semibold leading-[1.4] text-slate-800">{wo.product}</span>
+        <span className="text-[12px] font-bold text-slate-900">{wo.quantity} pcs</span>
       </div>
-
-      {/* Footer: Quantity */}
-      <span className="text-[9px] font-bold text-slate-900">{wo.quantity} pcs</span>
     </div>
   );
 }
@@ -661,7 +659,7 @@ export default function ProductionMonitoring({ onOpenSewingEntry }: { onOpenSewi
               ] as const).map((col) => {
                 const columnWOs = filteredWO.filter(w => w.productionStatus === col.status);
                 return (
-                  <div key={col.status} className="w-[300px] flex flex-col">
+                  <div key={col.status} className="w-[350px] flex flex-col">
                     <div className={cn('rounded-t-lg px-4 py-3 flex items-center justify-between', col.color)}>
                       <span className="text-[13px] font-semibold">{col.label}</span>
                       <span className="text-[11px] font-bold bg-white/30 px-2 py-0.5 rounded-full">{columnWOs.length}</span>
@@ -684,7 +682,7 @@ export default function ProductionMonitoring({ onOpenSewingEntry }: { onOpenSewi
                   w.invoiceStatus !== 'NONE'
                 );
                 return (
-                  <div className="w-[300px] flex flex-col">
+                  <div className="w-[350px] flex flex-col">
                     <div className="rounded-t-lg px-4 py-3 flex items-center justify-between bg-gray-100 text-gray-700">
                       <span className="text-[13px] font-semibold">Invoiced</span>
                       <span className="text-[11px] font-bold bg-white/30 px-2 py-0.5 rounded-full">{invoicedWOs.length}</span>
