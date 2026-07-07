@@ -39,13 +39,19 @@ function StatusBadge({ status }: { status: ProductionStatus }) {
 }
 
 // ===== Kanban Card =====
-function KanbanCard({ wo }: { wo: WorkOrder }) {
+function KanbanCard({ wo, statusOverride }: { wo: WorkOrder; statusOverride?: { label: string; color: string } }) {
   return (
     <div className="bg-white rounded-[18px] border border-gray-200 p-5 hover:shadow-lg hover:-translate-y-0.5 hover:scale-[1.01] transition-all duration-200 ease-out cursor-pointer">
-      {/* Header: WO ID + Status Badge */}
+      {/* Header: Product Note + Status Badge */}
       <div className="flex items-start justify-between mb-4">
-        <span className="text-[18px] font-bold text-slate-900">{wo.id}</span>
-        <StatusBadge status={wo.productionStatus} />
+        <span className="text-[18px] font-bold text-slate-900">{wo.productNote}</span>
+        {statusOverride ? (
+          <span className={cn('inline-block px-2 py-0.5 rounded text-[10px] font-semibold', statusOverride.color)}>
+            {statusOverride.label}
+          </span>
+        ) : (
+          <StatusBadge status={wo.productionStatus} />
+        )}
       </div>
 
       {/* Body: Brand + Product */}
@@ -688,7 +694,7 @@ export default function ProductionMonitoring({ onOpenSewingEntry }: { onOpenSewi
                       {invoicedWOs.length === 0 ? (
                         <div className="text-center py-8 text-slate-400 text-[12px]">No work orders</div>
                       ) : (
-                        invoicedWOs.map(wo => <KanbanCard key={wo.id} wo={wo} />)
+                        invoicedWOs.map(wo => <KanbanCard key={wo.id} wo={wo} statusOverride={{ label: 'Invoiced', color: 'bg-gray-100 text-gray-700' }} />)
                       )}
                     </div>
                   </div>
