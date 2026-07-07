@@ -38,6 +38,31 @@ function StatusBadge({ status }: { status: ProductionStatus }) {
   );
 }
 
+// ===== Kanban Card =====
+function KanbanCard({ wo }: { wo: WorkOrder }) {
+  return (
+    <div className="bg-white rounded-[18px] border border-gray-200 p-5 hover:shadow-lg hover:-translate-y-0.5 hover:scale-[1.01] transition-all duration-200 ease-out cursor-pointer">
+      {/* Header: WO ID + Status Badge */}
+      <div className="flex items-start justify-between mb-4">
+        <span className="text-[18px] font-bold text-slate-900">{wo.id}</span>
+        <StatusBadge status={wo.productionStatus} />
+      </div>
+
+      {/* Body: Brand + Product */}
+      <div className="mb-5">
+        <div className="text-[14px] font-medium text-[#6B7280] mb-3">{wo.brand}</div>
+        <div className="text-[16px] font-semibold text-slate-800">{wo.product}</div>
+      </div>
+
+      {/* Footer: Quantity */}
+      <div>
+        <div className="text-[12px] uppercase text-gray-500 mb-1">QUANTITY</div>
+        <div className="text-[18px] font-bold text-slate-900">{wo.quantity} pcs</div>
+      </div>
+    </div>
+  );
+}
+
 // ===== Production Monitoring Page =====
 export default function ProductionMonitoring({ onOpenSewingEntry }: { onOpenSewingEntry?: () => void }) {
   const [activeTab, setActiveTab] = useState<TabType>('raw');
