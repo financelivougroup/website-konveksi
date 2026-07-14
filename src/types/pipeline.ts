@@ -36,6 +36,7 @@ export interface WorkOrder {
   id: string;
   workCode: string;
   sourceOrderId: string;
+  productionOrderId?: string;
   productNote: string;
   productNoteFull: string;
   product: string;
