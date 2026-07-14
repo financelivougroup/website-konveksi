@@ -4,9 +4,9 @@ export type ProductionStatus =
   | 'CUTTING_PENDING'
   | 'CUTTING_COMPLETE'
   | 'SEWING_IN_PROGRESS'
-  | 'SEWING_COMPLETE'
   | 'FINISHING_IN_PROGRESS'
-  | 'FINISHING_COMPLETE';
+  | 'FINISHING_COMPLETE'
+  | 'INVOICED';
 
 export type InvoiceStatus =
   | 'NONE'
@@ -111,6 +111,70 @@ export interface Payment {
   note?: string;
 }
 
+export type BillingType = 'mass_production' | 'sample_production';
+
+export interface InvoiceRow {
+  id: string;
+  workOrderId: string;
+  registerPoId?: string;
+  autoCreated: boolean;
+  invoiceCode: string;
+  invoiceDate: string;
+  monthYear: string;
+  clientName: string;
+  clientCode: string;
+  billingType: BillingType;
+  billingTypeCodeValue: 'MP' | 'SP';
+  pcsLinked: number;
+  unitPrice: number;
+  totalAmount: number;
+  rateOperational: number;
+  totalIncomeManpower: number;
+  totalIncomeOperational: number;
+  financeValidation: 'Need Register Invoice' | 'Collect Payment' | 'Partial Paid' | 'Paid';
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface InvoicePaymentRow {
+  id: string;
+  invoiceId: string;
+  paymentType: 'cash' | 'termin';
+  terminNo: number | null;
+  paymentDate: string;
+  amount: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface InvoicePaymentFileRow {
+  id: string;
+  paymentId: string;
+  fileName: string;
+  filePath: string;
+  fileUrl: string;
+  uploadedAt?: string;
+}
+
+export interface RegisterPoRow {
+  id: string;
+  productionOrderId: string;
+  rateManpower: number;
+  totalPerPcs: number;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RegisterPoComponentRow {
+  id: string;
+  registerPoId: string;
+  key: string;
+  label: string;
+  value: number;
+  sortOrder: number;
+}
+
 export type AppRole = 'owner' | 'admin' | 'inventory' | 'spv_konveksi' | 'finance';
 
 export interface AppUser {
@@ -126,18 +190,18 @@ export const productionStatusLabel: Record<ProductionStatus, string> = {
   CUTTING_PENDING: 'Cutting Pending',
   CUTTING_COMPLETE: 'Cutting Complete',
   SEWING_IN_PROGRESS: 'Sewing In Progress',
-  SEWING_COMPLETE: 'Sewing Complete',
   FINISHING_IN_PROGRESS: 'Finishing In Progress',
   FINISHING_COMPLETE: 'Finished',
+  INVOICED: 'Invoiced',
 };
 
 export const productionStatusColor: Record<ProductionStatus, string> = {
   CUTTING_PENDING: 'bg-blue-100 text-blue-700',
   CUTTING_COMPLETE: 'bg-cyan-100 text-cyan-700',
   SEWING_IN_PROGRESS: 'bg-amber-100 text-amber-700',
-  SEWING_COMPLETE: 'bg-orange-100 text-orange-700',
   FINISHING_IN_PROGRESS: 'bg-pink-100 text-pink-700',
   FINISHING_COMPLETE: 'bg-green-100 text-green-700',
+  INVOICED: 'bg-purple-100 text-purple-700',
 };
 
 export const invoiceStatusLabel: Record<InvoiceStatus, string> = {
