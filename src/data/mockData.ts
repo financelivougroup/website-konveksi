@@ -1,4 +1,4 @@
-﻿import type { ViewConfig, ModuleId } from '@/types';
+import type { ViewConfig, ModuleId } from '@/types';
 
 export const viewConfig: Record<ModuleId, ViewConfig> = {
   'production-monitoring': { title: 'Production Monitoring', editable: false, sync: false, columns: [] },
@@ -195,7 +195,167 @@ export const viewConfig: Record<ModuleId, ViewConfig> = {
   },
 };
 
-// ===== Supabase-powered: data now fetched from Supabase via services. =====
+// ===== Selesai Finishing row builder =====
+// Auto-computes every derived field from raw inputs so mockup data stays
+// consistent with the AppSheet formulas:
+//   - workCode      : generated via generateWorkCode() (the IF/CONCATENATE formula)
+//   - sisaCutting   : Total Cutting - Quantity
+//   - cutVsUpload   : "" / "LENGKAP" / "ON PROGRESS" (the IF/ISNULL/AND formula)
+//   - jahitVsFinish : "BALANCE" if Quantity = Total Selesai Jahit, else "MASALAH"
+//   - alertTrigger   : derived from cutting / trigger-form / cut-vs-upload state
+//   - statusStock   : "DALAM PROSES PRODUKSI" if Trigger Form terisi, else "TUNGGU KEPUTUSAN"
+interface FinishingInput {
+  id: number;
+  productNote: string;
+  product: string;
+  informationVariation: string;
+  warna: string;
+  size: string;
+  brand: string;
+  quantity: number;
+  totalCutting: number;
+  totalSelesaiJahit: number;
+  triggerForm?: string; // override; defaults to auto-generated workCode when in production
+}
+
+function toBlankAware(v: unknown): number | null {
+  if (v === undefined || v === null || v === '') return null;
+  const n = typeof v === 'number' ? v : Number(v);
+  return Number.isNaN(n) ? null : n;
+}
+
+function buildFinishingRow(input: FinishingInput): Record<string, unknown> {
+  const { productNote, product, warna, size } = input;
+
+  // Work Code — from the AppSheet IF/CONCATENATE formula
+  const workCode = generateWorkCode(productNote, product, warna, size);
+
+  // Sisa Cutting = Total Cutting - Quantity
+  const sisaCutting = input.totalCutting - input.quantity;
+
+  // Cut vs Upload — IF(ISNULL(Total Cutting),"", IF(AND(Qty=SelesaiJahit, SelesaiJahit=TotalCutting),"LENGKAP","ON PROGRESS"))
+  const tc = toBlankAware(input.totalCutting);
+  let cutVsUpload = '';
+  if (tc !== null) {
+    const balanced = input.quantity === input.totalSelesaiJahit && input.totalSelesaiJahit === input.totalCutting;
+    cutVsUpload = balanced ? 'LENGKAP' : 'ON PROGRESS';
+  }
+
+  // Jahit vs Finish — "BALANCE" if Quantity = Total Selesai Jahit, else "MASALAH"
+  const jahitVsFinish = input.quantity === input.totalSelesaiJahit ? 'BALANCE' : 'MASALAH';
+
+  // Trigger Form — defaults to the generated workCode while in production
+  // (kept empty when there's no Product Note / Work Code)
+  const triggerForm = input.triggerForm !== undefined ? input.triggerForm : '';
+
+  // Alert Trigger logic (kept for the "Need Invoice" filter view)
+  const hasTrigger = Boolean(triggerForm);
+  let alertTrigger = '';
+  if (tc === null || tc === 0) {
+    alertTrigger = 'PERLU ISI - CUTTING';
+  } else if (cutVsUpload === 'ON PROGRESS') {
+    alertTrigger = hasTrigger
+      ? (triggerForm === workCode ? 'SUDAH ISI - TRIGGER' : 'PERLU HAPUS - TRIGGER')
+      : 'PERLU ISI - TRIGGER';
+  } else {
+    // LENGKAP path
+    alertTrigger = hasTrigger ? 'PERLU HAPUS - TRIGGER' : 'CLEAR FINISH';
+  }
+  // Special case: fully balanced + ready for invoice registration
+  if (cutVsUpload === 'LENGKAP' && jahitVsFinish === 'BALANCE' && hasTrigger) {
+    alertTrigger = 'PERLU REGISTER INVOICE';
+  }
+
+  // STATUS STOCK — ON PROGRESS -> DALAM PROSES PRODUKSI, selainnya -> TUNGGU KEPUTUSAN
+  const statusStock = cutVsUpload === 'ON PROGRESS' ? 'DALAM PROSES PRODUKSI' : 'TUNGGU KEPUTUSAN';
+
+  return {
+    id: input.id,
+    productNote,
+    product,
+    informationVariation: input.informationVariation,
+    warna,
+    size,
+    workCode,
+    brand: input.brand,
+    quantity: input.quantity,
+    totalCutting: input.totalCutting,
+    sisaCutting,
+    totalSelesaiJahit: input.totalSelesaiJahit,
+    cutVsUpload,
+    jahitVsFinish,
+    alertTrigger,
+    statusStock,
+    triggerForm,
+  };
+}
+
+export const mockData: Record<ModuleId, Record<string, unknown>[]> = {
+  'selesai-finishing': [
+    // ===== RAW: Normal records =====
+    // Work Code is auto-generated via the AppSheet IF/CONCATENATE formula;
+    // sisaCutting, cutVsUpload, jahitVsFinish, alertTrigger & statusStock are derived.
+    buildFinishingRow({ id: 1, productNote: 'B-00', product: 'Rue Top', informationVariation: 'Colour: Black Size: M', warna: 'Black', size: 'M', brand: 'Cassca', quantity: 100, totalCutting: 120, totalSelesaiJahit: 85, triggerForm: 'Produksi - Awal | Rue Top | Black | M' }),
+    buildFinishingRow({ id: 2, productNote: 'B-01', product: 'Rhea Top', informationVariation: 'Colour: White Size: L', warna: 'White', size: 'L', brand: 'Livou', quantity: 50, totalCutting: 50, totalSelesaiJahit: 30, triggerForm: '' }),
+    buildFinishingRow({ id: 3, productNote: 'B-02', product: 'Rue Top', informationVariation: 'Colour: Navy Size: XL', warna: 'Navy', size: 'XL', brand: 'Cassca', quantity: 80, totalCutting: 90, totalSelesaiJahit: 80, triggerForm: 'Restock-02 | Rue Top | Navy | XL' }),
+    buildFinishingRow({ id: 4, productNote: 'B-03', product: 'Aera Dress', informationVariation: 'Colour: Red Size: S', warna: 'Red', size: 'S', brand: 'Livou', quantity: 60, totalCutting: 0, totalSelesaiJahit: 0, triggerForm: '' }),
+    buildFinishingRow({ id: 5, productNote: 'B-00', product: 'Miles Jacket', informationVariation: 'Colour: Grey Size: M', warna: 'Grey', size: 'M', brand: 'Cassca', quantity: 45, totalCutting: 50, totalSelesaiJahit: 45, triggerForm: 'TYPO-123' }),
+    buildFinishingRow({ id: 6, productNote: '', product: 'Siena Blouse', informationVariation: 'Colour: Beige Size: L', warna: 'Beige', size: 'L', brand: 'Cassca', quantity: 30, totalCutting: 0, totalSelesaiJahit: 0, triggerForm: '' }),
+    // ===== PERLU REGISTER INVOICE (LENGKAP + BALANCE + trigger terisi) =====
+    buildFinishingRow({ id: 7, productNote: 'B-04', product: 'Rue Top', informationVariation: 'Colour: Cream Size: S', warna: 'Cream', size: 'S', brand: 'Cassca', quantity: 120, totalCutting: 120, totalSelesaiJahit: 120, triggerForm: 'Restock-04 | Rue Top | Cream | S' }),
+    buildFinishingRow({ id: 8, productNote: 'B-05', product: 'Rhea Top', informationVariation: 'Colour: Pink Size: M', warna: 'Pink', size: 'M', brand: 'Livou', quantity: 75, totalCutting: 75, totalSelesaiJahit: 75, triggerForm: 'Restock-05 | Rhea Top | Pink | M' }),
+    buildFinishingRow({ id: 9, productNote: 'B-00', product: 'Aera Dress', informationVariation: 'Colour: Blue Size: XL', warna: 'Blue', size: 'XL', brand: 'Livou', quantity: 200, totalCutting: 200, totalSelesaiJahit: 200, triggerForm: 'Produksi - Awal | Aera Dress | Blue | XL' }),
+  ],
+  'selesai-jahit': [
+    { id: 1, workCode: 'CSC-001-Black-M', product: 'Kaos Polos', warna: 'Black', size: 'M', brand: 'Cassca', totalSelesaiJahit: 25, picPenjahit: 'Budi Santoso', tanggalLaporan: '2026-06-05', bulanTahun: 'Juni 2026', tanggal: '05 Jun', buktiBarang: 'img1.jpg' },
+    { id: 2, workCode: 'LVU-002-White-L', product: 'Kemeja', warna: 'White', size: 'L', brand: 'Livou', totalSelesaiJahit: 15, picPenjahit: 'Ani Wulandari', tanggalLaporan: '2026-06-05', bulanTahun: 'Juni 2026', tanggal: '05 Jun', buktiBarang: 'img2.jpg' },
+    { id: 3, workCode: 'CSC-001-Black-M', product: 'Kaos Polos', warna: 'Black', size: 'M', brand: 'Cassca', totalSelesaiJahit: 30, picPenjahit: 'Caca', tanggalLaporan: '2026-06-04', bulanTahun: 'Juni 2026', tanggal: '04 Jun', buktiBarang: 'img3.jpg' },
+    { id: 4, workCode: 'CSC-003-Navy-XL', product: 'Celana', warna: 'Navy', size: 'XL', brand: 'Cassca', totalSelesaiJahit: 40, picPenjahit: 'Budi Santoso', tanggalLaporan: '2026-06-05', bulanTahun: 'Juni 2026', tanggal: '05 Jun', buktiBarang: 'img4.jpg' },
+  ],
+  'target-jahit': [
+    { id: 1, bulanTahun: 'Juni 2026', nama: 'Budi Santoso', posisi: 'Penjahit', salary: 4000000, totalHariKerja: 22, hariKerjaHariIni: 5, sisaHari: 17, targetDaily: 45, targetNgebutHari: 52, targetMonthly: 1000, realisasiMonthly: 850, sisaTargetMonthly: 150, progressMonthly: 85, statusFinal: 'SEDANG MENGEJAR', targetCostPosisi: 4000, realisasiCostPosisi: 4705, targetAccum: 5000, realisasiAccum: 4500, selisihAccum: 500, targetNgebutHariAkumulasi: 50, progressAccum: 90, statusFinalAkumulasi: 'SEDANG MENGEJAR' },
+    { id: 2, bulanTahun: 'Juni 2026', nama: 'Ani Wulandari', posisi: 'Leader', salary: 8000000, totalHariKerja: 22, hariKerjaHariIni: 5, sisaHari: 17, targetDaily: 90, targetNgebutHari: 105, targetMonthly: 2000, realisasiMonthly: 1800, sisaTargetMonthly: 200, progressMonthly: 90, statusFinal: 'SEDANG MENGEJAR', targetCostPosisi: 4000, realisasiCostPosisi: 4444, targetAccum: 12000, realisasiAccum: 10800, selisihAccum: 1200, targetNgebutHariAkumulasi: 75, progressAccum: 90, statusFinalAkumulasi: 'SEDANG MENGEJAR' },
+    { id: 3, bulanTahun: 'Juni 2026', nama: 'Caca', posisi: 'Finishing', salary: 3500000, totalHariKerja: 22, hariKerjaHariIni: 5, sisaHari: 17, targetDaily: 39, targetNgebutHari: 46, targetMonthly: 875, realisasiMonthly: 700, sisaTargetMonthly: 175, progressMonthly: 80, statusFinal: 'SEDANG MENGEJAR', targetCostPosisi: 4000, realisasiCostPosisi: 5000, targetAccum: 3500, realisasiAccum: 2800, selisihAccum: 700, targetNgebutHariAkumulasi: 58, progressAccum: 80, statusFinalAkumulasi: 'SEDANG MENGEJAR' },
+  ],
+  'register-jahit': [
+    { id: 1, bulanTahun: 'Juni 2026', hariKerjaEfektif: 22, targetTotalProduksi: 10000, costLeaderTarget: 800, costPenjahitTarget: 400, costFinishingTarget: 200, totalCostTarget: 1400, realisasiTotalProduksi: 8500, totalCostRealisasi: 1647, aTotalCostTarget: 1500, aTotalCostRealisasi: 1800 },
+    { id: 2, bulanTahun: 'Mei 2026', hariKerjaEfektif: 21, targetTotalProduksi: 9500, costLeaderTarget: 842, costPenjahitTarget: 421, costFinishingTarget: 210, totalCostTarget: 1473, realisasiTotalProduksi: 9000, totalCostRealisasi: 1555, aTotalCostTarget: 1600, aTotalCostRealisasi: 1700 },
+  ],
+  'daftar-libur': [
+    { id: 1, tanggal: '2026-06-01', hari: 'Senin', keterangan: 'Hari Libur Nasional' },
+    { id: 2, tanggal: '2026-06-17', hari: 'Rabu', keterangan: 'Idul Fitri' },
+    { id: 3, tanggal: '2026-06-18', hari: 'Kamis', keterangan: 'Idul Fitri' },
+  ],
+  'register-penjahit': [
+    { id: 1, picPenjahit: 'Budi Santoso', konveksiTeam: 'Budi', status: 'Aktif' },
+    { id: 2, picPenjahit: 'Ani Wulandari', konveksiTeam: 'Ani', status: 'Aktif' },
+    { id: 3, picPenjahit: 'Caca', konveksiTeam: 'Caca', status: 'Aktif' },
+    { id: 4, picPenjahit: 'Dedi Kurniawan', konveksiTeam: 'Dedi', status: 'Non-Aktif' },
+  ],
+  'master-product': [
+    { id: 1, brand: 'Cassca', productId: 'CSC-001', product: 'Kaos Polos', category: 'Atasan', statusProduct: 'Aktif', warningStock: '-' },
+    { id: 2, brand: 'Livou', productId: 'LVU-002', product: 'Kemeja', category: 'Atasan', statusProduct: 'Aktif', warningStock: 'Stok Menipis' },
+    { id: 3, brand: 'Cassca', productId: 'CSC-003', product: 'Celana', category: 'Bawahan', statusProduct: 'Aktif', warningStock: '-' },
+    { id: 4, brand: 'Livou', productId: 'LVU-004', product: 'Dress', category: 'Atasan', statusProduct: 'Non-Aktif', warningStock: '-' },
+    { id: 5, brand: 'Cassca', productId: 'CSC-005', product: 'Jaket', category: 'Outer', statusProduct: 'Aktif', warningStock: '-' },
+  ],
+  'raw-monitoring': [
+    { id: 1, productId: 'CSC-001', product: 'Kaos Polos', warna: 'Black', size: 'M', availableQuantity: 5, statusStockFinal: 'DALAM PROSES PRODUKSI', sisaCutting: 20, prioritasDalamProses: 1, prioritasTungguPRDN: '-', prioritasTungguWHLB: '-', brand: 'Cassca', source: 'PRDN' },
+    { id: 2, productId: 'LVU-002', product: 'Kemeja', warna: 'White', size: 'L', availableQuantity: 2, statusStockFinal: 'MENUNGGU KEPUTUSAN', sisaCutting: 0, prioritasDalamProses: '-', prioritasTungguPRDN: 1, prioritasTungguWHLB: '-', brand: 'Livou', source: 'WHLB' },
+    { id: 3, productId: 'CSC-003', product: 'Celana', warna: 'Navy', size: 'XL', availableQuantity: 15, statusStockFinal: 'DALAM PROSES PRODUKSI', sisaCutting: 5, prioritasDalamProses: 2, prioritasTungguPRDN: '-', prioritasTungguWHLB: '-', brand: 'Cassca', source: 'PRDN' },
+    { id: 4, productId: 'LVU-004', product: 'Dress', warna: 'Red', size: 'S', availableQuantity: 8, statusStockFinal: 'MENUNGGU KEPUTUSAN', sisaCutting: 0, prioritasDalamProses: '-', prioritasTungguPRDN: 2, prioritasTungguWHLB: '-', brand: 'Livou', source: 'WHLB' },
+  ],
+  'master-import': [
+    { id: 1, supplier: 'PT Kain Jaya', note: '`ABC123` CSC-001-Black', sourceProduct: 'CSC', productId: 'CSC-001', kodeProduksi: 'ABC123', status: 'Diterima', receivedAt: '2026-05-20' },
+    { id: 2, supplier: 'CV Benang', note: '`XYZ789` LVU-002-White', sourceProduct: 'LVU', productId: 'LVU-002', kodeProduksi: 'XYZ789', status: 'Diterima', receivedAt: '2026-05-22' },
+    { id: 3, supplier: 'PT Kain Jaya', note: '`DEF456` CSC-003-Navy', sourceProduct: 'CSC', productId: 'CSC-003', kodeProduksi: 'DEF456', status: 'Dalam Perjalanan', receivedAt: '-' },
+  ],
+  // Combined view: actual rows come from the active sub-tab resolved in App.tsx.
+  // This empty fallback keeps the Record<ModuleId, ...> type valid.
+  'production-data': [],
+  'register-po': [],
+};
+
 export const supabaseWorkCodes = [
   { value: 'Produksi - Awal | Rue Top | Black | M', productNote: 'B-00', product: 'Rue Top', informationVariation: 'Colour: Black Size: M', warna: 'Black', size: 'M', brand: 'Cassca', quantity: 100 },
   { value: 'Restock-01 | Rhea Top | White | L', productNote: 'B-01', product: 'Rhea Top', informationVariation: 'Colour: White Size: L', warna: 'White', size: 'L', brand: 'Livou', quantity: 50 },
