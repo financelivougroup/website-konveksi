@@ -353,6 +353,9 @@ export const mockData: Record<ModuleId, Record<string, unknown>[]> = {
   // Combined view: actual rows come from the active sub-tab resolved in App.tsx.
   // This empty fallback keeps the Record<ModuleId, ...> type valid.
   'production-data': [],
+  'production-monitoring': [],
+  'sewing-entry': [],
+  'invoicing': [],
   'register-po': [],
 };
 
