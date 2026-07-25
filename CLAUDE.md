@@ -7,6 +7,17 @@ This project is a **Production Monitoring Dashboard** for a garment manufacturin
 1. **Read `project.md` first** — it contains the full project overview, tech stack, completed features, pending tasks, and latest progress log. Every Claude session must start by reading this file.
 2. Check `docs/superpowers/specs/` and `docs/superpowers/plans/` for design specs and implementation plans relevant to your task.
 
+## Delegation and Model Cost
+
+- **Prefer cost-aware delegation without lowering quality** — delegate when a well-bounded subtask can be completed more cheaply or in parallel by a sufficiently capable model and its result can be objectively verified. Quality, correctness, and confidence always take priority over cost savings.
+- **Choose the cheapest sufficiently capable model**, not simply the cheapest available model. Work directly when a small task only needs a handful of tool calls and delegation overhead would outweigh the benefit.
+- Good delegation candidates include codebase searches, file discovery, independent-file summaries, inventories of call sites/types/services/components, mechanical transformations with explicit rules, initial documentation drafts, defined test scaffolding, and independent research tracks.
+- Keep architecture and cross-module decisions, ambiguous product requirements, database/schema/migration/RLS work, security-sensitive changes, high-risk business or financial logic, final integration, conflict resolution, and completion claims with the main model. Database work remains subject to the mandatory Supabase MCP rules below.
+- Every delegated brief must state the precise scope and exclusions, relevant project context, expected output, objective acceptance criteria, applicable MCP/project rules, edit permissions, and required verification evidence. Do not delegate vague tasks.
+- Escalate to a stronger model or return the work to the main model when requirements become ambiguous, scope expands, findings conflict or lack evidence, substantial architectural/domain reasoning is needed, risk increases, or review overhead approaches the cost of doing the work directly.
+- Treat delegated output as evidence, not authority. The main model must inspect the relevant result or diff, verify scope, run applicable build/tests/lint/type checks, use Supabase MCP for database claims, check cross-module integration where relevant, and report skipped or failed verification accurately.
+- Avoid duplicate work and unnecessary agents: delegate only sizeable independent tracks, parallelize only genuinely independent work, do not re-derive accepted delegated work without a concrete verification concern, and keep the agent count proportional to the task.
+
 ## Architecture Rules
 
 - **Follow the existing architecture** — the project has a clear pattern: pages in `src/pages/`, reusable layout components in `src/components/Layout/`, modals in `src/components/Modals/`, shadcn/ui primitives in `src/components/ui/`, types in `src/types/`, static view configuration and fixtures in `src/data/`, and Supabase data access in `src/services/`.

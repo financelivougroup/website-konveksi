@@ -1,7 +1,7 @@
 # Cost-Aware Delegation Policy Design
 
 **Date:** 2026-07-25
-**Status:** Approved design, pending `CLAUDE.md` implementation
+**Status:** Approved and implemented in `CLAUDE.md`
 
 ## Purpose
 

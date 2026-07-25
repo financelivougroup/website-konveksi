@@ -194,8 +194,11 @@ Website Konveksi/
 
 ### 2026-07-25 — Cost-Aware Delegation Policy Design
 - Approved a risk-based delegation policy that prefers cheaper capable models for bounded, objectively verifiable subtasks without reducing quality
-- Reserved architecture, ambiguous product decisions, database/security-sensitive work, cross-module integration, and final verification for the main model
-- Added escalation, precise-brief, verification, and anti-duplication requirements in `docs/superpowers/specs/2026-07-25-cost-aware-delegation-design.md`
+- Implemented the policy in `CLAUDE.md` under `Delegation and Model Cost` so it applies operationally in future sessions
+- Reserved architecture, ambiguous product decisions, database/security-sensitive work, high-risk business logic, cross-module integration, and final verification for the main model
+- Required capability-based model selection, escalation, precise briefs, objective verification, and avoidance of duplicate work or unnecessary agents
+- Explicitly established that delegated output is evidence rather than authority and that quality takes priority over cost
+- Kept the detailed rationale and acceptance criteria in `docs/superpowers/specs/2026-07-25-cost-aware-delegation-design.md`
 
 ### 2026-07-25 — Parallel Development Checkpoint Preparation
 - Prepared the repository state as a shared checkpoint for separate Production Monitoring and Target Jahit worktree sessions
