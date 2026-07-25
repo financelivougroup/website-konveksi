@@ -192,6 +192,11 @@ Website Konveksi/
 
 ## Latest Progress
 
+### 2026-07-25 — Cost-Aware Delegation Policy Design
+- Approved a risk-based delegation policy that prefers cheaper capable models for bounded, objectively verifiable subtasks without reducing quality
+- Reserved architecture, ambiguous product decisions, database/security-sensitive work, cross-module integration, and final verification for the main model
+- Added escalation, precise-brief, verification, and anti-duplication requirements in `docs/superpowers/specs/2026-07-25-cost-aware-delegation-design.md`
+
 ### 2026-07-25 — Parallel Development Checkpoint Preparation
 - Prepared the repository state as a shared checkpoint for separate Production Monitoring and Target Jahit worktree sessions
 - Added Git ignore protections for local environment files, the temporary Supabase connectivity probe, and Claude Code worktree directories
