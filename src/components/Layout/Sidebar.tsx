@@ -17,6 +17,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Layers,
+  ClipboardList,
   ExternalLink,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -35,6 +36,7 @@ const iconMap: Record<string, React.ElementType> = {
   BarChart3,
   Settings,
   Layers,
+  ClipboardList,
 };
 
 interface SidebarProps {

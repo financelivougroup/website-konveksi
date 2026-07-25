@@ -1,8 +1,12 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { computeCutVsUpload, computeStatusStock } from '@/lib/utils';
 import { Landing } from '@/pages/Landing';
 import ProductionMonitoring from '@/pages/ProductionMonitoring';
 import SewingEntryForm from '@/pages/SewingEntryForm';
+import SeedPage from '@/pages/SeedPage';
+import InvoicingPage from '@/pages/InvoicingPage';
+import { RegisterPoPage } from '@/pages/RegisterPoPage';
+import OrderEntry from '@/pages/OrderEntry';
 import { Sidebar } from '@/components/Layout/Sidebar';
 import { TopBar } from '@/components/Layout/TopBar';
 import { ViewTabs } from '@/components/Layout/ViewTabs';
@@ -21,11 +25,22 @@ import { ConditionalColorModal } from '@/components/Modals/ConditionalColorModal
 import { DateRangeModal } from '@/components/Modals/DateRangeModal';
 import { AddViewModal } from '@/components/Modals/AddViewModal';
 import { useToast } from '@/hooks/useToast';
-import { mockData, viewConfig } from '@/data/mockData';
-import { mockUsers } from '@/data/pipelineData';
+import { viewConfig } from '@/data/mockData';
+import * as targetJahitSvc from '@/services/targetJahit';
+import * as registerPenjahitSvc from '@/services/registerPenjahit';
+import * as daftarLiburSvc from '@/services/daftarLibur';
+import { supabase } from '@/lib/supabase';
 import type { ModuleId } from '@/types';
 import type { AppRole } from '@/types/pipeline';
-import { cn } from '@/lib/utils';
+
+// Static role switcher data (auth Phase B later)
+const mockUsers = [
+  { id: 'user-1', username: 'owner', displayName: 'Pemilik', role: 'owner' as AppRole, avatar: 'PO' },
+  { id: 'user-2', username: 'admin', displayName: 'Admin', role: 'admin' as AppRole, avatar: 'AD' },
+  { id: 'user-3', username: 'inventory', displayName: 'Budi (Gudang)', role: 'inventory' as AppRole, avatar: 'BG' },
+  { id: 'user-4', username: 'spv', displayName: 'Ani (Spv)', role: 'spv_konveksi' as AppRole, avatar: 'AS' },
+  { id: 'user-5', username: 'finance', displayName: 'Dewi (Finance)', role: 'finance' as AppRole, avatar: 'DF' },
+];
 
 const PAGE_SIZE = 10;
 
@@ -53,7 +68,7 @@ function makeDefaultSettings(moduleId: ModuleId): ViewTabSettings {
 
 export default function App() {
   // 'landing' shows the marketing site, 'app' shows the data dashboard.
-  const [viewMode, setViewMode] = useState<'app' | 'landing'>('app');
+  const [viewMode, setViewMode] = useState<'app' | 'landing' | 'seed'>('app');
   const [currentView, setCurrentView] = useState<ModuleId>('selesai-finishing');
   const [currentViewTab, setCurrentViewTab] = useState(0);
   // Active sub-tab inside the combined "Production Data" view.
@@ -68,6 +83,14 @@ export default function App() {
   const [isAddingNew, setIsAddingNew] = useState(false);
   const { toasts, showToast, removeToast } = useToast();
   const [currentRole, setCurrentRole] = useState<AppRole>('owner');
+
+  function handleChangeRole(next: AppRole) {
+    setCurrentRole(next);
+    const match = mockUsers.find((u) => u.role === next);
+    if (match) {
+      try { localStorage.setItem('app.currentDisplayName', match.displayName); } catch { /* ignore */ }
+    }
+  }
 
   // Date range filter (global, per view tab)
   const [dateField, setDateField] = useState('');
@@ -150,7 +173,148 @@ export default function App() {
   const isCombinedView = !isPipelineView && currentView === 'production-data';
   const effectiveModule = isPipelineView ? 'selesai-finishing' : (isCombinedView ? activeSubModule : currentView);
   const config = isPipelineView ? viewConfig['selesai-finishing'] : viewConfig[effectiveModule];
-  const data = isPipelineView ? [] : mockData[effectiveModule];
+
+  // ====== Supabase data fetching ======
+  const [tableData, setTableData] = useState<Record<string, unknown>[]>([]);
+
+  useEffect(() => {
+    if (isPipelineView) { setTableData([]); return; }
+
+    async function fetchModuleData() {
+      let rows: Record<string, unknown>[] = [];
+
+      switch (effectiveModule) {
+        case 'selesai-finishing': {
+          // Derived: join work_orders + cutting_records + sewing_records and compute fields
+          const { data: wo } = await supabase.from('work_orders').select('*').order('created_at', { ascending: false });
+          if (wo) {
+            rows = wo.map((w: Record<string, unknown>) => {
+              const row = { ...w };
+              row.cutVsUpload = computeCutVsUpload(row);
+              row.statusStock = computeStatusStock({ ...row, cutVsUpload: row.cutVsUpload });
+              // Compute jahitVsFinish
+              const qty = Number(w.quantity) || 0;
+              const totalJahit = Number(w.total_selesai_jahit) || 0;
+              row.jahitVsFinish = qty === totalJahit ? 'BALANCE' : 'MASALAH';
+              return row;
+            });
+          }
+          break;
+        }
+        case 'selesai-jahit': {
+          const { data: wo } = await supabase.from('work_orders').select('*').order('created_at', { ascending: false });
+          if (wo) rows = wo as Record<string, unknown>[];
+          break;
+        }
+        case 'target-jahit': {
+          const { data } = await targetJahitSvc.fetchAll();
+          if (data) rows = data.map(r => ({ ...r })) as unknown as Record<string, unknown>[];
+          break;
+        }
+        case 'register-jahit': {
+          const { data: wo } = await supabase.from('work_orders').select('*').order('created_at', { ascending: false });
+          if (wo) rows = wo as Record<string, unknown>[];
+          break;
+        }
+        case 'daftar-libur': {
+          const { data } = await daftarLiburSvc.fetchAll();
+          if (data) rows = data.map(r => ({ ...r })) as unknown as Record<string, unknown>[];
+          break;
+        }
+        case 'register-penjahit': {
+          const { data } = await registerPenjahitSvc.fetchAll();
+          if (data) rows = data.map(r => ({ ...r })) as unknown as Record<string, unknown>[];
+          break;
+        }
+        case 'master-product': {
+          const { data } = await supabase.from('master_products').select('*').order('id');
+          if (data) rows = data as Record<string, unknown>[];
+          break;
+        }
+        case 'raw-monitoring': {
+          const { data } = await supabase.from('raw_product_monitoring').select('*').order('id');
+          if (data) rows = data as Record<string, unknown>[];
+          break;
+        }
+        case 'master-import': {
+          const { data } = await supabase.from('master_imports').select('*').order('id');
+          if (data) rows = data as Record<string, unknown>[];
+          break;
+        }
+        default:
+          break;
+      }
+      setTableData(rows);
+    }
+    fetchModuleData();
+  }, [effectiveModule, isPipelineView]);
+
+  const refetchTableData = useCallback(() => {
+    // trigger re-fetch by toggling a counter or re-running the effect
+    // We just re-run the effect by changing effectiveModule briefly - simpler approach
+    if (!isPipelineView) {
+      const fetchFresh = async () => {
+        let rows: Record<string, unknown>[] = [];
+        switch (effectiveModule) {
+          case 'selesai-finishing': {
+            const { data: wo } = await supabase.from('work_orders').select('*').order('created_at', { ascending: false });
+            if (wo) {
+              rows = wo.map((w: Record<string, unknown>) => {
+                const row = { ...w };
+                row.cutVsUpload = computeCutVsUpload(row);
+                row.statusStock = computeStatusStock({ ...row, cutVsUpload: row.cutVsUpload });
+                const qty = Number(w.quantity) || 0;
+                const totalJahit = Number(w.total_selesai_jahit) || 0;
+                row.jahitVsFinish = qty === totalJahit ? 'BALANCE' : 'MASALAH';
+                return row;
+              });
+            }
+            break;
+          }
+          case 'target-jahit': {
+            const { data } = await targetJahitSvc.fetchAll();
+            if (data) rows = data.map(r => ({ ...r })) as unknown as Record<string, unknown>[];
+            break;
+          }
+          case 'daftar-libur': {
+            const { data } = await daftarLiburSvc.fetchAll();
+            if (data) rows = data.map(r => ({ ...r })) as unknown as Record<string, unknown>[];
+            break;
+          }
+          case 'register-penjahit': {
+            const { data } = await registerPenjahitSvc.fetchAll();
+            if (data) rows = data.map(r => ({ ...r })) as unknown as Record<string, unknown>[];
+            break;
+          }
+          case 'selesai-jahit':
+          case 'register-jahit': {
+            const { data: wo } = await supabase.from('work_orders').select('*').order('created_at', { ascending: false });
+            if (wo) rows = wo as Record<string, unknown>[];
+            break;
+          }
+          case 'master-product': {
+            const { data } = await supabase.from('master_products').select('*').order('id');
+            if (data) rows = data as Record<string, unknown>[];
+            break;
+          }
+          case 'raw-monitoring': {
+            const { data } = await supabase.from('raw_product_monitoring').select('*').order('id');
+            if (data) rows = data as Record<string, unknown>[];
+            break;
+          }
+          case 'master-import': {
+            const { data } = await supabase.from('master_imports').select('*').order('id');
+            if (data) rows = data as Record<string, unknown>[];
+            break;
+          }
+        }
+        setTableData(rows);
+      };
+      fetchFresh();
+    }
+  }, [effectiveModule, isPipelineView]);
+
+  const data = isPipelineView ? [] : tableData;
 
   // Process data
   const processedData = useMemo(() => {
@@ -266,7 +430,15 @@ export default function App() {
       return;
     }
     if (view === 'invoicing') {
-      showToast('Invoicing module coming soon!', 'info');
+      setCurrentView(view);
+      setCurrentViewTab(0);
+      setCurrentPage(1);
+      setSelectedRows(new Set());
+      setSearchQuery('');
+      setDateFrom('');
+      setDateTo('');
+      setDateField('');
+      setPanelOpen(false);
       return;
     }
     setCurrentView(view);
@@ -328,16 +500,43 @@ export default function App() {
     }
   }, [data]);
 
-  const handleDeleteRow = useCallback((id: number) => {
+  const handleDeleteRow = useCallback(async (id: number) => {
     if (!confirm('Yakin ingin menghapus data ini?')) return;
-    const target = effectiveModule;
-    const idx = mockData[target].findIndex((r) => r.id === id);
-    if (idx > -1) {
-      mockData[target].splice(idx, 1);
+    let error: Error | null = null;
+
+    switch (effectiveModule) {
+      case 'selesai-finishing':
+      case 'selesai-jahit':
+      case 'register-jahit': {
+        const { error: e } = await supabase.from('work_orders').delete().eq('id', String(id));
+        error = e;
+        break;
+      }
+      case 'target-jahit': {
+        const { error: e } = await targetJahitSvc.remove(id);
+        error = e;
+        break;
+      }
+      case 'daftar-libur': {
+        const { error: e } = await daftarLiburSvc.remove(id);
+        error = e;
+        break;
+      }
+      case 'register-penjahit': {
+        const { error: e } = await registerPenjahitSvc.remove(id);
+        error = e;
+        break;
+      }
+    }
+
+    if (error) {
+      showToast(`Error: ${error.message}`, 'error');
+    } else {
       showToast('Data berhasil dihapus!', 'success');
       setPanelOpen(false);
+      refetchTableData();
     }
-  }, [effectiveModule, showToast]);
+  }, [effectiveModule, showToast, refetchTableData]);
 
   const handleAddNew = useCallback(() => {
     if (!config.editable) {
@@ -349,24 +548,81 @@ export default function App() {
     setPanelOpen(true);
   }, [config.editable, showToast]);
 
-  const handleSaveData = useCallback((formData: Record<string, unknown>) => {
-    const target = effectiveModule;
+  const handleSaveData = useCallback(async (formData: Record<string, unknown>) => {
+    let error: Error | null = null;
+
     if (isAddingNew) {
-      mockData[target].push(formData);
-      showToast('Data berhasil ditambahkan!', 'success');
+      switch (effectiveModule) {
+        case 'selesai-finishing': {
+          const { error: e } = await supabase.from('work_orders').insert(formData);
+          error = e;
+          break;
+        }
+        case 'target-jahit': {
+          const { error: e } = await targetJahitSvc.create(formData as any);
+          error = e;
+          break;
+        }
+        case 'daftar-libur': {
+          const { error: e } = await daftarLiburSvc.create(formData as any);
+          error = e;
+          break;
+        }
+        case 'register-penjahit': {
+          const { error: e } = await registerPenjahitSvc.create(formData as any);
+          error = e;
+          break;
+        }
+        default: {
+          const { error: e } = await supabase.from('work_orders').insert(formData);
+          error = e;
+        }
+      }
     } else if (panelRow) {
-      const idx = mockData[target].findIndex((r) => r.id === panelRow.id);
-      if (idx > -1) {
-        mockData[target][idx] = { ...panelRow, ...formData };
-        showToast('Data berhasil diupdate!', 'success');
+      const id = panelRow.id as string | number;
+      switch (effectiveModule) {
+        case 'selesai-finishing':
+        case 'selesai-jahit':
+        case 'register-jahit': {
+          const { error: e } = await supabase.from('work_orders').update(formData).eq('id', String(id));
+          error = e;
+          break;
+        }
+        case 'target-jahit': {
+          const { error: e } = await targetJahitSvc.update(Number(id), formData as any);
+          error = e;
+          break;
+        }
+        case 'daftar-libur': {
+          const { error: e } = await supabase.from('daftar_libur').update(formData).eq('id', Number(id));
+          error = e;
+          break;
+        }
+        case 'register-penjahit': {
+          const { error: e } = await registerPenjahitSvc.update(Number(id), formData as any);
+          error = e;
+          break;
+        }
+        default: {
+          const { error: e } = await supabase.from('work_orders').update(formData).eq('id', String(id));
+          error = e;
+        }
       }
     }
-    setPanelOpen(false);
-  }, [effectiveModule, isAddingNew, panelRow, showToast]);
+
+    if (error) {
+      showToast(`Error: ${error.message}`, 'error');
+    } else {
+      showToast(isAddingNew ? 'Data berhasil ditambahkan!' : 'Data berhasil diupdate!', 'success');
+      setPanelOpen(false);
+      refetchTableData();
+    }
+  }, [effectiveModule, isAddingNew, panelRow, showToast, refetchTableData]);
 
   const handleRefresh = useCallback(() => {
-    showToast('Syncing...', 'success');
-  }, [showToast]);
+    refetchTableData();
+    showToast('Data refreshed from Supabase!', 'success');
+  }, [refetchTableData, showToast]);
 
   const handleExport = useCallback(() => {
     showToast('Exporting to CSV...', 'success');
@@ -396,6 +652,7 @@ export default function App() {
   return (
     <>
       {viewMode === 'landing' && <Landing onEnterApp={() => setViewMode('app')} />}
+      {viewMode === 'seed' && <SeedPage />}
       {viewMode === 'app' && (
     <div className="flex h-screen bg-[#F8FAFC] overflow-hidden font-sans">
       {/* Sidebar */}
@@ -412,6 +669,12 @@ export default function App() {
         <SewingEntryForm onBack={() => setCurrentView('production-monitoring')} />
       ) : currentView === 'production-monitoring' ? (
         <ProductionMonitoring onOpenSewingEntry={() => setCurrentView('sewing-entry')} />
+      ) : currentView === 'invoicing' ? (
+        <InvoicingPage />
+      ) : currentView === 'register-po' ? (
+        <RegisterPoPage />
+      ) : currentView === 'order-entry' ? (
+        <OrderEntry />
       ) : (
       <main className="flex-1 flex flex-col min-w-0">
         {/* Top Bar */}
@@ -422,7 +685,7 @@ export default function App() {
           <span className="text-[10px] text-slate-400">Role:</span>
           <select
             value={currentRole}
-            onChange={(e) => setCurrentRole(e.target.value as AppRole)}
+            onChange={(e) => handleChangeRole(e.target.value as AppRole)}
             className="h-6 text-[10px] px-2 border border-gray-200 rounded outline-none bg-white"
           >
             {mockUsers.map((u) => (

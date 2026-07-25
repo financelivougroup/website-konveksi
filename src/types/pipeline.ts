@@ -36,9 +36,7 @@ export interface WorkOrder {
   id: string;
   workCode: string;
   sourceOrderId: string;
-  productionOrderId?: string;
   productNote: string;
-  productNoteFull: string;
   product: string;
   productId: string;
   variationId: string;
@@ -160,7 +158,6 @@ export interface InvoicePaymentFileRow {
 export interface RegisterPoRow {
   id: string;
   productionOrderId: string;
-  rateManpower: number;
   totalPerPcs: number;
   notes: string | null;
   createdAt: string;

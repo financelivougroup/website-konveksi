@@ -22,3 +22,12 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local environment and development probes
+.env
+.env.*
+!.env.example
+public/test-supabase.html
+
+# Claude Code worktrees
+.claude/worktrees/

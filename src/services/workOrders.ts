@@ -9,9 +9,7 @@ function mapRow(row: Record<string, unknown>): WorkOrder {
     id: row.id as string,
     workCode: row.work_code as string,
     sourceOrderId: row.source_order_id as string,
-    productionOrderId: (row.production_order_id as string) ?? undefined,
     productNote: row.product_note as string,
-    productNoteFull: row.product_note_full as string,
     product: row.product as string,
     productId: row.product_id as string,
     variationId: row.variation_id as string,
@@ -51,9 +49,7 @@ export async function create(input: Omit<WorkOrder, 'id'>): Promise<{ data: Work
     id,
     work_code: input.workCode,
     source_order_id: input.sourceOrderId,
-    production_order_id: input.productionOrderId ?? null,
     product_note: input.productNote,
-    product_note_full: input.productNoteFull,
     product: input.product,
     product_id: input.productId,
     variation_id: input.variationId,
@@ -93,10 +89,13 @@ export async function remove(id: string): Promise<{ error: Error | null }> {
 }
 
 export async function updateProdStatus(id: string, prodStatus: string): Promise<{ error: Error | null }> {
-  const { error } = await supabase
+  console.log('[workOrders.updateProdStatus] id:', id, 'to:', prodStatus);
+  const { data, error } = await supabase
     .from(TABLE)
     .update({ prod_status: prodStatus })
     .eq('id', id)
+    .select();
+  console.log('[workOrders.updateProdStatus] result:', { data, error });
   return { error }
 }
 

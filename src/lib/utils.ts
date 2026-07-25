@@ -1,8 +1,42 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
+import { supabase } from '@/lib/supabase'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
+}
+
+/**
+ * Generate the next manual-prefix ID (e.g. PO-001, WO-001)
+ * by querying the max existing ID from a Supabase table.
+ */
+export async function generateId(
+  prefix: string,
+  tableName: string,
+  idColumn: string = 'id'
+): Promise<string> {
+  // Coba sequential dulu, fallback ke random UUID
+  const { data, error } = await supabase
+    .from(tableName)
+    .select(idColumn)
+    .order(idColumn, { ascending: false })
+    .limit(1)
+
+  if (error || !data || data.length === 0) {
+    return `${prefix}-${crypto.randomUUID().slice(0, 8)}`
+  }
+
+  const lastId = ((data[0] as unknown) as Record<string, unknown>)[idColumn] as string
+  const numPart = lastId.replace(`${prefix}-`, '')
+  const num = parseInt(numPart, 10)
+
+  // Kalau ID existing bukan format sequential, pake random UUID
+  if (Number.isNaN(num) || numPart.length > 6) {
+    return `${prefix}-${crypto.randomUUID().slice(0, 8)}`
+  }
+
+  const nextNum = num + 1
+  return `${prefix}-${String(nextNum).padStart(3, '0')}`
 }
 
 export function formatCurrency(value: unknown): string {

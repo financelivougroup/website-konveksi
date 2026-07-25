@@ -1,6 +1,6 @@
 import { X, RefreshCw } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
-import { supabaseWorkCodes, penjahitList, bulanList, viewConfig, parseInformationVariation, generateWorkCode, mockData } from '@/data/mockData';
+import { supabaseWorkCodes, penjahitList, bulanList, viewConfig, parseInformationVariation, generateWorkCode } from '@/data/mockData';
 import type { ModuleId, ColumnDef } from '@/types';
 
 interface DetailPanelProps {
@@ -277,17 +277,8 @@ function SelesaiFinishingForm({ row, readOnly }: { row: Record<string, unknown> 
 
 // ===== Selesai Jahit Form =====
 function SelesaiJahitForm({ row, readOnly }: { row: Record<string, unknown> | null; isAddingNew: boolean; readOnly: boolean }) {
-  // Work codes from Selesai Finishing where STATUS STOCK = DALAM PROSES PRODUKSI
-  const finishingData = mockData['selesai-finishing'];
-  const activeWorkCodes = finishingData
-    .filter((r) => r.statusStock === 'DALAM PROSES PRODUKSI')
-    .map((r) => ({
-      workCode: r.workCode as string,
-      product: r.product as string,
-      warna: r.warna as string,
-      size: r.size as string,
-      brand: r.brand as string,
-    }));
+  // Work codes loaded from Supabase parent component (passed via DetailPanel or fetched)
+  const activeWorkCodes: Array<{ workCode: string; product: string; warna: string; size: string; brand: string }> = [];
 
   return (
     <div className="space-y-5">

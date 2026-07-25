@@ -99,6 +99,7 @@ export type ModuleId =
   | 'raw-monitoring'
   | 'master-import'
   | 'register-po'
+  | 'order-entry'
   | 'production-data'
   | 'production-monitoring'
   | 'sewing-entry'

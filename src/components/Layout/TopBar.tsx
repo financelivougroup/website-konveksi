@@ -9,6 +9,11 @@ interface TopBarProps {
 }
 
 const dotColors: Record<ModuleId, string> = {
+  'production-monitoring': 'text-blue-500',
+  'order-entry': 'text-blue-500',
+  'sewing-entry': 'text-purple-500',
+  'invoicing': 'text-orange-500',
+  'register-po': 'text-sky-500',
   'selesai-finishing': 'text-emerald-500',
   'selesai-jahit': 'text-amber-500',
   'target-jahit': 'text-rose-500',

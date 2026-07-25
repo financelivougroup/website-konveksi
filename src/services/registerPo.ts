@@ -16,7 +16,6 @@ function mapRow(row: Record<string, unknown>): RegisterPoRow {
   return {
     id: row.id as string,
     productionOrderId: row.production_order_id as string,
-    rateManpower: row.rate_manpower as number,
     totalPerPcs: row.total_per_pcs as number,
     notes: (row.notes as string | null) ?? null,
     createdAt: row.created_at as string,
@@ -118,8 +117,6 @@ export async function fetchAllRegisterPo(): Promise<RegisterPoListItem[]> {
 
 export interface RegisterPoInput {
   productionOrderId: string;
-  rateManpower: number;
-  notes?: string;
   components: Array<{ key: string; label: string; value: number }>;
 }
 
@@ -128,10 +125,7 @@ export async function createRegisterPo(input: RegisterPoInput): Promise<{ id: st
     .from(TABLE)
     .insert({
       production_order_id: input.productionOrderId,
-      rate_manpower: input.rateManpower,
-      notes: input.notes ?? null,
-      // total_per_pcs is computed by trigger; initial value doesn't matter
-      total_per_pcs: input.rateManpower,
+      total_per_pcs: input.components.reduce((sum, c) => sum + c.value, 0),
     })
     .select()
     .single();
@@ -157,11 +151,10 @@ export async function createRegisterPo(input: RegisterPoInput): Promise<{ id: st
 }
 
 export async function updateRegisterPo(id: string, input: Omit<RegisterPoInput, 'productionOrderId'>): Promise<{ error: Error | null }> {
-  const { error: parentErr } = await supabase
-    .from(TABLE)
-    .update({ rate_manpower: input.rateManpower, notes: input.notes ?? null })
-    .eq('id', id);
-  if (parentErr) return { error: parentErr };
+  const totalPerPcs = input.components.reduce((sum, c) => sum + c.value, 0);
+
+  // Update total_per_pcs directly
+  await supabase.from(TABLE).update({ total_per_pcs: totalPerPcs }).eq('id', id);
 
   // Replace components atomically: delete all, then insert new
   const { error: delErr } = await supabase.from('register_po_components').delete().eq('register_po_id', id);
