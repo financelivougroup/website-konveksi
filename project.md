@@ -116,11 +116,6 @@ Website Konveksi/
 - Top bar with refresh and add-new buttons
 - Toolbar with filter, sort, group-by, row-height, conditional-color, date-range, export, import controls
 
-### Selesai Finishing Table
-- Data table with 14 columns including computed fields (workCode, sisaCutting, cutVsUpload, jahitVsFinish, statusStock, alertTrigger)
-- Predefined views: "Raw Data", "Clear Finish" (LENGKAP + BALANCE filters), "Need Invoice" (alert filter)
-- Auto-computation via `generateWorkCode()`, `computeCutVsUpload()`, `computeStatusStock()`
-
 ### Production Monitoring
 - **RAW DATA tab**: Table of all work orders with cutting/sewing/qty columns, multi-select, import action
 - **Cutting Log tab**: Cutting queue (CUTTING_PENDING) with input form (single-shot, locked), cutting history
@@ -191,6 +186,32 @@ Website Konveksi/
 - [ ] Settings page
 
 ## Latest Progress
+
+### 2026-08-04 — Supabase Auth Login & Selesai Finishing Removal
+
+**Login & Roles**
+- Added Supabase Auth; the app now requires authentication to open. Three fixed accounts: `owner`, `finance`, `inventory`. Users type a username, mapped internally to `<username>@konveksi.local` in `src/lib/auth.ts`
+- Because that domain is not real, email-based password reset does not work — passwords are changed via the Supabase dashboard
+- Roles live in a new `public.profiles` table (`id`, `username`, `display_name`, `role` with a CHECK constraint on the three values), deliberately NOT in `auth.users.raw_user_meta_data`, because users can edit their own metadata via the API and it therefore cannot be an authorization source of truth
+- All three roles see every menu — role is identity only and feeds the audit trail; there is no per-role menu filtering. Deliberate product decision: data is single-entry and cannot be edited, only deleted
+
+**RLS**
+- Added `authenticated` RLS policies on `work_orders`, `sewing_records`, `cutting_records`, matching the existing `anon` write permissions. These were required, not optional: supabase-js switches from the `anon` role to `authenticated` on login, so without them Production Monitoring and Sewing Entry would silently lose the ability to save
+- The `anon` policies were deliberately NOT revoked — pending follow-up (see below)
+
+**Removed**
+- The "Role:" dropdown in `App.tsx` (it let anyone become any role with one click, so it was never authorization) and `localStorage['app.currentDisplayName']`; `inputBy` on cutting records now comes from the logged-in session, so the audit trail is trustworthy for the first time
+- `AppRole` narrowed from five values to three (`owner | finance | inventory`); `admin` and `spv_konveksi` were unused
+- Selesai Finishing module removed; the app's initial view is now Production Monitoring
+
+**References:** `docs/superpowers/specs/2026-08-04-auth-login-and-remove-selesai-finishing-design.md` and `docs/superpowers/plans/2026-08-04-auth-login-and-remove-selesai-finishing.md`
+
+**Pending follow-up / known gaps**
+- `anon` policies on `work_orders`, `sewing_records`, `cutting_records` still grant write access WITHOUT login. Revoking them is the correct hardening but needs a path-by-path check first
+- `invoices`, `invoice_payments`, `invoice_payment_files`, `register_po`, `register_po_components` have RLS enabled but NO policies at all — fully locked from the client. Pre-existing, not caused by this work
+- Most master tables have read-only permissions
+- No browser automation exists in this environment, so the in-browser click-through was never performed. Proven: `npm run build` clean, all three accounts return an access token from the real `/auth/v1/token` endpoint, and an authenticated INSERT+DELETE on `cutting_records` succeeded. Unverified: the runtime click-through (login form appears, wrong password shows the error, F5 preserves the session, logout returns to login)
+- Orphaned modules deliberately left in place: `selesai-jahit`, `production-data`, `register-jahit`, `daftar-libur`, `register-penjahit`
 
 ### 2026-07-25 — Cost-Aware Delegation Policy Design
 - Approved a risk-based delegation policy that prefers cheaper capable models for bounded, objectively verifiable subtasks without reducing quality
@@ -388,6 +409,5 @@ Website Konveksi/
 - Production Monitoring page with RAW DATA, Cutting Log, Sewing Log tabs
 - Sewing Entry Form with image upload and auto-status
 - Order Entry with create/pull/cancel workflow
-- Selesai Finishing table with auto-computed fields
 - All data modules with mock data
 - Full shadcn/ui component library (50+ components)
