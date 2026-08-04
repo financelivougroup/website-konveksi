@@ -8,6 +8,7 @@ import InvoicingPage from '@/pages/InvoicingPage';
 import { RegisterPoPage } from '@/pages/RegisterPoPage';
 import OrderEntry from '@/pages/OrderEntry';
 import { Sidebar } from '@/components/Layout/Sidebar';
+import { AuthGate } from '@/components/Auth/AuthGate';
 import { TopBar } from '@/components/Layout/TopBar';
 import { ViewTabs } from '@/components/Layout/ViewTabs';
 import { Toolbar } from '@/components/Layout/Toolbar';
@@ -31,16 +32,6 @@ import * as registerPenjahitSvc from '@/services/registerPenjahit';
 import * as daftarLiburSvc from '@/services/daftarLibur';
 import { supabase } from '@/lib/supabase';
 import type { ModuleId } from '@/types';
-import type { AppRole } from '@/types/pipeline';
-
-// Static role switcher data (auth Phase B later)
-const mockUsers = [
-  { id: 'user-1', username: 'owner', displayName: 'Pemilik', role: 'owner' as AppRole, avatar: 'PO' },
-  { id: 'user-2', username: 'admin', displayName: 'Admin', role: 'admin' as AppRole, avatar: 'AD' },
-  { id: 'user-3', username: 'inventory', displayName: 'Budi (Gudang)', role: 'inventory' as AppRole, avatar: 'BG' },
-  { id: 'user-4', username: 'spv', displayName: 'Ani (Spv)', role: 'spv_konveksi' as AppRole, avatar: 'AS' },
-  { id: 'user-5', username: 'finance', displayName: 'Dewi (Finance)', role: 'finance' as AppRole, avatar: 'DF' },
-];
 
 const PAGE_SIZE = 10;
 
@@ -82,15 +73,6 @@ export default function App() {
   const [panelRow, setPanelRow] = useState<Record<string, unknown> | null>(null);
   const [isAddingNew, setIsAddingNew] = useState(false);
   const { toasts, showToast, removeToast } = useToast();
-  const [currentRole, setCurrentRole] = useState<AppRole>('owner');
-
-  function handleChangeRole(next: AppRole) {
-    setCurrentRole(next);
-    const match = mockUsers.find((u) => u.role === next);
-    if (match) {
-      try { localStorage.setItem('app.currentDisplayName', match.displayName); } catch { /* ignore */ }
-    }
-  }
 
   // Date range filter (global, per view tab)
   const [dateField, setDateField] = useState('');
@@ -654,6 +636,7 @@ export default function App() {
       {viewMode === 'landing' && <Landing onEnterApp={() => setViewMode('app')} />}
       {viewMode === 'seed' && <SeedPage />}
       {viewMode === 'app' && (
+    <AuthGate>
     <div className="flex h-screen bg-[#F8FAFC] overflow-hidden font-sans">
       {/* Sidebar */}
       <Sidebar
@@ -679,20 +662,6 @@ export default function App() {
       <main className="flex-1 flex flex-col min-w-0">
         {/* Top Bar */}
         <TopBar currentView={currentView} onRefresh={handleRefresh} onAddNew={handleAddNew} />
-
-        {/* Role Switcher */}
-        <div className="px-4 pt-2 pb-0 flex items-center justify-end gap-2">
-          <span className="text-[10px] text-slate-400">Role:</span>
-          <select
-            value={currentRole}
-            onChange={(e) => handleChangeRole(e.target.value as AppRole)}
-            className="h-6 text-[10px] px-2 border border-gray-200 rounded outline-none bg-white"
-          >
-            {mockUsers.map((u) => (
-              <option key={u.id} value={u.role}>{u.displayName}</option>
-            ))}
-          </select>
-        </div>
 
         {/* View Tabs */}
         <ViewTabs
@@ -965,6 +934,7 @@ export default function App() {
       {/* Toast Container */}
       <ToastContainer toasts={toasts} onRemove={removeToast} />
     </div>
+    </AuthGate>
       )}
     </>
   );
