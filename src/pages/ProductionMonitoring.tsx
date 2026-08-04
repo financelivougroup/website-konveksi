@@ -20,6 +20,7 @@ import {
 } from '@dnd-kit/core';
 import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/contexts/AuthContext';
 import { formatDate } from '@/data/pipelineData';
 import * as workOrderSvc from '@/services/workOrders';
 import * as cuttingRecordSvc from '@/services/cuttingRecords';
@@ -101,14 +102,9 @@ export default function ProductionMonitoring({ onOpenSewingEntry }: { onOpenSewi
   const [sewingRecords, setSewingRecords] = useState<SewingRecord[]>([]);
   const [planningOrders, setPlanningOrders] = useState<import('@/types/pipeline').ProductionOrder[]>([]);
   const [loading, setLoading] = useState(true);
-  const [currentDisplayName, setCurrentDisplayName] = useState<string>('Owner');
 
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem('app.currentDisplayName');
-      if (stored) setCurrentDisplayName(stored);
-    } catch { /* ignore */ }
-  }, []);
+  const { profile } = useAuth();
+  const currentDisplayName = profile.displayName;
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 

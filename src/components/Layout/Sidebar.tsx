@@ -19,8 +19,10 @@ import {
   Layers,
   ClipboardList,
   ExternalLink,
+  LogOut,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/contexts/AuthContext';
 import { navGroups } from '@/data/mockData';
 import type { ModuleId } from '@/types';
 
@@ -52,6 +54,14 @@ export function Sidebar({ currentView, onSwitchView, renames, onRename, onViewLa
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
   const [collapsed, setCollapsed] = useState(false);
+
+  const { profile, signOut } = useAuth();
+  const initials = profile.displayName
+    .split(' ')
+    .map((w) => w[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
 
   const filteredGroups = searchQuery
     ? navGroups.map((g) => ({
@@ -241,13 +251,23 @@ export function Sidebar({ currentView, onSwitchView, renames, onRename, onViewLa
         )}
       >
         <div className="w-8 h-8 rounded-full bg-gradient-to-br from-sky-400 to-sky-500 flex items-center justify-center shadow-sm shadow-sky-200 flex-shrink-0">
-          <span className="text-[11px] font-bold text-white">AD</span>
+          <span className="text-[11px] font-bold text-white">{initials}</span>
         </div>
         {!collapsed && (
-          <div className="flex flex-col min-w-0">
-            <span className="text-[12px] font-semibold text-slate-700 truncate">Admin</span>
-            <span className="text-[10px] text-slate-400">Manager</span>
-          </div>
+          <>
+            <div className="flex flex-col min-w-0 flex-1">
+              <span className="text-[12px] font-semibold text-slate-700 truncate">{profile.displayName}</span>
+              <span className="text-[10px] text-slate-400 capitalize">{profile.role}</span>
+            </div>
+            <button
+              onClick={() => signOut()}
+              title="Keluar"
+              aria-label="Keluar"
+              className="w-6 h-6 rounded flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors flex-shrink-0"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+            </button>
+          </>
         )}
       </div>
     </aside>
