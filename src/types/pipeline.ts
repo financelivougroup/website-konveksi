@@ -173,7 +173,8 @@ export interface RegisterPoComponentRow {
   sortOrder: number;
 }
 
-export type AppRole = 'owner' | 'admin' | 'inventory' | 'spv_konveksi' | 'finance';
+// Sejalan dengan batasan CHECK pada kolom public.profiles.role.
+export type AppRole = 'owner' | 'finance' | 'inventory';
 
 export interface AppUser {
   id: string;
