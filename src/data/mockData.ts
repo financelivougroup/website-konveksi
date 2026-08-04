@@ -38,27 +38,6 @@ export const viewConfig: Record<ModuleId, ViewConfig> = {
     sync: false,
     columns: [],
   },
-  'selesai-finishing': {
-    title: 'Selesai Finishing',
-    editable: true,
-    sync: false,
-    columns: [
-      { key: 'productNote', label: 'Product Note', width: '100px', icon: 'FileText' },
-      { key: 'product', label: 'Product', width: '130px', icon: 'Box' },
-      { key: 'informationVariation', label: 'Information Variation', width: '180px', icon: 'Info' },
-      { key: 'warna', label: 'Warna', width: '80px', icon: 'Palette' },
-      { key: 'size', label: 'Size', width: '60px', icon: 'Ruler' },
-      { key: 'workCode', label: 'Work Code', width: '220px', icon: 'RefreshCw' },
-      { key: 'brand', label: 'Brand', width: '80px', icon: 'Tag' },
-      { key: 'quantity', label: 'Quantity', width: '80px', align: 'right', icon: 'Hash' },
-      { key: 'totalCutting', label: 'Total Cutting', width: '100px', align: 'right', icon: 'Scissors' },
-      { key: 'sisaCutting', label: 'Sisa Cutting', width: '100px', align: 'right', icon: 'Flame' },
-      { key: 'totalSelesaiJahit', label: 'Total Selesai Jahit', width: '130px', align: 'right', icon: 'CheckCircle' },
-      { key: 'cutVsUpload', label: 'Cut vs Upload', width: '120px', badge: true, icon: 'GitCompare' },
-      { key: 'jahitVsFinish', label: 'Jahit vs Finish', width: '120px', badge: true, icon: 'GitCompare' },
-      { key: 'statusStock', label: 'STATUS STOCK', width: '150px', badge: true, icon: 'ClipboardList' },
-    ],
-  },
   'selesai-jahit': {
     title: 'Selesai Jahit',
     editable: true,
@@ -210,117 +189,7 @@ export const viewConfig: Record<ModuleId, ViewConfig> = {
   },
 };
 
-// ===== Selesai Finishing row builder =====
-// Auto-computes every derived field from raw inputs so mockup data stays
-// consistent with the AppSheet formulas:
-//   - workCode      : generated via generateWorkCode() (the IF/CONCATENATE formula)
-//   - sisaCutting   : Total Cutting - Quantity
-//   - cutVsUpload   : "" / "LENGKAP" / "ON PROGRESS" (the IF/ISNULL/AND formula)
-//   - jahitVsFinish : "BALANCE" if Quantity = Total Selesai Jahit, else "MASALAH"
-//   - alertTrigger   : derived from cutting / trigger-form / cut-vs-upload state
-//   - statusStock   : "DALAM PROSES PRODUKSI" if Trigger Form terisi, else "TUNGGU KEPUTUSAN"
-interface FinishingInput {
-  id: number;
-  productNote: string;
-  product: string;
-  informationVariation: string;
-  warna: string;
-  size: string;
-  brand: string;
-  quantity: number;
-  totalCutting: number;
-  totalSelesaiJahit: number;
-  triggerForm?: string; // override; defaults to auto-generated workCode when in production
-}
-
-function toBlankAware(v: unknown): number | null {
-  if (v === undefined || v === null || v === '') return null;
-  const n = typeof v === 'number' ? v : Number(v);
-  return Number.isNaN(n) ? null : n;
-}
-
-function buildFinishingRow(input: FinishingInput): Record<string, unknown> {
-  const { productNote, product, warna, size } = input;
-
-  // Work Code — from the AppSheet IF/CONCATENATE formula
-  const workCode = generateWorkCode(productNote, product, warna, size);
-
-  // Sisa Cutting = Total Cutting - Quantity
-  const sisaCutting = input.totalCutting - input.quantity;
-
-  // Cut vs Upload — IF(ISNULL(Total Cutting),"", IF(AND(Qty=SelesaiJahit, SelesaiJahit=TotalCutting),"LENGKAP","ON PROGRESS"))
-  const tc = toBlankAware(input.totalCutting);
-  let cutVsUpload = '';
-  if (tc !== null) {
-    const balanced = input.quantity === input.totalSelesaiJahit && input.totalSelesaiJahit === input.totalCutting;
-    cutVsUpload = balanced ? 'LENGKAP' : 'ON PROGRESS';
-  }
-
-  // Jahit vs Finish — "BALANCE" if Quantity = Total Selesai Jahit, else "MASALAH"
-  const jahitVsFinish = input.quantity === input.totalSelesaiJahit ? 'BALANCE' : 'MASALAH';
-
-  // Trigger Form — defaults to the generated workCode while in production
-  // (kept empty when there's no Product Note / Work Code)
-  const triggerForm = input.triggerForm !== undefined ? input.triggerForm : '';
-
-  // Alert Trigger logic (kept for the "Need Invoice" filter view)
-  const hasTrigger = Boolean(triggerForm);
-  let alertTrigger = '';
-  if (tc === null || tc === 0) {
-    alertTrigger = 'PERLU ISI - CUTTING';
-  } else if (cutVsUpload === 'ON PROGRESS') {
-    alertTrigger = hasTrigger
-      ? (triggerForm === workCode ? 'SUDAH ISI - TRIGGER' : 'PERLU HAPUS - TRIGGER')
-      : 'PERLU ISI - TRIGGER';
-  } else {
-    // LENGKAP path
-    alertTrigger = hasTrigger ? 'PERLU HAPUS - TRIGGER' : 'CLEAR FINISH';
-  }
-  // Special case: fully balanced + ready for invoice registration
-  if (cutVsUpload === 'LENGKAP' && jahitVsFinish === 'BALANCE' && hasTrigger) {
-    alertTrigger = 'PERLU REGISTER INVOICE';
-  }
-
-  // STATUS STOCK — ON PROGRESS -> DALAM PROSES PRODUKSI, selainnya -> TUNGGU KEPUTUSAN
-  const statusStock = cutVsUpload === 'ON PROGRESS' ? 'DALAM PROSES PRODUKSI' : 'TUNGGU KEPUTUSAN';
-
-  return {
-    id: input.id,
-    productNote,
-    product,
-    informationVariation: input.informationVariation,
-    warna,
-    size,
-    workCode,
-    brand: input.brand,
-    quantity: input.quantity,
-    totalCutting: input.totalCutting,
-    sisaCutting,
-    totalSelesaiJahit: input.totalSelesaiJahit,
-    cutVsUpload,
-    jahitVsFinish,
-    alertTrigger,
-    statusStock,
-    triggerForm,
-  };
-}
-
 export const mockData: Record<ModuleId, Record<string, unknown>[]> = {
-  'selesai-finishing': [
-    // ===== RAW: Normal records =====
-    // Work Code is auto-generated via the AppSheet IF/CONCATENATE formula;
-    // sisaCutting, cutVsUpload, jahitVsFinish, alertTrigger & statusStock are derived.
-    buildFinishingRow({ id: 1, productNote: 'B-00', product: 'Rue Top', informationVariation: 'Colour: Black Size: M', warna: 'Black', size: 'M', brand: 'Cassca', quantity: 100, totalCutting: 120, totalSelesaiJahit: 85, triggerForm: 'Produksi - Awal | Rue Top | Black | M' }),
-    buildFinishingRow({ id: 2, productNote: 'B-01', product: 'Rhea Top', informationVariation: 'Colour: White Size: L', warna: 'White', size: 'L', brand: 'Livou', quantity: 50, totalCutting: 50, totalSelesaiJahit: 30, triggerForm: '' }),
-    buildFinishingRow({ id: 3, productNote: 'B-02', product: 'Rue Top', informationVariation: 'Colour: Navy Size: XL', warna: 'Navy', size: 'XL', brand: 'Cassca', quantity: 80, totalCutting: 90, totalSelesaiJahit: 80, triggerForm: 'Restock-02 | Rue Top | Navy | XL' }),
-    buildFinishingRow({ id: 4, productNote: 'B-03', product: 'Aera Dress', informationVariation: 'Colour: Red Size: S', warna: 'Red', size: 'S', brand: 'Livou', quantity: 60, totalCutting: 0, totalSelesaiJahit: 0, triggerForm: '' }),
-    buildFinishingRow({ id: 5, productNote: 'B-00', product: 'Miles Jacket', informationVariation: 'Colour: Grey Size: M', warna: 'Grey', size: 'M', brand: 'Cassca', quantity: 45, totalCutting: 50, totalSelesaiJahit: 45, triggerForm: 'TYPO-123' }),
-    buildFinishingRow({ id: 6, productNote: '', product: 'Siena Blouse', informationVariation: 'Colour: Beige Size: L', warna: 'Beige', size: 'L', brand: 'Cassca', quantity: 30, totalCutting: 0, totalSelesaiJahit: 0, triggerForm: '' }),
-    // ===== PERLU REGISTER INVOICE (LENGKAP + BALANCE + trigger terisi) =====
-    buildFinishingRow({ id: 7, productNote: 'B-04', product: 'Rue Top', informationVariation: 'Colour: Cream Size: S', warna: 'Cream', size: 'S', brand: 'Cassca', quantity: 120, totalCutting: 120, totalSelesaiJahit: 120, triggerForm: 'Restock-04 | Rue Top | Cream | S' }),
-    buildFinishingRow({ id: 8, productNote: 'B-05', product: 'Rhea Top', informationVariation: 'Colour: Pink Size: M', warna: 'Pink', size: 'M', brand: 'Livou', quantity: 75, totalCutting: 75, totalSelesaiJahit: 75, triggerForm: 'Restock-05 | Rhea Top | Pink | M' }),
-    buildFinishingRow({ id: 9, productNote: 'B-00', product: 'Aera Dress', informationVariation: 'Colour: Blue Size: XL', warna: 'Blue', size: 'XL', brand: 'Livou', quantity: 200, totalCutting: 200, totalSelesaiJahit: 200, triggerForm: 'Produksi - Awal | Aera Dress | Blue | XL' }),
-  ],
   'selesai-jahit': [
     { id: 1, workCode: 'CSC-001-Black-M', product: 'Kaos Polos', warna: 'Black', size: 'M', brand: 'Cassca', totalSelesaiJahit: 25, picPenjahit: 'Budi Santoso', tanggalLaporan: '2026-06-05', bulanTahun: 'Juni 2026', tanggal: '05 Jun', buktiBarang: 'img1.jpg' },
     { id: 2, workCode: 'LVU-002-White-L', product: 'Kemeja', warna: 'White', size: 'L', brand: 'Livou', totalSelesaiJahit: 15, picPenjahit: 'Ani Wulandari', tanggalLaporan: '2026-06-05', bulanTahun: 'Juni 2026', tanggal: '05 Jun', buktiBarang: 'img2.jpg' },

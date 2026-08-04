@@ -1,6 +1,6 @@
 import { X, RefreshCw } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
-import { supabaseWorkCodes, penjahitList, bulanList, viewConfig, parseInformationVariation, generateWorkCode } from '@/data/mockData';
+import { penjahitList, bulanList, viewConfig } from '@/data/mockData';
 import type { ModuleId, ColumnDef } from '@/types';
 
 interface DetailPanelProps {
@@ -116,8 +116,6 @@ function cleanTitle(title: string): string {
 
 function PanelForm({ moduleId, row, isAddingNew, readOnly }: { moduleId: ModuleId; row: Record<string, unknown> | null; isAddingNew: boolean; readOnly: boolean }) {
   switch (moduleId) {
-    case 'selesai-finishing':
-      return <SelesaiFinishingForm row={row} isAddingNew={isAddingNew} readOnly={readOnly} />;
     case 'selesai-jahit':
       return <SelesaiJahitForm row={row} isAddingNew={isAddingNew} readOnly={readOnly} />;
     case 'target-jahit':
@@ -131,148 +129,6 @@ function PanelForm({ moduleId, row, isAddingNew, readOnly }: { moduleId: ModuleI
     default:
       return <ReadOnlyForm row={row} moduleId={moduleId} />;
   }
-}
-
-// ===== Selesai Finishing Form =====
-function SelesaiFinishingForm({ row, readOnly }: { row: Record<string, unknown> | null; isAddingNew: boolean; readOnly: boolean }) {
-  return (
-    <div className="space-y-5">
-      {/* SECTION 1: Product Note + Product (Manual Input) */}
-      <Section title="Input Manual">
-        <FormField label="Product Note" required>
-          <input
-            type="text"
-            id="form-productNote"
-            className="form-input"
-            defaultValue={row?.productNote as string || ''}
-            placeholder="Contoh: B-00, B-01, B-02..."
-            readOnly={readOnly}
-          />
-          <Hint>{`B-00 = Produksi Awal\nB-01, B-02, ... = Restock`}</Hint>
-        </FormField>
-
-        <FormField label="Product" required>
-          <select id="form-product" className="form-input" defaultValue={row?.product as string || ''} disabled={readOnly}>
-            <option value="">Pilih Product...</option>
-            {supabaseWorkCodes.map((wc) => (
-              <option key={wc.product} value={wc.product}>{wc.product}</option>
-            ))}
-          </select>
-          <Hint>Nama product dari Master Data (sync Supabase): Rue Top, Rhea Top, dll</Hint>
-        </FormField>
-      </Section>
-
-      {/* SECTION 2: Information Variation (Sync from Supabase) */}
-      <Section title="Information Variation (Sync Supabase)">
-        <FormField label="Information Variation" required>
-          <select
-            id="form-informationVariation"
-            className="form-input"
-            defaultValue={row?.informationVariation as string || ''}
-            disabled={readOnly}
-            onChange={(e) => {
-              const parsed = parseInformationVariation(e.target.value);
-              const warnaInput = document.getElementById('form-warna') as HTMLInputElement | null;
-              const sizeInput = document.getElementById('form-size') as HTMLInputElement | null;
-              if (warnaInput) warnaInput.value = parsed.warna;
-              if (sizeInput) sizeInput.value = parsed.size;
-              // Auto-generate work code
-              const noteInput = document.getElementById('form-productNote') as HTMLInputElement | null;
-              const productInput = document.getElementById('form-product') as HTMLSelectElement | null;
-              const workCodeInput = document.getElementById('form-workCode') as HTMLInputElement | null;
-              if (noteInput && productInput && workCodeInput) {
-                workCodeInput.value = generateWorkCode(noteInput.value, productInput.value, parsed.warna, parsed.size);
-              }
-            }}
-          >
-            <option value="">Pilih Variation...</option>
-            {supabaseWorkCodes.map((wc) => (
-              <option key={wc.informationVariation} value={wc.informationVariation}>
-                {wc.informationVariation}
-              </option>
-            ))}
-          </select>
-          <Hint>Format: Colour: [colour] Size: [size] \u2014 Sync dari Supabase Product Master</Hint>
-        </FormField>
-      </Section>
-
-      {/* SECTION 3: Auto-Extract Fields */}
-      <Section title="Auto-Extract dari Information Variation">
-        <FormField label="Warna">
-          <input type="text" id="form-warna" className="form-input readonly" defaultValue={row?.warna as string || ''} readOnly />
-          <Hint>Auto-extract dari field Colour dalam Information Variation</Hint>
-        </FormField>
-        <FormField label="Size">
-          <input type="text" id="form-size" className="form-input readonly" defaultValue={row?.size as string || ''} readOnly />
-          <Hint>Auto-extract dari field Size dalam Information Variation</Hint>
-        </FormField>
-      </Section>
-
-      {/* SECTION 4: Work Code (Auto-Generated) */}
-      <Section title="Work Code (Auto-Generate)">
-        <FormField label="Work Code">
-          <input
-            type="text"
-            id="form-workCode"
-            className="form-input readonly font-mono text-[12px]"
-            defaultValue={row?.workCode as string || ''}
-            readOnly
-          />
-          <Hint>{`Formula:\nIF(ProductNote = "B-00") \u2192 "Produksi - Awal"\nIF(ProductNote = "B-XX") \u2192 "Restock-XX"\nLalu: + " | " + Product + " | " + Warna + " | " + Size`}</Hint>
-        </FormField>
-        <FormField label="Brand">
-          <input type="text" id="form-brand" className="form-input readonly" defaultValue={row?.brand as string || ''} readOnly />
-          <Hint>Auto-detect dari Product Master</Hint>
-        </FormField>
-        <FormField label="Quantity">
-          <input type="text" id="form-quantity" className="form-input readonly" defaultValue={row?.quantity as number || ''} readOnly />
-          <Hint>Sync dari Raw Product Monitoring</Hint>
-        </FormField>
-      </Section>
-
-      {/* SECTION 5: Cutting Input */}
-      <Section title="Cutting Input">
-        <FormField label="Total Cutting" required>
-          <input type="number" id="form-totalCutting" className="form-input" defaultValue={row?.totalCutting as number || ''} placeholder="Input jumlah barang yang sudah dipotong" readOnly={readOnly} />
-        </FormField>
-        <FormField label="Sisa Cutting">
-          <input type="text" id="form-sisaCutting" className="form-input readonly" defaultValue={row?.sisaCutting as number || ''} readOnly />
-          <Hint>Formula: Total Cutting - Quantity</Hint>
-        </FormField>
-        <FormField label="Total Selesai Jahit">
-          <input type="text" id="form-totalSelesaiJahit" className="form-input readonly" defaultValue={row?.totalSelesaiJahit as number || ''} readOnly />
-          <Hint>Lookup dari Selesai Jahit (sum per Work Code)</Hint>
-        </FormField>
-        <FormField label="Trigger Form">
-          <input type="text" id="form-triggerForm" className="form-input" defaultValue={row?.triggerForm as string || ''} placeholder="Kosong = belum ada trigger" readOnly={readOnly} />
-        </FormField>
-      </Section>
-
-      {/* SECTION 6: Auto-Calculate Status */}
-      <Section title="Auto-Calculate (Formula)">
-        <FormField label="Cut vs Upload">
-          <input type="text" id="form-cutVsUpload" className="form-input readonly" defaultValue={row?.cutVsUpload as string || ''} readOnly />
-          <Hint>{`\u2022 "" (kosong): Total Cutting kosong\n\u2022 LENGKAP: Quantity = Total Selesai Jahit = Total Cutting\n\u2022 ON PROGRESS: selain itu`}</Hint>
-        </FormField>
-        <FormField label="Jahit vs Finish">
-          <input type="text" id="form-jahitVsFinish" className="form-input readonly" defaultValue={row?.jahitVsFinish as string || ''} readOnly />
-          <Hint>{`\u2022 BALANCE: Quantity = Total Selesai Jahit\n\u2022 MASALAH: Quantity \u2260 Total Selesai Jahit`}</Hint>
-        </FormField>
-        <div className="mt-2 p-3 bg-slate-50 rounded-xl border border-slate-100 space-y-1.5 text-[11px] text-slate-600">
-          <StatusLegendItem color="#92400e" text="PERLU ISI - CUTTING: Cutting kosong" />
-          <StatusLegendItem color="#166534" text="CLEAR FINISH: LENGKAP &amp; Trigger kosong" />
-          <StatusLegendItem color="#92400e" text="PERLU ISI - TRIGGER: ON PROGRESS &amp; Trigger kosong" />
-          <StatusLegendItem color="#991b1b" text="TYPO - TRIGGER: ON PROGRESS &amp; Trigger beda" />
-          <StatusLegendItem color="#166534" text="SUDAH ISI - TRIGGER: ON PROGRESS &amp; Trigger sama" />
-          <StatusLegendItem color="#991b1b" text="PERLU HAPUS - TRIGGER: LENGKAP &amp; Trigger terisi" />
-        </div>
-        <FormField label="STATUS STOCK">
-          <input type="text" id="form-statusStock" className="form-input readonly" defaultValue={row?.statusStock as string || ''} readOnly />
-          <Hint>{`\u2022 DALAM PROSES PRODUKSI: Cut vs Upload = ON PROGRESS\n\u2022 TUNGGU KEPUTUSAN: selainnya (LENGKAP / kosong)`}</Hint>
-        </FormField>
-      </Section>
-    </div>
-  );
 }
 
 // ===== Selesai Jahit Form =====
@@ -507,15 +363,6 @@ function FormField({ label, required, children }: { label: string; required?: bo
 
 function Hint({ children }: { children: string }) {
   return <p className="mt-1 text-[11px] text-slate-400 leading-relaxed whitespace-pre-line">{children}</p>;
-}
-
-function StatusLegendItem({ color, text }: { color: string; text: string }) {
-  return (
-    <div className="flex items-center gap-2">
-      <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
-      <span>{text}</span>
-    </div>
-  );
 }
 
 function getModuleConfig(moduleId: ModuleId) {

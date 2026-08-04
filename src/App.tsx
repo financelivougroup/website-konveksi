@@ -60,7 +60,7 @@ function makeDefaultSettings(moduleId: ModuleId): ViewTabSettings {
 export default function App() {
   // 'landing' shows the marketing site, 'app' shows the data dashboard.
   const [viewMode, setViewMode] = useState<'app' | 'landing' | 'seed'>('app');
-  const [currentView, setCurrentView] = useState<ModuleId>('selesai-finishing');
+  const [currentView, setCurrentView] = useState<ModuleId>('production-monitoring');
   const [currentViewTab, setCurrentViewTab] = useState(0);
   // Active sub-tab inside the combined "Production Data" view.
   // Ignored for all other modules.
@@ -87,33 +87,6 @@ export default function App() {
 
   const getModuleViews = useCallback((moduleId: ModuleId): ModuleViews => {
     if (moduleViews[moduleId]) return moduleViews[moduleId];
-
-    // Preset views for Selesai Finishing
-    if (moduleId === 'selesai-finishing') {
-      return {
-        views: [
-          { name: 'Raw Data', icon: 'Database' },
-          { name: 'Clear Finish', icon: 'CheckCircle' },
-          { name: 'Need Invoice', icon: 'FileText' },
-        ],
-        tabSettings: {
-          0: makeDefaultSettings(moduleId), // Raw: no filters
-          1: {
-            ...makeDefaultSettings(moduleId),
-            filters: [
-              { field: 'cutVsUpload', operator: 'equals', value: 'LENGKAP' },
-              { field: 'jahitVsFinish', operator: 'equals', value: 'BALANCE' },
-            ],
-          },
-          2: {
-            ...makeDefaultSettings(moduleId),
-            filters: [
-              { field: 'alertTrigger', operator: 'contains', value: 'PERLU REGISTER INVOICE' },
-            ],
-          },
-        },
-      };
-    }
 
     return {
       views: [{ name: 'All Data', icon: 'LayoutList' }],
@@ -149,12 +122,12 @@ export default function App() {
   const isPipelineView = currentView === 'production-monitoring' || currentView === 'sewing-entry';
 
   const mv = isPipelineView ? { views: [], tabSettings: {} } : getModuleViews(currentView);
-  const settings = isPipelineView ? makeDefaultSettings('selesai-finishing') : getSettings(currentView, currentViewTab);
+  const settings = isPipelineView ? makeDefaultSettings('production-monitoring') : getSettings(currentView, currentViewTab);
   // Combined "Production Data" view: resolve the real module from the active sub-tab
   // so the table, DetailPanel form and column config all follow the sub-tab selection.
   const isCombinedView = !isPipelineView && currentView === 'production-data';
-  const effectiveModule = isPipelineView ? 'selesai-finishing' : (isCombinedView ? activeSubModule : currentView);
-  const config = isPipelineView ? viewConfig['selesai-finishing'] : viewConfig[effectiveModule];
+  const effectiveModule = isPipelineView ? 'production-monitoring' : (isCombinedView ? activeSubModule : currentView);
+  const config = isPipelineView ? viewConfig['production-monitoring'] : viewConfig[effectiveModule];
 
   // ====== Supabase data fetching ======
   const [tableData, setTableData] = useState<Record<string, unknown>[]>([]);
@@ -166,23 +139,6 @@ export default function App() {
       let rows: Record<string, unknown>[] = [];
 
       switch (effectiveModule) {
-        case 'selesai-finishing': {
-          // Derived: join work_orders + cutting_records + sewing_records and compute fields
-          const { data: wo } = await supabase.from('work_orders').select('*').order('created_at', { ascending: false });
-          if (wo) {
-            rows = wo.map((w: Record<string, unknown>) => {
-              const row = { ...w };
-              row.cutVsUpload = computeCutVsUpload(row);
-              row.statusStock = computeStatusStock({ ...row, cutVsUpload: row.cutVsUpload });
-              // Compute jahitVsFinish
-              const qty = Number(w.quantity) || 0;
-              const totalJahit = Number(w.total_selesai_jahit) || 0;
-              row.jahitVsFinish = qty === totalJahit ? 'BALANCE' : 'MASALAH';
-              return row;
-            });
-          }
-          break;
-        }
         case 'selesai-jahit': {
           const { data: wo } = await supabase.from('work_orders').select('*').order('created_at', { ascending: false });
           if (wo) rows = wo as Record<string, unknown>[];
@@ -238,21 +194,6 @@ export default function App() {
       const fetchFresh = async () => {
         let rows: Record<string, unknown>[] = [];
         switch (effectiveModule) {
-          case 'selesai-finishing': {
-            const { data: wo } = await supabase.from('work_orders').select('*').order('created_at', { ascending: false });
-            if (wo) {
-              rows = wo.map((w: Record<string, unknown>) => {
-                const row = { ...w };
-                row.cutVsUpload = computeCutVsUpload(row);
-                row.statusStock = computeStatusStock({ ...row, cutVsUpload: row.cutVsUpload });
-                const qty = Number(w.quantity) || 0;
-                const totalJahit = Number(w.total_selesai_jahit) || 0;
-                row.jahitVsFinish = qty === totalJahit ? 'BALANCE' : 'MASALAH';
-                return row;
-              });
-            }
-            break;
-          }
           case 'target-jahit': {
             const { data } = await targetJahitSvc.fetchAll();
             if (data) rows = data.map(r => ({ ...r })) as unknown as Record<string, unknown>[];
@@ -487,7 +428,6 @@ export default function App() {
     let error: Error | null = null;
 
     switch (effectiveModule) {
-      case 'selesai-finishing':
       case 'selesai-jahit':
       case 'register-jahit': {
         const { error: e } = await supabase.from('work_orders').delete().eq('id', String(id));
@@ -535,11 +475,6 @@ export default function App() {
 
     if (isAddingNew) {
       switch (effectiveModule) {
-        case 'selesai-finishing': {
-          const { error: e } = await supabase.from('work_orders').insert(formData);
-          error = e;
-          break;
-        }
         case 'target-jahit': {
           const { error: e } = await targetJahitSvc.create(formData as any);
           error = e;
@@ -563,7 +498,6 @@ export default function App() {
     } else if (panelRow) {
       const id = panelRow.id as string | number;
       switch (effectiveModule) {
-        case 'selesai-finishing':
         case 'selesai-jahit':
         case 'register-jahit': {
           const { error: e } = await supabase.from('work_orders').update(formData).eq('id', String(id));

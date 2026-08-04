@@ -89,7 +89,6 @@ export interface ToastMessage {
 }
 
 export type ModuleId =
-  | 'selesai-finishing'
   | 'selesai-jahit'
   | 'target-jahit'
   | 'register-jahit'
