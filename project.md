@@ -200,7 +200,8 @@ Website Konveksi/
 - The `anon` policies were deliberately NOT revoked — pending follow-up (see below)
 
 **Removed**
-- The "Role:" dropdown in `App.tsx` (it let anyone become any role with one click, so it was never authorization) and `localStorage['app.currentDisplayName']`; `inputBy` on cutting records now comes from the logged-in session, so the audit trail is trustworthy for the first time
+- The "Role:" dropdown in `App.tsx` (it let anyone become any role with one click, so it was never authorization) and `localStorage['app.currentDisplayName']`. Every audit-trail write now takes its identity from the logged-in session, so the trail is trustworthy for the first time: `cutting_records.input_by`, `sewing_records.input_by`, and `createdBy`/`pulledBy` on production orders and work orders in both Order Entry and Production Monitoring
+- `SeedPage` is no longer rendered. Its `clearAll()` deletes every row across 10 tables, and it sat outside the auth gate as its own `viewMode` branch — the `anon` DELETE policy on `cutting_records` means part of that would have succeeded without a login. The branch was unreachable (nothing set `viewMode` to `'seed'`), so this closes a latent hole rather than changing behaviour. `src/pages/SeedPage.tsx` is kept; mount it inside `<AuthGate>` if seeding is needed again
 - `AppRole` narrowed from five values to three (`owner | finance | inventory`); `admin` and `spv_konveksi` were unused
 - Selesai Finishing module removed; the app's initial view is now Production Monitoring
 
@@ -210,7 +211,8 @@ Website Konveksi/
 - `anon` policies on `work_orders`, `sewing_records`, `cutting_records` still grant write access WITHOUT login. Revoking them is the correct hardening but needs a path-by-path check first
 - `invoices`, `invoice_payments`, `invoice_payment_files`, `register_po`, `register_po_components` have RLS enabled but NO policies at all — fully locked from the client. Pre-existing, not caused by this work
 - Most master tables have read-only permissions
-- No browser automation exists in this environment, so the in-browser click-through was never performed. Proven: `npm run build` clean, all three accounts return an access token from the real `/auth/v1/token` endpoint, and an authenticated INSERT+DELETE on `cutting_records` succeeded. Unverified: the runtime click-through (login form appears, wrong password shows the error, F5 preserves the session, logout returns to login)
+- No browser automation exists in this environment. Confirmed by hand: logging in as `owner` works and the dashboard opens. Also proven: `npm run build` clean, all three accounts return an access token from the real `/auth/v1/token` endpoint, and an authenticated INSERT+DELETE on `cutting_records` succeeded. Still unverified: F5 preserves the session (`createClient` takes no options, so `persistSession` defaults to `true` — likely fine but unproven), the wrong-password error message, and logout returning to the login screen
+- Known minor gaps from the final review, not fixed: the collapsed sidebar hides the logout button; `AppRole` is a cast rather than a runtime-validated value (safe only while `profiles_role_check` and the union stay in sync); `fetchProfile` runs twice on mount (`getSession` plus the `SIGNED_IN` event); there is no error boundary; a network failure during login shows "password salah" rather than a connection error
 - Orphaned modules deliberately left in place: `selesai-jahit`, `production-data`, `register-jahit`, `daftar-libur`, `register-penjahit`
 
 ### 2026-07-25 — Cost-Aware Delegation Policy Design
