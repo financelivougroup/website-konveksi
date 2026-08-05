@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ArrowLeft, Trash2, CheckCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/contexts/AuthContext';
 import * as sewingRecordSvc from '@/services/sewingRecords';
 import * as workOrderSvc from '@/services/workOrders';
 import * as cuttingRecordSvc from '@/services/cuttingRecords';
@@ -16,6 +17,8 @@ interface SewingEntryFormProps {
 const penjahitList = ['Budi Santoso', 'Ani Wulandari', 'Caca', 'Dedi Kurniawan', 'Eka Prasetya', 'Fitri Handayani'];
 
 export default function SewingEntryForm({ onBack, workOrders: externalWorkOrders, existingSewingRecords: externalSewingRecords }: SewingEntryFormProps) {
+  const { profile } = useAuth();
+  const currentDisplayName = profile.displayName;
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>(externalWorkOrders ?? []);
   const [existingSewingRecords, setExistingSewingRecords] = useState<SewingRecord[]>(externalSewingRecords ?? []);
   const [woId, setWoId] = useState('');
@@ -67,7 +70,7 @@ export default function SewingEntryForm({ onBack, workOrders: externalWorkOrders
       picPenjahit: pic,
       qtySelesai: Number(qty),
       tanggalLaporan: tanggal,
-      inputBy: 'Owner',
+      inputBy: currentDisplayName,
       inputAt: new Date().toISOString().split('T')[0],
       imageName: imageFile?.name || '',
       imageUrl: '',

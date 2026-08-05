@@ -188,10 +188,10 @@ export default function ProductionMonitoring({ onOpenSewingEntry }: { onOpenSewi
       variationId: `${pid}-${po.warna.toUpperCase().substring(0, 3)}-${po.size}`,
       informationVariation: po.informationVariation, warna: po.warna, size: po.size, brand: po.brand,
       quantity: po.quantity, productionStatus: 'CUTTING_PENDING', invoiceStatus: 'NONE',
-      createdBy: 'Owner', createdAt: po.createdAt, pulledAt: new Date().toISOString(),
+      createdBy: currentDisplayName, createdAt: po.createdAt, pulledAt: new Date().toISOString(),
     });
     if (error) { setPullMessage(`❌ ${error.message}`); return; }
-    await productionOrderSvc.pullToKonveksi(po.id, 'Owner');
+    await productionOrderSvc.pullToKonveksi(po.id, currentDisplayName);
     if (newWO) setWorkOrders(prev => [...prev, newWO]);
     setPlanningOrders(prev => prev.filter(p => p.id !== poId));
     setPullMessage(`✅ "${po.product}" berhasil di-pull!`);

@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Search, Plus, ArrowRight, XCircle, CheckCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/contexts/AuthContext';
 import { generateWorkCode } from '@/data/pipelineData';
 import * as productionOrderSvc from '@/services/productionOrders';
 import * as workOrderSvc from '@/services/workOrders';
@@ -30,6 +31,8 @@ function buildVariationId(productId: string, warna: string, size: string): strin
 }
 
 export default function OrderEntry() {
+  const { profile } = useAuth();
+  const currentDisplayName = profile.displayName;
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'PLANNING' | 'PULLED' | 'CANCELLED'>('PLANNING');
   const [message, setMessage] = useState<string | null>(null);
@@ -78,11 +81,11 @@ export default function OrderEntry() {
     const now = new Date().toISOString().split('T')[0];
 
     // Update UI dulu — langsung hilang dari tab PLANNING
-    setOrders((prev) => prev.map((p) => p.id === poId ? { ...p, status: 'PULLED' as const, pulledAt: now, pulledBy: 'Owner' } : p));
+    setOrders((prev) => prev.map((p) => p.id === poId ? { ...p, status: 'PULLED' as const, pulledAt: now, pulledBy: currentDisplayName } : p));
     setMessage('⏳ Memproses Pull...');
 
     // Update PO di DB + tunggu hasilnya
-    const { error: pullErr } = await productionOrderSvc.pullToKonveksi(po.id, 'Owner');
+    const { error: pullErr } = await productionOrderSvc.pullToKonveksi(po.id, currentDisplayName);
     console.log('[OrderEntry] pullToKonveksi result:', pullErr);
 
     if (pullErr) {
@@ -105,7 +108,7 @@ export default function OrderEntry() {
       variationId: varId,
       informationVariation: po.informationVariation, warna: po.warna, size: po.size, brand: po.brand,
       quantity: po.quantity, productionStatus: 'CUTTING_PENDING', invoiceStatus: 'NONE',
-      createdBy: 'Owner', createdAt: po.createdAt, pulledAt: now,
+      createdBy: currentDisplayName, createdAt: po.createdAt, pulledAt: now,
     });
 
     if (woErr) {
@@ -141,7 +144,7 @@ export default function OrderEntry() {
     const workCode = generateWorkCode(productNote, product, warna, size);
     const { data: newPO, error } = await productionOrderSvc.create({
       workCode, productNote, product,
-      informationVariation: `Colour: ${warna} Size: ${size}`, warna, size, brand, quantity: 0, status: 'PLANNING', createdBy: 'Owner', createdAt: new Date().toISOString().split('T')[0],
+      informationVariation: `Colour: ${warna} Size: ${size}`, warna, size, brand, quantity: 0, status: 'PLANNING', createdBy: currentDisplayName, createdAt: new Date().toISOString().split('T')[0],
     });
     if (error) { setMessage(`❌ Error: ${error.message}`); return; }
     if (newPO) setOrders((prev) => [newPO, ...prev]);
