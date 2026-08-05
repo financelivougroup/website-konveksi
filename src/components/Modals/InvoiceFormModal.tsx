@@ -160,6 +160,7 @@ export function InvoiceFormModal({
       workOrderId: selectedWO.id,
       registerPoId,
       autoCreated: false,
+      workCode: selectedWO.workCode,
       invoiceCode,
       invoiceDate,
       monthYear,

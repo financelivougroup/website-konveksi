@@ -117,6 +117,7 @@ export interface InvoiceRow {
   workOrderId: string;
   registerPoId?: string;
   autoCreated: boolean;
+  workCode: string;
   invoiceCode: string;
   invoiceDate: string;
   monthYear: string;

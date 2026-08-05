@@ -182,6 +182,7 @@ export function InvoicingPage() {
             <tr className="border-b border-gray-200">
               <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider bg-white sticky top-0 z-10 text-slate-400">Bulan</th>
               <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider bg-white sticky top-0 z-10 text-slate-400">Client</th>
+              <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider bg-white sticky top-0 z-10 text-slate-400">Work Code</th>
               <th className="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider bg-white sticky top-0 z-10 text-slate-400">Total Qty</th>
               <th className="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider bg-white sticky top-0 z-10 text-slate-400">Nominal/PCS</th>
               <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider bg-white sticky top-0 z-10 text-slate-400">Kode Invoice</th>
@@ -203,6 +204,7 @@ export function InvoicingPage() {
                 <tr key={inv.id} className="border-b border-gray-100 hover:bg-slate-50 transition-colors">
                   <td className="px-3 py-2.5 text-slate-700">{inv.monthYear}</td>
                   <td className="px-3 py-2.5 text-slate-700">{inv.clientName}</td>
+                  <td className="px-3 py-2.5 max-w-[180px] truncate font-mono text-[11px] text-slate-500" title={inv.workCode}>{inv.workCode}</td>
                   <td className="px-3 py-2.5 text-right tabular-nums text-slate-700">{inv.pcsLinked}</td>
                   <td className="px-3 py-2.5 text-right tabular-nums text-slate-700">{fmtCur(inv.unitPrice)}</td>
                   <td className="px-3 py-2.5 font-mono text-[11px] text-slate-500">{inv.invoiceCode}</td>

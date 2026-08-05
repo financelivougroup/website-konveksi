@@ -9,6 +9,7 @@ interface DbInvoiceRow {
   work_order_id: string;
   register_po_id: string | null;
   auto_created: boolean;
+  work_code: string;
   invoice_code: string;
   invoice_date: string;
   month_year: string;
@@ -33,6 +34,7 @@ function mapRow(row: DbInvoiceRow): InvoiceRow {
     workOrderId: row.work_order_id,
     registerPoId: row.register_po_id ?? undefined,
     autoCreated: row.auto_created,
+    workCode: row.work_code,
     invoiceCode: row.invoice_code,
     invoiceDate: row.invoice_date,
     monthYear: row.month_year,
@@ -105,6 +107,7 @@ export async function createInvoiceAuto(input: Omit<InvoiceRow, 'id' | 'createdA
     work_order_id: input.workOrderId,
     register_po_id: input.registerPoId ?? null,
     auto_created: input.autoCreated,
+    work_code: input.workCode,
     invoice_code: input.invoiceCode,
     invoice_date: input.invoiceDate,
     month_year: input.monthYear,
@@ -131,6 +134,7 @@ export async function createInvoiceAuto(input: Omit<InvoiceRow, 'id' | 'createdA
 
 export async function updateInvoice(id: string, updates: Partial<InvoiceRow>): Promise<{ error: Error | null }> {
   const dbUpdates: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (updates.workCode !== undefined) dbUpdates.work_code = updates.workCode;
   if (updates.invoiceCode !== undefined) dbUpdates.invoice_code = updates.invoiceCode;
   if (updates.invoiceDate !== undefined) dbUpdates.invoice_date = updates.invoiceDate;
   if (updates.monthYear !== undefined) dbUpdates.month_year = updates.monthYear;
