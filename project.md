@@ -187,6 +187,12 @@ Website Konveksi/
 
 ## Latest Progress
 
+### 2026-08-05 — Invoicing Table: Total Qty & Nominal/PCS
+
+- Added **Total Qty** and **Nominal/PCS** columns to the Invoicing table (`src/pages/InvoicingPage.tsx`), sourced from data already stored on each invoice row at generation (`autoInvoice.ts`): `pcsLinked` (total qty, = work order quantity) and `unitPrice` (= `register_po.total_per_pcs`).
+- New header order: Bulan, Client, Total Qty, Nominal/PCS, Kode Invoice, Total, Status, Action. Empty-state colspan updated 6→8.
+- Verified via Supabase MCP: the existing invoice row has both fields populated (50 pcs, Rp 35.000).
+
 ### 2026-08-04 — Supabase Auth Login & Selesai Finishing Removal
 
 **Login & Roles**
