@@ -3,7 +3,6 @@ import { computeCutVsUpload, computeStatusStock } from '@/lib/utils';
 import { Landing } from '@/pages/Landing';
 import ProductionMonitoring from '@/pages/ProductionMonitoring';
 import SewingEntryForm from '@/pages/SewingEntryForm';
-import SeedPage from '@/pages/SeedPage';
 import InvoicingPage from '@/pages/InvoicingPage';
 import { RegisterPoPage } from '@/pages/RegisterPoPage';
 import OrderEntry from '@/pages/OrderEntry';
@@ -59,7 +58,7 @@ function makeDefaultSettings(moduleId: ModuleId): ViewTabSettings {
 
 export default function App() {
   // 'landing' shows the marketing site, 'app' shows the data dashboard.
-  const [viewMode, setViewMode] = useState<'app' | 'landing' | 'seed'>('app');
+  const [viewMode, setViewMode] = useState<'app' | 'landing'>('app');
   const [currentView, setCurrentView] = useState<ModuleId>('production-monitoring');
   const [currentViewTab, setCurrentViewTab] = useState(0);
   // Active sub-tab inside the combined "Production Data" view.
@@ -568,7 +567,6 @@ export default function App() {
   return (
     <>
       {viewMode === 'landing' && <Landing onEnterApp={() => setViewMode('app')} />}
-      {viewMode === 'seed' && <SeedPage />}
       {viewMode === 'app' && (
     <AuthGate>
     <div className="flex h-screen bg-[#F8FAFC] overflow-hidden font-sans">
