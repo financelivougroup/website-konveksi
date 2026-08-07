@@ -136,10 +136,27 @@ export async function computeDebt(staffName: string): Promise<DebtSummary> {
     totalNilai += qty * (price.jahit + price.obras)
   }
 
-  const utang = round0(totalGaji - totalNilai)
+  // Nilai bersih = total nilai pcs − potongan valid. A valid potongan is a
+  // complain_penalti row for this staff whose posisi is jahit/obras (the only
+  // positions that owned this penjahit's output). Potongan finishing/kancing
+  // do not affect penjahit.
+  let potongan = 0
+  const { data: complainRows } = await supabase
+    .from('complain_penalti')
+    .select('potongan_per_pcs, pcs')
+    .eq('pic', staffName)
+    .in('posisi', ['jahit', 'obras'])
+  for (const c of (complainRows ?? []) as Record<string, unknown>[]) {
+    const rate = c.potongan_per_pcs as number
+    const count = c.pcs as number
+    potongan += rate * count
+  }
+  const nilaiBersih = totalNilai - potongan
+
+  const utang = round0(totalGaji - nilaiBersih)
   return {
     totalGaji,
-    totalNilai,
+    totalNilai: nilaiBersih,
     utang,
     status: utang > 0 ? 'Utang' : 'Tidak Utang',
   }

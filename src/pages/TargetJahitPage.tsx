@@ -139,6 +139,21 @@ export function TargetJahitPage() {
 
   const config = viewConfig['target-jahit'];
 
+  // Access matrix (spec): inventory may see production data but NOT salary,
+  // target/cost, or akumulasi columns. Owner/finance see everything.
+  const INVENTORY_VISIBLE_KEYS = new Set([
+    'nama',
+    'posisi',
+    'hariKerjaHariIni',
+    'sisaHari',
+    'realisasiMonthly',
+    'progressMonthly',
+    'statusFinal',
+  ]);
+  const visibleColumns = canSeeDebt
+    ? config.columns
+    : config.columns.filter((c) => INVENTORY_VISIBLE_KEYS.has(c.key));
+
   if (loading && tab === 'target') {
     return (
       <main className="flex-1 flex items-center justify-center">
@@ -219,7 +234,7 @@ export function TargetJahitPage() {
             </div>
 
             <DataTable
-              columns={config.columns.map((c, i) => ({ ...c, _originalIndex: i }))}
+              columns={visibleColumns.map((c, i) => ({ ...c, _originalIndex: i }))}
               data={paginated as unknown as Record<string, unknown>[]}
               selectedRows={new Set()}
               rowHeight="medium"
