@@ -29,6 +29,7 @@ const DEFAULT_COMPONENTS: ComponentForm[] = [
   { localId: crypto.randomUUID(), key: 'operational', label: 'Operational', value: '' },
   { localId: crypto.randomUUID(), key: 'material_basic', label: 'Material Basic', value: '' },
   { localId: crypto.randomUUID(), key: 'margin', label: 'Margin', value: '' },
+  { localId: crypto.randomUUID(), key: 'jasa_pasang_kancing', label: 'Jasa Pasang Kancing', value: '' },
 ];
 
 function freshComponents(): ComponentForm[] {
