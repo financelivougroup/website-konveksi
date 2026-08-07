@@ -50,3 +50,37 @@ CREATE INDEX IF NOT EXISTS idx_cp_pic ON public.complain_penalti(pic);
 
 -- Note: complain_penalti.pic intentionally has no FK to register_penjahit;
 -- that table may be empty and names are free-text.
+
+-- RLS: the app runs behind the auth gate, so only the authenticated role
+-- needs access. Debt/salary restriction is enforced at the service layer
+-- per the approved design; these tables carry production/planning/complain
+-- data visible to all logged-in roles.
+ALTER TABLE public.planning_produksi ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Authenticated planning read"
+  ON public.planning_produksi FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Authenticated planning insert"
+  ON public.planning_produksi FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "Authenticated planning update"
+  ON public.planning_produksi FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Authenticated planning delete"
+  ON public.planning_produksi FOR DELETE TO authenticated USING (true);
+
+ALTER TABLE public.target_jahit_detail ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Authenticated target detail read"
+  ON public.target_jahit_detail FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Authenticated target detail insert"
+  ON public.target_jahit_detail FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "Authenticated target detail update"
+  ON public.target_jahit_detail FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Authenticated target detail delete"
+  ON public.target_jahit_detail FOR DELETE TO authenticated USING (true);
+
+ALTER TABLE public.complain_penalti ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Authenticated complain read"
+  ON public.complain_penalti FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Authenticated complain insert"
+  ON public.complain_penalti FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "Authenticated complain update"
+  ON public.complain_penalti FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Authenticated complain delete"
+  ON public.complain_penalti FOR DELETE TO authenticated USING (true);
