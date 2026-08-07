@@ -11,6 +11,41 @@ import { cn, formatCurrency } from '@/lib/utils';
 
 const PAGE_SIZE = 10;
 
+// Map live snake_case target_jahit columns to the camelCase keys the
+// viewConfig['target-jahit'] columns expect, so the shared DataTable renders
+// real values instead of undefined cells. Mirrors the alias map documented in
+// the approved Target Jahit sorting design.
+const TARGET_COLUMN_ALIAS: Record<string, string> = {
+  bulan_tahun: 'bulanTahun',
+  total_hari_kerja: 'totalHariKerja',
+  hari_kerja_hari_ini: 'hariKerjaHariIni',
+  sisa_hari: 'sisaHari',
+  target_daily: 'targetDaily',
+  target_ngebut_hari: 'targetNgebutHari',
+  target_monthly: 'targetMonthly',
+  realisasi_monthly: 'realisasiMonthly',
+  sisa_target_monthly: 'sisaTargetMonthly',
+  progress_monthly: 'progressMonthly',
+  status_final: 'statusFinal',
+  target_cost_posisi: 'targetCostPosisi',
+  realisasi_cost_posisi: 'realisasiCostPosisi',
+  target_accum: 'targetAccum',
+  realisasi_accum: 'realisasiAccum',
+  selisih_accum: 'selisihAccum',
+  target_ngebut_hari_akumulasi: 'targetNgebutHariAkumulasi',
+  progress_accum: 'progressAccum',
+  status_final_akumulasi: 'statusFinalAkumulasi',
+};
+
+function normalizeTargetRow(row: TargetJahitRow): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(row)) {
+    const alias = TARGET_COLUMN_ALIAS[key];
+    out[alias ?? key] = value;
+  }
+  return out;
+}
+
 type TabKey = 'target' | 'utang-staf';
 
 interface DebtRow {
@@ -99,7 +134,7 @@ export function TargetJahitPage() {
 
   const paginated = useMemo(() => {
     const start = (page - 1) * PAGE_SIZE;
-    return filtered.slice(start, start + PAGE_SIZE);
+    return filtered.slice(start, start + PAGE_SIZE).map(normalizeTargetRow);
   }, [filtered, page]);
 
   const config = viewConfig['target-jahit'];
@@ -189,7 +224,7 @@ export function TargetJahitPage() {
               selectedRows={new Set()}
               rowHeight="medium"
               condColors={[]}
-              editable={true}
+              editable={false}
               sorts={[]}
               onToggleRow={() => {}}
               onToggleAll={() => {}}

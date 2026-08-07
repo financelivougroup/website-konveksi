@@ -187,6 +187,24 @@ Website Konveksi/
 
 ## Latest Progress
 
+### 2026-08-07 — Target Jahit: Utang Staf sub-tab + access restriction (Task 5)
+
+- New `src/pages/TargetJahitPage.tsx` with two tabs:
+  - **Target** — reuses `targetJahitSvc.fetchAll()` + `viewConfig['target-jahit']` columns via the shared `DataTable`/`Pagination` (`PAGE_SIZE=10`, search). Rows are normalized from live snake_case columns to the camelCase view keys via `TARGET_COLUMN_ALIAS` so the table renders real values (the pre-existing snake/camel cross-boundary issue documented in the sorting spec).
+  - **Utang Staf** — summary per penjahit (Nama, Total Gaji, Total Nilai PCS, Utang, Status) using `computeDebt(name)` from `staffDebt.ts`; currency via `formatCurrency`. Names from `registerPenjahitSvc.fetchAll()` (`pic_penjahit`), falling back to distinct `nama` from `target_jahit`.
+- Access gating: Utang Staf tab only enabled for `owner`/`finance` (`profile.role`); for `inventory` it renders a disabled tab with note "Hanya owner/finance yang dapat melihat." and `computeDebt` is never invoked.
+- `editable={false}` on the Target tab so the shared DataTable does not show dead Edit/Delete buttons (callbacks are no-ops in this read-oriented page).
+- Wired route in `src/App.tsx`: `currentView === 'target-jahit'` → `<TargetJahitPage />` (before generic fallback). Generic `case 'target-jahit'` fetch left intact.
+- `npm run build` passes clean.
+
+### 2026-08-07 — Target Jahit: Planning, Pricing & Utang subsystem (Tasks 1-4 + services)
+
+New subsystem under the Target Jahit hub (approved design `2026-08-06-target-jahit-planning-pricing-debt`):
+- **Data**: tables `planning_produksi`, `target_jahit_detail`, `complain_penalti` (migration `2026-08-06-target-jahit-subsystem.sql`), each with authenticated RLS policies (SELECT/INSERT/UPDATE/DELETE for `authenticated`) — the app runs behind the auth gate; salary/debt restriction is at the service/UI layer. Added **Jasa Pasang Kancing** to the Register PO component list (pricing transparency only; not part of penjahit debt).
+- **Services**: `staffDebt.ts` (`computeDebt` = total gaji − Σ(qty_selesai × (harga jahit+obras) per design, since day one; `generateTargetsFromPlanning` idempotent parent+detail insert; `buildPriceMap` latest-PO-per-product), plus CRUD for planning/complain/target-detail.
+- **Modules**: added `planning-produksi` (`PlanningProduksiPage`, incl. Generate Target) and `complain-penalti` (input_by from profile) + nav/sidebar icons; deferred minors (input_by overwritten on edit; etc.).
+- **Lint note**: `npm run lint` is not clean repo-wide (128 pre-existing problems, e.g. `RegisterPoPage`, `invoicePaymentFiles`, `ProductionMonitoring`). The new pages carry the same `react-hooks/set-state-in-effect` warning pattern as the reference `RegisterPoPage`; left consistent with the codebase idiom rather than refactored.
+
 ### 2026-08-05 — Invoicing Table: Total Qty, Nominal/PCS & Work Code
 
 - Added **Total Qty** and **Nominal/PCS** columns to the Invoicing table (`src/pages/InvoicingPage.tsx`), sourced from data already stored on each invoice row at generation (`autoInvoice.ts`): `pcsLinked` (total qty, = work order quantity) and `unitPrice` (= `register_po.total_per_pcs`).
