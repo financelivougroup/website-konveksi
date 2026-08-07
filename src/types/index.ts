@@ -91,6 +91,8 @@ export interface ToastMessage {
 export type ModuleId =
   | 'selesai-jahit'
   | 'target-jahit'
+  | 'planning-produksi'
+  | 'complain-penalti'
   | 'register-jahit'
   | 'daftar-libur'
   | 'register-penjahit'

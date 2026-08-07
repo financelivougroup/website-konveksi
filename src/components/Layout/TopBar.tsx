@@ -16,6 +16,8 @@ const dotColors: Record<ModuleId, string> = {
   'register-po': 'text-sky-500',
   'selesai-jahit': 'text-amber-500',
   'target-jahit': 'text-rose-500',
+  'planning-produksi': 'text-emerald-500',
+  'complain-penalti': 'text-red-500',
   'register-jahit': 'text-slate-400',
   'daftar-libur': 'text-slate-400',
   'register-penjahit': 'text-slate-400',

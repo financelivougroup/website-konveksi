@@ -85,6 +85,37 @@ export const viewConfig: Record<ModuleId, ViewConfig> = {
       { key: 'statusFinalAkumulasi', label: 'Status Final | Akumulasi', width: '150px', badge: true, icon: 'Award' },
     ],
   },
+  'planning-produksi': {
+    title: 'Planning Produksi',
+    editable: true,
+    sync: false,
+    columns: [
+      { key: 'namaPenjahit', label: 'Nama Penjahit', width: '150px', icon: 'User' },
+      { key: 'product', label: 'Product', width: '120px', icon: 'Box' },
+      { key: 'warna', label: 'Warna', width: '80px', icon: 'Palette' },
+      { key: 'qty', label: 'Qty', width: '80px', align: 'right', icon: 'TrendingUp' },
+      { key: 'bulanTarget', label: 'Bulan Target', width: '110px', icon: 'Calendar' },
+      { key: 'status', label: 'Status', width: '100px', badge: true, icon: 'Tag' },
+    ],
+  },
+  'complain-penalti': {
+    title: 'Complain & Penalti',
+    editable: true,
+    sync: false,
+    columns: [
+      { key: 'tanggal', label: 'Tanggal', width: '110px', icon: 'Calendar' },
+      { key: 'product', label: 'Product', width: '120px', icon: 'Box' },
+      { key: 'warna', label: 'Warna', width: '80px', icon: 'Palette' },
+      { key: 'pcs', label: 'PCS', width: '70px', align: 'right', icon: 'TrendingUp' },
+      { key: 'posisi', label: 'Posisi', width: '90px', badge: true, icon: 'Tag' },
+      { key: 'pic', label: 'PIC', width: '130px', icon: 'User' },
+      { key: 'detailComplain', label: 'Detail Complain', width: '220px', icon: 'FileText' },
+      { key: 'potonganPerPcs', label: 'Potongan/PCS', width: '120px', align: 'right', format: 'currency', icon: 'Banknote' },
+      { key: 'poin', label: 'Poin', width: '70px', align: 'right', icon: 'AlertCircle' },
+      { key: 'buktiUrl', label: 'Bukti', width: '110px', icon: 'FileText' },
+      { key: 'inputBy', label: 'Input By', width: '130px', icon: 'User' },
+    ],
+  },
   'register-jahit': {
     title: 'Register Jahit',
     editable: true,
@@ -237,6 +268,8 @@ export const mockData: Record<ModuleId, Record<string, unknown>[]> = {
   // Combined view: actual rows come from the active sub-tab resolved in App.tsx.
   // This empty fallback keeps the Record<ModuleId, ...> type valid.
   'production-data': [],
+  'planning-produksi': [],
+  'complain-penalti': [],
   'production-monitoring': [],
   'sewing-entry': [],
   'invoicing': [],
@@ -308,6 +341,8 @@ export const navGroups = [
       { id: 'master-import' as const, label: 'Master Data Import', icon: 'Package', locked: true },
       { id: 'register-po' as const, label: 'Register PO', icon: 'ClipboardList' },
       { id: 'target-jahit' as const, label: 'Target Jahit', icon: 'Target' },
+      { id: 'planning-produksi' as const, label: 'Planning Produksi', icon: 'Target' },
+      { id: 'complain-penalti' as const, label: 'Complain & Penalti', icon: 'AlertTriangle' },
     ],
   },
   {
