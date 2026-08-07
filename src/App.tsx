@@ -5,6 +5,8 @@ import ProductionMonitoring from '@/pages/ProductionMonitoring';
 import SewingEntryForm from '@/pages/SewingEntryForm';
 import InvoicingPage from '@/pages/InvoicingPage';
 import { RegisterPoPage } from '@/pages/RegisterPoPage';
+import { PlanningProduksiPage } from '@/pages/PlanningProduksiPage';
+import { ComplainPenaltiPage } from '@/pages/ComplainPenaltiPage';
 import OrderEntry from '@/pages/OrderEntry';
 import { Sidebar } from '@/components/Layout/Sidebar';
 import { AuthGate } from '@/components/Auth/AuthGate';
@@ -590,6 +592,10 @@ export default function App() {
         <RegisterPoPage />
       ) : currentView === 'order-entry' ? (
         <OrderEntry />
+      ) : currentView === 'planning-produksi' ? (
+        <PlanningProduksiPage />
+      ) : currentView === 'complain-penalti' ? (
+        <ComplainPenaltiPage />
       ) : (
       <main className="flex-1 flex flex-col min-w-0">
         {/* Top Bar */}
