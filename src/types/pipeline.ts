@@ -1,11 +1,10 @@
 // ===== Pipeline Production Types =====
 
 export type ProductionStatus =
-  | 'CUTTING_PENDING'
-  | 'CUTTING_COMPLETE'
-  | 'SEWING_IN_PROGRESS'
-  | 'FINISHING_IN_PROGRESS'
-  | 'FINISHING_COMPLETE'
+  | 'NEW'
+  | 'CUTTING'
+  | 'PROGRESS'
+  | 'FINISHED'
   | 'INVOICED';
 
 export type InvoiceStatus =
@@ -187,20 +186,18 @@ export interface AppUser {
 
 // Status display helpers
 export const productionStatusLabel: Record<ProductionStatus, string> = {
-  CUTTING_PENDING: 'Cutting Pending',
-  CUTTING_COMPLETE: 'Cutting Complete',
-  SEWING_IN_PROGRESS: 'Sewing In Progress',
-  FINISHING_IN_PROGRESS: 'Finishing In Progress',
-  FINISHING_COMPLETE: 'Finished',
+  NEW: 'New',
+  CUTTING: 'Cutting',
+  PROGRESS: 'Progress',
+  FINISHED: 'Finished',
   INVOICED: 'Invoiced',
 };
 
 export const productionStatusColor: Record<ProductionStatus, string> = {
-  CUTTING_PENDING: 'bg-blue-100 text-blue-700',
-  CUTTING_COMPLETE: 'bg-cyan-100 text-cyan-700',
-  SEWING_IN_PROGRESS: 'bg-amber-100 text-amber-700',
-  FINISHING_IN_PROGRESS: 'bg-pink-100 text-pink-700',
-  FINISHING_COMPLETE: 'bg-green-100 text-green-700',
+  NEW: 'bg-slate-100 text-slate-700',
+  CUTTING: 'bg-blue-100 text-blue-700',
+  PROGRESS: 'bg-amber-100 text-amber-700',
+  FINISHED: 'bg-green-100 text-green-700',
   INVOICED: 'bg-purple-100 text-purple-700',
 };
 

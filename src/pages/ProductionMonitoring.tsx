@@ -140,7 +140,7 @@ export default function ProductionMonitoring({ onOpenSewingEntry }: { onOpenSewi
         const cuttingTotal = getCuttingForWO(wo.id)?.totalCutting ?? 0;
         const sewingTotal = getSewingTotalLocal(wo.id);
         const orderQty = Number(wo.quantity) || 0;
-        const status = deriveStatus(wo.productionStatus, cuttingTotal, sewingTotal, orderQty);
+        const status = deriveStatus(cuttingTotal, sewingTotal, orderQty);
         return { ...wo, cuttingTotal, sewingTotal, derivedStatus: status };
       })
       .sort((a, b) => {
@@ -151,8 +151,8 @@ export default function ProductionMonitoring({ onOpenSewingEntry }: { onOpenSewi
   }, [filteredWO, cuttingRecords, sewingRecords]);
 
   // ===== CUTTING =====
-  const cuttingQueueWO = decoratedWO.filter(w => w.derivedStatus === 'CUTTING_PENDING');
-  const cuttingDoneWO = decoratedWO.filter(w => w.derivedStatus !== 'CUTTING_PENDING');
+  const cuttingQueueWO = decoratedWO.filter(w => w.derivedStatus === 'NEW');
+  const cuttingDoneWO = decoratedWO.filter(w => w.derivedStatus !== 'NEW');
 
   const handleInputCutting = async (woId: string) => {
     const val = cuttingInputs[woId];
@@ -164,9 +164,9 @@ export default function ProductionMonitoring({ onOpenSewingEntry }: { onOpenSewi
       workOrderId: woId, totalCutting: qty, sisaCutting: qty - wo.quantity, inputBy: currentDisplayName, inputAt: new Date().toISOString().split('T')[0], locked: true,
     });
     if (error) { setCuttingMessage(`❌ ${error.message}`); return; }
-    await workOrderSvc.updateProdStatus(woId, 'CUTTING_COMPLETE');
+    await workOrderSvc.updateProdStatus(woId, 'CUTTING');
     if (newCR) setCuttingRecords(prev => [...prev, newCR]);
-    setWorkOrders(prev => prev.map(w => w.id === woId ? { ...w, productionStatus: 'CUTTING_COMPLETE' } : w));
+    setWorkOrders(prev => prev.map(w => w.id === woId ? { ...w, productionStatus: 'CUTTING' } : w));
     setCuttingMessage(`✅ Cutting ${qty} pcs berhasil disimpan!`);
     setCuttingInputs(prev => ({ ...prev, [woId]: '' }));
     setTimeout(() => setCuttingMessage(null), 3000);
@@ -187,7 +187,7 @@ export default function ProductionMonitoring({ onOpenSewingEntry }: { onOpenSewi
       product: po.product, productId: pid,
       variationId: `${pid}-${po.warna.toUpperCase().substring(0, 3)}-${po.size}`,
       informationVariation: po.informationVariation, warna: po.warna, size: po.size, brand: po.brand,
-      quantity: po.quantity, productionStatus: 'CUTTING_PENDING', invoiceStatus: 'NONE',
+      quantity: po.quantity, productionStatus: 'NEW', invoiceStatus: 'NONE',
       createdBy: currentDisplayName, createdAt: po.createdAt, pulledAt: new Date().toISOString(),
     });
     if (error) { setPullMessage(`❌ ${error.message}`); return; }
@@ -357,7 +357,7 @@ export default function ProductionMonitoring({ onOpenSewingEntry }: { onOpenSewi
         {activeTab === 'kanban' && (
           <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
             <div className="h-full overflow-x-auto">
-              <div className="grid grid-cols-[repeat(7,350px)] gap-4 min-w-max pb-4">
+              <div className="grid grid-cols-[repeat(5,350px)] gap-4 min-w-max pb-4">
                 {(STATUS_ORDER.map(s => ({ status: s, label: productionStatusLabel[s], color: productionStatusColor[s] }))).map(col => {
                   const wos = decoratedWO.filter(w => w.derivedStatus === col.status);
                   return <KanbanColumn key={col.status} status={col.status} label={col.label} color={col.color} workOrders={wos} searchQuery={searchQuery} />;

@@ -40,8 +40,8 @@ export async function transitionToFinishingComplete(workOrderId: string): Promis
   // Use source_order_id (the production order ID) for register_po lookup
   const poId = (wo.source_order_id as string | null) ?? null;
 
-  // 2. Idempotency — already at FINISHING_COMPLETE
-  if (wo.prod_status === 'FINISHING_COMPLETE' || wo.prod_status === 'INVOICED') {
+  // 2. Idempotency — already at FINISHED or INVOICED
+  if (wo.prod_status === 'FINISHED' || wo.prod_status === 'INVOICED') {
     return {
       workOrder: wo as unknown as WorkOrder,
       invoiceCreated: false,
@@ -51,7 +51,7 @@ export async function transitionToFinishingComplete(workOrderId: string): Promis
   // 3. Update prod_status
   const { data: updatedWo, error: updErr } = await supabase
     .from('work_orders')
-    .update({ prod_status: 'FINISHING_COMPLETE' })
+    .update({ prod_status: 'FINISHED' })
     .eq('id', workOrderId)
     .select()
     .single();
@@ -134,7 +134,7 @@ export async function backfillMissingInvoices(): Promise<number> {
   const { data: woRows, error: woErr } = await supabase
     .from('work_orders')
     .select('id, prod_status, source_order_id')
-    .in('prod_status', ['FINISHING_COMPLETE', 'INVOICED']);
+    .in('prod_status', ['FINISHED', 'INVOICED']);
   console.log('[backfill] woRows:', woRows, 'error:', woErr);
   if (!woRows) return 0;
 
@@ -165,7 +165,7 @@ export async function backfillMissingInvoices(): Promise<number> {
   return created;
 }
 
-// Generate invoice for a WO that's already FINISHING_COMPLETE (no status update needed)
+// Generate invoice for a WO that's already FINISHED (no status update needed)
 async function generateInvoiceForFinishedWo(workOrderId: string): Promise<boolean> {
   const { data: woRow } = await supabase
     .from('work_orders')

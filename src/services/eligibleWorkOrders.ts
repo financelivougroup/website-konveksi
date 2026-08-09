@@ -54,7 +54,7 @@ export async function fetchEligibleWorkOrders(): Promise<{ data: WorkOrder[] | n
   const { data: woData, error: woError } = await supabase
     .from(WO_TABLE)
     .select('*')
-    .in('prod_status', ['CUTTING_COMPLETE', 'SEWING_IN_PROGRESS', 'FINISHING_IN_PROGRESS', 'FINISHING_COMPLETE', 'INVOICED'] as ProductionStatus[])
+    .in('prod_status', ['CUTTING', 'PROGRESS', 'FINISHED', 'INVOICED'] as ProductionStatus[])
     .order('created_at', { ascending: false });
   if (woError) return { data: null, error: woError };
   if (!woData) return { data: [], error: null };
@@ -94,7 +94,7 @@ export async function fetchEligibleWorkOrders(): Promise<{ data: WorkOrder[] | n
       const cuttingTotal = cuttingByWo.get(w.id) ?? 0;
       const sewingTotal = sewingByWo.get(w.id) ?? 0;
       const orderQty = Number(w.quantity) || 0;
-      return deriveStatus(w.prod_status as ProductionStatus, cuttingTotal, sewingTotal, orderQty) === 'FINISHING_COMPLETE';
+      return deriveStatus(cuttingTotal, sewingTotal, orderQty) === 'FINISHED';
     });
 
   return { data: eligible.map(mapRow), error: null };

@@ -1,28 +1,27 @@
 import type { ProductionStatus } from '@/types/pipeline';
 
 export const STATUS_ORDER: ProductionStatus[] = [
-  'CUTTING_PENDING',
-  'CUTTING_COMPLETE',
-  'SEWING_IN_PROGRESS',
-  'FINISHING_IN_PROGRESS',
-  'FINISHING_COMPLETE',
+  'NEW',
+  'CUTTING',
+  'PROGRESS',
+  'FINISHED',
   'INVOICED',
 ];
 
+/**
+ * Derive production status from actual cutting/sewing totals vs order qty.
+ * Invoiced is NOT derived here — it is driven by invoiceStatus != 'NONE'
+ * (callers that track invoicing check that separately).
+ */
 export function deriveStatus(
-  rawStatus: ProductionStatus | undefined,
   cuttingTotal: number,
   sewingTotal: number,
   orderQty: number,
 ): ProductionStatus {
-  if (rawStatus === 'INVOICED') return 'INVOICED';
-  if (cuttingTotal <= 0) return 'CUTTING_PENDING';
-  if (sewingTotal <= 0) return 'CUTTING_COMPLETE';
-  if (sewingTotal === cuttingTotal) {
-    if (cuttingTotal > orderQty) return 'FINISHING_IN_PROGRESS';
-    return 'FINISHING_COMPLETE';
-  }
-  return 'SEWING_IN_PROGRESS';
+  if (cuttingTotal <= 0) return 'NEW';
+  if (sewingTotal <= 0) return 'CUTTING';
+  if (sewingTotal >= orderQty && sewingTotal > 0) return 'FINISHED';
+  return 'PROGRESS';
 }
 
 export function validateStatusTransition(
@@ -38,11 +37,11 @@ export function validateStatusTransition(
   if (toIdx < 0 || fromIdx < 0) return null;
   if (toIdx < fromIdx) return 'Gak bisa mundur status';
   if (toIdx > fromIdx + 1) return 'Gak bisa lompat status — maju satu per satu';
-  if (from === 'SEWING_IN_PROGRESS' && to === 'FINISHING_IN_PROGRESS' && (sewingTotal !== cuttingTotal || sewingTotal <= 0)) {
-    return 'Cutting dan jahit harus sama nilainya untuk lanjut finishing';
+  if (from === 'CUTTING' && to === 'PROGRESS' && sewingTotal <= 0) {
+    return 'Jahit harus sudah terisi untuk lanjut Progress';
   }
-  if (from === 'FINISHING_IN_PROGRESS' && to === 'FINISHING_COMPLETE' && (sewingTotal !== cuttingTotal || cuttingTotal > quantity)) {
-    return 'Cutting harus ≤ qty order untuk finish';
+  if (from === 'PROGRESS' && to === 'FINISHED' && (sewingTotal < quantity || cuttingTotal <= 0)) {
+    return 'Cutting dan jahit harus sampai qty order untuk finish';
   }
   return null;
 }

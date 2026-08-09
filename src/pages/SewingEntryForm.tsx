@@ -4,7 +4,6 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import * as sewingRecordSvc from '@/services/sewingRecords';
 import * as workOrderSvc from '@/services/workOrders';
-import * as cuttingRecordSvc from '@/services/cuttingRecords';
 import { transitionToFinishingComplete } from '@/services/autoInvoice';
 import type { WorkOrder, SewingRecord } from '@/types/pipeline';
 
@@ -40,7 +39,7 @@ export default function SewingEntryForm({ onBack, workOrders: externalWorkOrders
   }, [externalWorkOrders]);
 
   const availableWO = workOrders.filter(
-    (w) => w.productionStatus === 'CUTTING_COMPLETE' || w.productionStatus === 'SEWING_IN_PROGRESS',
+    (w) => w.productionStatus === 'PROGRESS' || w.productionStatus === 'FINISHED',
   );
   const selectedWO = workOrders.find((w) => w.id === woId);
   const sudahTerjahit = selectedWO
@@ -81,26 +80,21 @@ export default function SewingEntryForm({ onBack, workOrders: externalWorkOrders
       return;
     }
 
-    // Auto-update WO status:
-    // - First sewing entry while cutting not yet equal: SEWING_IN_PROGRESS
-    // - Sewing reaches cutting total and cutting > qty order: FINISHING_IN_PROGRESS
-    // - Sewing equals cutting equals qty order: FINISHING_COMPLETE
+    // Auto-update WO status (5-state):
+    // - Any sewing entry (cutting already filled) -> PROGRESS
+    // - Sewing reaches qty order -> FINISHED (via transitionToFinishingComplete,
+    //   which also triggers auto-invoice generation)
     const newTotal = sudahTerjahit + Number(qty);
     const orderQty = Number(selectedWO.quantity) || 0;
     if (newTotal > 0) {
-      const { data: cr } = await cuttingRecordSvc.fetchByWorkOrder(woId);
-      const cuttingTotal = cr?.totalCutting ?? orderQty;
-      if (newTotal === cuttingTotal && cuttingTotal <= orderQty) {
-        // transitionToFinishingComplete handles both: update prod_status + auto-invoice generation
+      if (newTotal >= orderQty) {
         try {
           await transitionToFinishingComplete(woId);
         } catch (e) {
           console.warn('Auto-invoice failed (will be backfilled):', e);
         }
-      } else if (newTotal === cuttingTotal && cuttingTotal > orderQty) {
-        await workOrderSvc.updateProdStatus(woId, 'FINISHING_IN_PROGRESS');
       } else {
-        await workOrderSvc.updateProdStatus(woId, 'SEWING_IN_PROGRESS');
+        await workOrderSvc.updateProdStatus(woId, 'PROGRESS');
       }
     }
 

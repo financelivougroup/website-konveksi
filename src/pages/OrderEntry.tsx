@@ -107,7 +107,7 @@ export default function OrderEntry() {
       product: po.product, productId: pid,
       variationId: varId,
       informationVariation: po.informationVariation, warna: po.warna, size: po.size, brand: po.brand,
-      quantity: po.quantity, productionStatus: 'CUTTING_PENDING', invoiceStatus: 'NONE',
+      quantity: po.quantity, productionStatus: 'NEW', invoiceStatus: 'NONE',
       createdBy: currentDisplayName, createdAt: po.createdAt, pulledAt: now,
     });
 

@@ -111,11 +111,11 @@ export function InvoicingPage() {
               const { data: woRows, error: woErr } = await supabase
                 .from('work_orders')
                 .select('id, prod_status, source_order_id, work_code')
-                .in('prod_status', ['FINISHING_COMPLETE', 'INVOICED']);
+                .in('prod_status', ['FINISHED', 'INVOICED']);
               logs.push(`WO finished: ${woRows?.length ?? 0} rows, err=${String(woErr)}`);
 
               if (!woRows || woRows.length === 0) {
-                showToast('❌ Ga ada WO FINISHING_COMPLETE. Cek prod_status WO.', 'error');
+                showToast('❌ Ga ada WO FINISHED. Cek prod_status WO.', 'error');
                 console.log(logs.join('\n'));
                 setBackfilling(false);
                 return;
