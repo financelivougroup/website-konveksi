@@ -187,6 +187,16 @@ Website Konveksi/
 
 ## Latest Progress
 
+### 2026-08-09 — ProductionStatus 5-state revision + Kanban 5 columns
+
+- `ProductionStatus` dirombak dari 6 nilai lama menjadi **5**: `NEW, CUTTING, PROGRESS, FINISHED, INVOICED` (`src/types/pipeline.ts` + label/color).
+- `deriveStatus` kini menghitung status dari angka produksi `(cuttingTotal, sewingTotal, orderQty)`, bukan dari `prod_status` DB: `cutting<=0→NEW`, `cutting≥1 & jahit=0→CUTTING`, `jahit≥qty & jahit>0→FINISHED`, else `PROGRESS`. **Invoiced** ditentukan dari `invoiceStatus != 'NONE'`.
+- Kanban menampilkan 5 kolom (New / Cutting / Progress / Finished / Invoiced); grid diubah dari 7→5 kolom. Drag/drop `validateStatusTransition` disesuaikan.
+- Konsumen dirombak: `OrderEntry` (create `NEW`), `ProductionMonitoring` (filter `NEW`), `SewingEntryForm` (dropdown `PROGRESS`/`FINISHED`; auto-transition → `PROGRESS`, → `FINISHED` via auto-invoice), `services/autoInvoice` (`FINISHED`/`INVOICED`), `eligibleWorkOrders`, `InvoicingPage` backfill, `SeedPage` (nilai 5-state).
+- Migration `2026-08-09-kanban-5-status-normalize.sql` menormalkan `prod_status` lama → 5-state via Supabase MCP; live data kini semua `FINISHED` (4), tidak ada status lama tersisa.
+- `npm run build` hijau. Lint: hanya `no-explicit-any` pre-existing; tidak ada status lama di `src/`.
+- Keputusan user: Finished = jahit ≥ qty; sewing pertama → langsung `PROGRESS`.
+
 ### 2026-08-07 — Target Jahit: Utang Staf sub-tab + access restriction (Task 5)
 
 - New `src/pages/TargetJahitPage.tsx` with two tabs:
