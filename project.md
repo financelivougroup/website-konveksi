@@ -187,6 +187,17 @@ Website Konveksi/
 
 ## Latest Progress
 
+### 2026-08-10 — Kanban card report bubbles (Jahit & Finishing)
+
+- Setiap card Kanban kini punya 2 bubble: **Jahit** dan **Finishing** (`src/pages/ProductionMonitoring.tsx`).
+- Klik bubble → expand area kecil di dalam card menampilkan laporan per-WO:
+  - **Laporan Jahit** (`sewing_records`): PIC penjahit, qty selesai, tanggal, nama bukti (imageName).
+  - **Laporan Finishing** (`finishing_records`): qty finishing, tanggal import, source, badge syncStatus (OK/FAILED).
+- Hanya satu bubble terbuka dalam satu waktu (keputusan user A); klik bubble aktif menutupnya.
+- Klik bubble TIDAK memicu drag (stopPropagation); drag card tetap berfungsi. Baca-saja.
+- `finishingRecords` kini dimuat di halaman (fetchAll, ditambah state) — sebelumnya tidak ada.
+- `npm run build` hijau.
+
 ### 2026-08-09 — ProductionStatus 5-state revision + Kanban 5 columns
 
 - `ProductionStatus` dirombak dari 6 nilai lama menjadi **5**: `NEW, CUTTING, PROGRESS, FINISHED, INVOICED` (`src/types/pipeline.ts` + label/color).
