@@ -187,6 +187,14 @@ Website Konveksi/
 
 ## Latest Progress
 
+### 2026-08-10 — Kanban per product note + full-screen detail
+
+- Card Kanban kini **per product note** (bukan per work code): menampilkan **product note, product, brand, total qty** (Σ semua work code di dalamnya, termasuk FINISHED/INVOICED). Kolom card = **status tertinggi** dari work code dalam group.
+- **Klik card → overlay full screen** (`ProductionMonitoring.tsx`): menampilkan identitas product note (product, brand, total qty), **daftar work code** di dalamnya (warna, size, qty, cutting, jahit, status), dan **2 bubble laporan** — **Laporan Jahit** & **Laporan Finishing** — scoped ke product note (semua work code-nya), satu bubble terbuka dalam satu waktu.
+- Drag id = product note; drop card meng-update `prod_status` **semua work code** dalam group. Klik card membuka overlay (tidak bentrok drag).
+- Menggantikan kartu per-work-code (yang punya bubble inline) dari commit sebelumnya.
+- `npm run build` hijau; lint hanya temuan pre-existing.
+
 ### 2026-08-10 — Kanban card report bubbles (Jahit & Finishing)
 
 - Setiap card Kanban kini punya 2 bubble: **Jahit** dan **Finishing** (`src/pages/ProductionMonitoring.tsx`).
