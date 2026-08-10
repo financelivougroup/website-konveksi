@@ -7,6 +7,8 @@ import {
   Download,
   Image,
   Trash2,
+  Scissors,
+  PackageCheck,
 } from 'lucide-react';
 
 import {
@@ -25,8 +27,9 @@ import { formatDate } from '@/data/pipelineData';
 import * as workOrderSvc from '@/services/workOrders';
 import * as cuttingRecordSvc from '@/services/cuttingRecords';
 import * as sewingRecordSvc from '@/services/sewingRecords';
+import * as finishingRecordSvc from '@/services/finishingRecords';
 import * as productionOrderSvc from '@/services/productionOrders';
-import type { WorkOrder, SewingRecord, CuttingRecord, ProductionStatus } from '@/types/pipeline';
+import type { WorkOrder, SewingRecord, CuttingRecord, FinishingRecord, ProductionStatus } from '@/types/pipeline';
 import { productionStatusLabel, productionStatusColor } from '@/types/pipeline';
 import { STATUS_ORDER, deriveStatus, validateStatusTransition } from '@/lib/productionStatus';
 
@@ -42,9 +45,33 @@ function StatusBadge({ status }: { status: ProductionStatus }) {
 }
 
 // ===== KanbanCard =====
-function KanbanCard({ wo, isDragging, statusOverride }: { wo: WorkOrder; isDragging?: boolean; statusOverride?: { label: string; color: string } }) {
+function KanbanCard({
+  wo,
+  isDragging,
+  statusOverride,
+  sewingList,
+  finishingList,
+}: {
+  wo: WorkOrder;
+  isDragging?: boolean;
+  statusOverride?: { label: string; color: string };
+  sewingList: SewingRecord[];
+  finishingList: FinishingRecord[];
+}) {
   const { attributes, listeners, setNodeRef, transform } = useDraggable({ id: wo.id });
   const style = transform ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`, zIndex: 50 } : undefined;
+  const [openBubble, setOpenBubble] = useState<'sewing' | 'finishing' | null>(null);
+
+  // Bubbles toggle one at a time (design decision A).
+  const toggleBubble = (which: 'sewing' | 'finishing', e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setOpenBubble((prev) => (prev === which ? null : which));
+  };
+
+  const sewing = sewingList.filter((s) => s.workOrderId === wo.id).sort((a, b) => b.tanggalLaporan.localeCompare(a.tanggalLaporan));
+  const finishing = finishingList.filter((f) => f.workOrderId === wo.id).sort((a, b) => (b.syncedAt || '').localeCompare(a.syncedAt || ''));
+
   return (
     <div ref={setNodeRef} {...listeners} {...attributes} style={style}
       className={cn('bg-white rounded-[14px] border border-[#E5E7EB] shadow-sm p-[14px] hover:-translate-y-0.5 hover:scale-[1.01] hover:shadow-md transition-all duration-200 ease-out cursor-pointer w-full max-w-[350px] touch-none', isDragging && 'opacity-50 scale-105 shadow-lg')}>
@@ -61,12 +88,88 @@ function KanbanCard({ wo, isDragging, statusOverride }: { wo: WorkOrder; isDragg
         <span className="text-[12px] font-semibold leading-[1.4] text-slate-800">{wo.product}</span>
         <span className="text-[12px] font-bold text-slate-900">{wo.quantity} pcs</span>
       </div>
+
+      {/* Bubbles */}
+      <div className="flex gap-1.5 mt-3" onClick={(e) => e.stopPropagation()}>
+        <button
+          type="button"
+          onClick={(e) => toggleBubble('sewing', e)}
+          title="Laporan Jahit"
+          className={cn(
+            'inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-semibold transition-colors',
+            openBubble === 'sewing' ? 'bg-sky-100 text-sky-700' : 'bg-slate-100 text-slate-600 hover:bg-sky-50 hover:text-sky-700',
+          )}
+        >
+          <Scissors className="w-3 h-3" /> Jahit
+        </button>
+        <button
+          type="button"
+          onClick={(e) => toggleBubble('finishing', e)}
+          title="Laporan Finishing"
+          className={cn(
+            'inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-semibold transition-colors',
+            openBubble === 'finishing' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600 hover:bg-emerald-50 hover:text-emerald-700',
+          )}
+        >
+          <PackageCheck className="w-3 h-3" /> Finishing
+        </button>
+      </div>
+
+      {/* Expand area — one at a time */}
+      {openBubble === 'sewing' && (
+        <div className="mt-2 rounded-lg bg-slate-50 border border-slate-200 p-2 max-h-40 overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Laporan Jahit</p>
+          {sewing.length === 0 ? (
+            <p className="text-[11px] text-slate-400">Belum ada laporan jahit.</p>
+          ) : (
+            <ul className="space-y-1.5">
+              {sewing.map((s) => (
+                <li key={s.id} className="text-[11px] text-slate-700">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium truncate">{s.picPenjahit}</span>
+                    <span className="font-bold shrink-0">{s.qtySelesai} pcs</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 text-[10px] text-slate-400">
+                    <span>{s.tanggalLaporan}</span>
+                    {s.imageName ? <span className="inline-flex items-center gap-0.5"><Image className="w-2.5 h-2.5" />{s.imageName}</span> : <span>—</span>}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+      {openBubble === 'finishing' && (
+        <div className="mt-2 rounded-lg bg-slate-50 border border-slate-200 p-2 max-h-40 overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Laporan Finishing</p>
+          {finishing.length === 0 ? (
+            <p className="text-[11px] text-slate-400">Belum ada laporan finishing.</p>
+          ) : (
+            <ul className="space-y-1.5">
+              {finishing.map((f) => (
+                <li key={f.id} className="text-[11px] text-slate-700">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium truncate">{f.qtyFinishing} pcs</span>
+                    <span className={cn(
+                      'inline-block px-1.5 py-0.5 rounded text-[9px] font-semibold',
+                      f.syncStatus === 'OK' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700',
+                    )}>{f.syncStatus}</span>
+                  </div>
+                  <div className="text-[10px] text-slate-400">
+                    {f.tanggalImport} · {f.source || '—'}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
 // ===== KanbanColumn =====
-function KanbanColumn({ status, label, color, workOrders, searchQuery }: { status: string; label: string; color: string; workOrders: WorkOrder[]; searchQuery: string }) {
+function KanbanColumn({ status, label, color, workOrders, searchQuery, sewingList, finishingList }: { status: string; label: string; color: string; workOrders: WorkOrder[]; searchQuery: string; sewingList: SewingRecord[]; finishingList: FinishingRecord[] }) {
   const { setNodeRef, isOver } = useDroppable({ id: status });
   const filtered = searchQuery ? workOrders.filter(w => {
     const q = searchQuery.toLowerCase();
@@ -79,7 +182,7 @@ function KanbanColumn({ status, label, color, workOrders, searchQuery }: { statu
         <span className="text-[11px] font-bold bg-white/30 px-2 py-0.5 rounded-full">{workOrders.length}</span>
       </div>
       <div ref={setNodeRef} className="flex-1 bg-slate-50 rounded-b-lg p-3 space-y-3 max-h-[calc(100vh-280px)] overflow-y-auto min-h-[80px]">
-        {filtered.length === 0 ? <div className="text-center py-8 text-slate-400 text-[12px]">No work orders</div> : filtered.map(wo => <KanbanCard key={wo.id} wo={wo} />)}
+        {filtered.length === 0 ? <div className="text-center py-8 text-slate-400 text-[12px]">No work orders</div> : filtered.map(wo => <KanbanCard key={wo.id} wo={wo} sewingList={sewingList} finishingList={finishingList} />)}
       </div>
     </div>
   );
@@ -100,6 +203,7 @@ export default function ProductionMonitoring({ onOpenSewingEntry }: { onOpenSewi
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
   const [cuttingRecords, setCuttingRecords] = useState<CuttingRecord[]>([]);
   const [sewingRecords, setSewingRecords] = useState<SewingRecord[]>([]);
+  const [finishingRecords, setFinishingRecords] = useState<import('@/types/pipeline').FinishingRecord[]>([]);
   const [planningOrders, setPlanningOrders] = useState<import('@/types/pipeline').ProductionOrder[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -113,10 +217,11 @@ export default function ProductionMonitoring({ onOpenSewingEntry }: { onOpenSewi
   useEffect(() => {
     (async () => {
       setLoading(true);
-      const [wo, cr, sr, po] = await Promise.all([workOrderSvc.fetchAll(), cuttingRecordSvc.fetchAll(), sewingRecordSvc.fetchAll(), productionOrderSvc.fetchAll()]);
+      const [wo, cr, sr, fr, po] = await Promise.all([workOrderSvc.fetchAll(), cuttingRecordSvc.fetchAll(), sewingRecordSvc.fetchAll(), finishingRecordSvc.fetchAll(), productionOrderSvc.fetchAll()]);
       if (wo.data) setWorkOrders(wo.data);
       if (cr.data) setCuttingRecords(cr.data);
       if (sr.data) setSewingRecords(sr.data);
+      if (fr.data) setFinishingRecords(fr.data);
       if (po.data) setPlanningOrders(po.data.filter(p => p.status === 'PLANNING'));
       setLoading(false);
     })();
@@ -360,11 +465,11 @@ export default function ProductionMonitoring({ onOpenSewingEntry }: { onOpenSewi
               <div className="grid grid-cols-[repeat(5,350px)] gap-4 min-w-max pb-4">
                 {(STATUS_ORDER.map(s => ({ status: s, label: productionStatusLabel[s], color: productionStatusColor[s] }))).map(col => {
                   const wos = decoratedWO.filter(w => w.derivedStatus === col.status);
-                  return <KanbanColumn key={col.status} status={col.status} label={col.label} color={col.color} workOrders={wos} searchQuery={searchQuery} />;
+                  return <KanbanColumn key={col.status} status={col.status} label={col.label} color={col.color} workOrders={wos} searchQuery={searchQuery} sewingList={sewingRecords} finishingList={finishingRecords} />;
                 })}
               </div>
             </div>
-            <DragOverlay>{activeDragWO ? <div className="opacity-90"><KanbanCard wo={activeDragWO} isDragging /></div> : null}</DragOverlay>
+            <DragOverlay>{activeDragWO ? <div className="opacity-90"><KanbanCard wo={activeDragWO} isDragging sewingList={sewingRecords} finishingList={finishingRecords} /></div> : null}</DragOverlay>
           </DndContext>
         )}
 
