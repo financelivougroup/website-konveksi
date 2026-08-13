@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, type ComponentType } from 'react';
 import {
   Search,
   Filter,
@@ -10,6 +10,12 @@ import {
   Scissors,
   PackageCheck,
   X,
+  Table2,
+  Shirt,
+  CircleDot,
+  Kanban,
+  DownloadCloud,
+  User,
 } from 'lucide-react';
 
 import {
@@ -391,31 +397,67 @@ export default function ProductionMonitoring({ onOpenSewingEntry, onOpenFinishin
     else showToast(`✅ Status updated ke "${productionStatusLabel[newStatus as ProductionStatus] || newStatus}"`);
   };
 
-  const tabs: { id: TabType; label: string; icon: string }[] = [
-    { id: 'raw', label: 'RAW DATA', icon: '📋' }, { id: 'cutting', label: 'Cutting Log', icon: '✂️' }, { id: 'sewing', label: 'Sewing Log', icon: '🧵' }, { id: 'finishing', label: 'Finishing Log', icon: '📦' }, { id: 'kancing', label: 'Pasang Kancing Log', icon: '🔘' }, { id: 'kanban', label: 'Kanban', icon: '📊' },
+  const TAB_ICONS: Record<TabType, ComponentType<{ className?: string }>> = {
+    raw: Table2, cutting: Scissors, sewing: Shirt, finishing: PackageCheck, kancing: CircleDot, kanban: Kanban,
+  };
+  const tabs: { id: TabType; label: string; desc: string }[] = [
+    { id: 'raw', label: 'Raw Data', desc: 'Daftar work order beserta progress cutting, jahit, dan finishing.' },
+    { id: 'cutting', label: 'Cutting Log', desc: 'Riwayat pemotongan per work order.' },
+    { id: 'sewing', label: 'Sewing Log', desc: 'Database hasil jahitan yang telah lulus QC.' },
+    { id: 'finishing', label: 'Finishing Log', desc: 'Database hasil finishing per work order.' },
+    { id: 'kancing', label: 'Pasang Kancing Log', desc: 'Database hasil pasang kancing manual — lubangi dan jahit kancing.' },
+    { id: 'kanban', label: 'Kanban', desc: 'Papan produksi per product note.' },
   ];
+  const activeTabInfo = tabs.find(t => t.id === activeTab);
   const activeDragGroup = activeDragId ? kanbanGroups.find(g => g.productNote === activeDragId) : null;
 
   if (loading) return <div className="flex-1 flex items-center justify-center"><div className="text-slate-400 text-sm">Loading production data...</div></div>;
 
   return (
     <div className="flex-1 flex flex-col min-w-0 overflow-auto">
-      <div className="p-4 sm:p-5 pb-0">
-        <div className="flex items-center justify-between mb-4">
-          <div><h1 className="text-lg font-bold text-slate-900">Production Monitoring</h1><p className="text-[12px] text-slate-500 mt-0.5">Pipeline: Work Order → Cutting → Sewing → Finishing</p></div>
+      <div className="px-6 pt-5 pb-0">
+        <div className="flex items-center justify-between mb-5">
+          <div>
+            <h1 className="text-[17px] font-semibold tracking-tight text-slate-900">Production Monitoring</h1>
+            <p className="text-[12px] text-slate-500 mt-0.5">Work Order → Cutting → Sewing → Finishing</p>
+          </div>
           <div className="flex items-center gap-2">
-            <button onClick={() => setShowPullModal(true)} className="h-7 px-3 text-[10px] font-semibold bg-green-500 text-white rounded-lg hover:bg-green-600 flex items-center gap-1.5">📥 Pull Order Entry</button>
-            <div className="text-[10px] text-slate-400 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5">👤 Role: <strong>Owner</strong></div>
+            <button onClick={() => setShowPullModal(true)} className="h-8 px-3.5 text-[12px] font-medium bg-slate-900 text-white rounded-lg hover:bg-slate-700 hover:shadow-md transition-all flex items-center gap-1.5">
+              <DownloadCloud className="w-3.5 h-3.5" /> Pull Order Entry
+            </button>
+            <div className="h-8 px-3 text-[12px] text-slate-500 bg-white border border-slate-200 rounded-lg flex items-center gap-1.5">
+              <User className="w-3.5 h-3.5 text-slate-400" /> {currentDisplayName}
+            </div>
           </div>
         </div>
         {toast && <div className="mb-3 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-[12px] text-blue-700">{toast}</div>}
         {pullMessage && <div className="mb-3 px-3 py-2 bg-green-50 border border-green-200 rounded-lg text-[12px] text-green-700">{pullMessage}</div>}
-        <div className="flex gap-0 border-b border-gray-200">
-          {tabs.map(t => <button key={t.id} onClick={() => setActiveTab(t.id)} className={cn('px-4 py-2.5 text-[12px] font-medium border-b-2 transition-colors', activeTab === t.id ? 'text-blue-600 border-blue-600' : 'text-slate-500 border-transparent hover:text-slate-700')}>{t.icon} {t.label}</button>)}
+        <div className="inline-flex items-center gap-1 max-w-full overflow-x-auto bg-white border border-slate-200/80 rounded-xl p-1.5 shadow-sm shadow-slate-200/60">
+          {tabs.map(t => {
+            const Icon = TAB_ICONS[t.id];
+            const active = activeTab === t.id;
+            return (
+              <button
+                key={t.id}
+                onClick={() => setActiveTab(t.id)}
+                aria-pressed={active}
+                className={cn(
+                  'shrink-0 h-9 px-3.5 rounded-lg text-[12px] font-medium inline-flex items-center gap-2 whitespace-nowrap transition-all duration-200 ease-out',
+                  active
+                    ? 'bg-slate-900 text-white shadow-sm'
+                    : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900 hover:-translate-y-px hover:shadow-md hover:shadow-slate-200',
+                )}
+              >
+                <Icon className={cn('w-3.5 h-3.5', active ? 'text-white' : 'text-slate-400')} />
+                {t.label}
+              </button>
+            );
+          })}
         </div>
+        {activeTabInfo && <p className="mt-2 text-[11px] text-slate-400">{activeTabInfo.desc}</p>}
       </div>
 
-      <div className="flex-1 p-4 sm:p-5 pt-3 overflow-auto">
+      <div className="flex-1 px-6 pt-4 pb-5 overflow-auto">
         {/* RAW DATA */}
         {activeTab === 'raw' && (
           <div>
