@@ -419,7 +419,6 @@ export default function ProductionMonitoring({ onOpenSewingEntry, onOpenFinishin
         <div className="flex items-center justify-between mb-4">
           <div>
             <h1 className="text-[17px] font-semibold tracking-tight text-slate-900">Production Monitoring</h1>
-            <p className="text-[12px] text-slate-500 mt-0.5">Work Order → Cutting → Sewing → Finishing</p>
           </div>
           <div className="flex items-center gap-2.5">
             <button onClick={() => setShowPullModal(true)} className="h-8 px-3.5 text-[12px] font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 hover:shadow-md hover:shadow-blue-200 transition-all flex items-center gap-2">
