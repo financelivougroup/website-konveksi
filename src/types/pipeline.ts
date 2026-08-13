@@ -82,6 +82,7 @@ export interface FinishingRecord {
   syncedAt: string;
   source: string;
   syncStatus: 'OK' | 'FAILED';
+  inputBy?: string;
 }
 
 export interface Invoice {
