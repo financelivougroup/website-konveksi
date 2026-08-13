@@ -3,6 +3,8 @@ import type { ViewConfig, ModuleId } from '@/types';
 export const viewConfig: Record<ModuleId, ViewConfig> = {
   'production-monitoring': { title: 'Production Monitoring', editable: false, sync: false, columns: [] },
   'sewing-entry': { title: 'Sewing Entry', editable: false, sync: false, columns: [] },
+  'finishing-entry': { title: 'Finishing Entry', editable: false, sync: false, columns: [] },
+  'kancing-entry': { title: 'Pasang Kancing Entry', editable: false, sync: false, columns: [] },
   'invoicing': {
     title: 'Invoicing',
     editable: true,
@@ -272,6 +274,8 @@ export const mockData: Record<ModuleId, Record<string, unknown>[]> = {
   'complain-penalti': [],
   'production-monitoring': [],
   'sewing-entry': [],
+  'finishing-entry': [],
+  'kancing-entry': [],
   'invoicing': [],
   'register-po': [],
   'order-entry': [],

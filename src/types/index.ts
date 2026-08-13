@@ -104,6 +104,8 @@ export type ModuleId =
   | 'production-data'
   | 'production-monitoring'
   | 'sewing-entry'
+  | 'finishing-entry'
+  | 'kancing-entry'
   | 'invoicing';
 
 export interface NavGroup {

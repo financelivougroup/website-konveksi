@@ -12,6 +12,8 @@ const dotColors: Record<ModuleId, string> = {
   'production-monitoring': 'text-blue-500',
   'order-entry': 'text-blue-500',
   'sewing-entry': 'text-purple-500',
+  'finishing-entry': 'text-emerald-500',
+  'kancing-entry': 'text-violet-500',
   'invoicing': 'text-orange-500',
   'register-po': 'text-sky-500',
   'selesai-jahit': 'text-amber-500',

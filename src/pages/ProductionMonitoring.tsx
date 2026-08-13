@@ -29,12 +29,13 @@ import * as workOrderSvc from '@/services/workOrders';
 import * as cuttingRecordSvc from '@/services/cuttingRecords';
 import * as sewingRecordSvc from '@/services/sewingRecords';
 import * as finishingRecordSvc from '@/services/finishingRecords';
+import * as kancingRecordSvc from '@/services/kancingRecords';
 import * as productionOrderSvc from '@/services/productionOrders';
-import type { WorkOrder, SewingRecord, CuttingRecord, FinishingRecord, ProductionStatus } from '@/types/pipeline';
+import type { WorkOrder, SewingRecord, CuttingRecord, FinishingRecord, KancingRecord, ProductionStatus } from '@/types/pipeline';
 import { productionStatusLabel, productionStatusColor } from '@/types/pipeline';
 import { STATUS_ORDER, deriveStatus, validateStatusTransition } from '@/lib/productionStatus';
 
-type TabType = 'raw' | 'cutting' | 'sewing' | 'finishing' | 'kanban';
+type TabType = 'raw' | 'cutting' | 'sewing' | 'finishing' | 'kancing' | 'kanban';
 
 // ===== Status Badge =====
 function StatusBadge({ status }: { status: ProductionStatus }) {
@@ -206,13 +207,11 @@ function FullScreenReports({ group, sewingList, finishingList }: { group: Kanban
 }
 
 // ===== Main Page =====
-export default function ProductionMonitoring({ onOpenSewingEntry }: { onOpenSewingEntry?: () => void }) {
+export default function ProductionMonitoring({ onOpenSewingEntry, onOpenFinishingEntry, onOpenKancingEntry }: { onOpenSewingEntry?: () => void; onOpenFinishingEntry?: () => void; onOpenKancingEntry?: () => void }) {
   const [activeTab, setActiveTab] = useState<TabType>('raw');
   const [searchQuery, setSearchQuery] = useState('');
   const [cuttingInputs, setCuttingInputs] = useState<Record<string, string>>({});
   const [cuttingMessage, setCuttingMessage] = useState<string | null>(null);
-  const [finishingInputs, setFinishingInputs] = useState<Record<string, string>>({});
-  const [finishingMessage, setFinishingMessage] = useState<string | null>(null);
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
   const [showPullModal, setShowPullModal] = useState(false);
   const [pullMessage, setPullMessage] = useState<string | null>(null);
@@ -223,6 +222,7 @@ export default function ProductionMonitoring({ onOpenSewingEntry }: { onOpenSewi
   const [cuttingRecords, setCuttingRecords] = useState<CuttingRecord[]>([]);
   const [sewingRecords, setSewingRecords] = useState<SewingRecord[]>([]);
   const [finishingRecords, setFinishingRecords] = useState<import('@/types/pipeline').FinishingRecord[]>([]);
+  const [kancingRecords, setKancingRecords] = useState<KancingRecord[]>([]);
   const [planningOrders, setPlanningOrders] = useState<import('@/types/pipeline').ProductionOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedGroup, setSelectedGroup] = useState<KanbanGroup | null>(null);
@@ -237,11 +237,12 @@ export default function ProductionMonitoring({ onOpenSewingEntry }: { onOpenSewi
   useEffect(() => {
     (async () => {
       setLoading(true);
-      const [wo, cr, sr, fr, po] = await Promise.all([workOrderSvc.fetchAll(), cuttingRecordSvc.fetchAll(), sewingRecordSvc.fetchAll(), finishingRecordSvc.fetchAll(), productionOrderSvc.fetchAll()]);
+      const [wo, cr, sr, fr, kr, po] = await Promise.all([workOrderSvc.fetchAll(), cuttingRecordSvc.fetchAll(), sewingRecordSvc.fetchAll(), finishingRecordSvc.fetchAll(), kancingRecordSvc.fetchAll(), productionOrderSvc.fetchAll()]);
       if (wo.data) setWorkOrders(wo.data);
       if (cr.data) setCuttingRecords(cr.data);
       if (sr.data) setSewingRecords(sr.data);
       if (fr.data) setFinishingRecords(fr.data);
+      if (kr.data) setKancingRecords(kr.data);
       if (po.data) setPlanningOrders(po.data.filter(p => p.status === 'PLANNING'));
       setLoading(false);
     })();
@@ -326,34 +327,15 @@ export default function ProductionMonitoring({ onOpenSewingEntry }: { onOpenSewi
     setTimeout(() => setCuttingMessage(null), 3000);
   };
 
-  // ===== FINISHING =====
-  // Antrian = WO dengan total finishing < qty order (boleh input berulang).
-  const finishingQueueWO = decoratedWO.filter(w => w.finishingTotal < (Number(w.quantity) || 0));
-
-  const handleInputFinishing = async (woId: string) => {
-    const val = finishingInputs[woId];
-    if (!val || isNaN(Number(val)) || Number(val) <= 0) { setFinishingMessage('Masukkan jumlah finishing yang valid!'); return; }
-    const qty = Number(val);
-    const { data: newFR, error } = await finishingRecordSvc.create({
-      workOrderId: woId,
-      qtyFinishing: qty,
-      tanggalImport: new Date().toISOString().split('T')[0],
-      syncedAt: new Date().toISOString(),
-      source: 'manual',
-      syncStatus: 'OK',
-      inputBy: currentDisplayName,
-    });
-    if (error) { setFinishingMessage(`❌ ${error.message}`); return; }
-    if (newFR) setFinishingRecords(prev => [...prev, newFR]);
-    setFinishingMessage(`✅ Finishing ${qty} pcs berhasil disimpan!`);
-    setFinishingInputs(prev => ({ ...prev, [woId]: '' }));
-    setTimeout(() => setFinishingMessage(null), 3000);
-  };
-
-  // Riwayat = semua record finishing (bisa lebih dari satu per WO).
-  const finishingHistory = useMemo(
+  // ===== FINISHING & KANCING LOGS =====
+  // Entry dilakukan lewat form terpisah (FinishingEntryForm / KancingEntryForm).
+  const finishingLogData = useMemo(
     () => [...finishingRecords].sort((a, b) => (b.syncedAt || '').localeCompare(a.syncedAt || '')),
     [finishingRecords],
+  );
+  const kancingLogData = useMemo(
+    () => kancingRecords.filter(k => !searchQuery || k.workCode.toLowerCase().includes(searchQuery.toLowerCase()) || k.picKancing.toLowerCase().includes(searchQuery.toLowerCase())).sort((a, b) => (b.inputAt || '').localeCompare(a.inputAt || '')),
+    [kancingRecords, searchQuery],
   );
 
   // ===== SELECTION =====
@@ -410,7 +392,7 @@ export default function ProductionMonitoring({ onOpenSewingEntry }: { onOpenSewi
   };
 
   const tabs: { id: TabType; label: string; icon: string }[] = [
-    { id: 'raw', label: 'RAW DATA', icon: '📋' }, { id: 'cutting', label: 'Cutting Log', icon: '✂️' }, { id: 'sewing', label: 'Sewing Log', icon: '🧵' }, { id: 'finishing', label: 'Finishing Log', icon: '📦' }, { id: 'kanban', label: 'Kanban', icon: '📊' },
+    { id: 'raw', label: 'RAW DATA', icon: '📋' }, { id: 'cutting', label: 'Cutting Log', icon: '✂️' }, { id: 'sewing', label: 'Sewing Log', icon: '🧵' }, { id: 'finishing', label: 'Finishing Log', icon: '📦' }, { id: 'kancing', label: 'Pasang Kancing Log', icon: '🔘' }, { id: 'kanban', label: 'Kanban', icon: '📊' },
   ];
   const activeDragGroup = activeDragId ? kanbanGroups.find(g => g.productNote === activeDragId) : null;
 
@@ -545,23 +527,27 @@ export default function ProductionMonitoring({ onOpenSewingEntry }: { onOpenSewi
         {/* FINISHING LOG */}
         {activeTab === 'finishing' && (
           <div>
-            {finishingMessage && <div className="mb-3 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-lg text-[12px] text-emerald-700">{finishingMessage}</div>}
-            <div className="mb-4"><h3 className="text-[13px] font-semibold text-slate-700 mb-2">📦 Antrian Finishing — {finishingQueueWO.length} WO</h3>
-              <div className="border border-gray-200 rounded-lg overflow-hidden">
-                {finishingQueueWO.length === 0 ? <div className="py-6 text-center text-slate-400 text-[12px]">✅ Semua sudah finishing penuh</div> :
-                  <table className="w-full text-[11px] border-collapse">
-                    <thead><tr className="bg-slate-50 border-b border-gray-200"><th className="text-left py-2 px-3 font-semibold">Work Code</th><th className="text-left py-2 px-3 font-semibold">Brand</th><th className="text-right py-2 px-3 font-semibold">Qty</th><th className="text-right py-2 px-3 font-semibold">Sudah Finishing</th><th className="text-center py-2 px-3 font-semibold">Tambah Finishing</th><th className="text-center py-2 px-3 font-semibold">Action</th></tr></thead>
-                    <tbody>{finishingQueueWO.map(wo => <tr key={wo.id} className="border-b border-gray-100 hover:bg-emerald-50/30"><td className="py-2 px-3"><div className="font-medium">{wo.product}</div><div className="text-[10px] text-slate-400">{wo.workCode}</div></td><td className="py-2 px-3 text-slate-600">{wo.brand}</td><td className="py-2 px-3 text-right font-semibold">{wo.quantity}</td><td className="py-2 px-3 text-right">{wo.finishingTotal}</td><td className="py-2 px-3 text-center"><input type="number" value={finishingInputs[wo.id] || ''} onChange={e => setFinishingInputs(prev => ({ ...prev, [wo.id]: e.target.value }))} className="w-24 h-7 px-2 text-[11px] border border-gray-200 rounded text-center" /></td><td className="py-2 px-3 text-center"><button onClick={() => handleInputFinishing(wo.id)} className="px-3 py-1 text-[10px] font-semibold bg-emerald-500 text-white rounded-md hover:bg-emerald-600">Simpan</button></td></tr>)}</tbody>
-                  </table>}
-              </div>
+            <div className="flex items-center justify-between mb-3"><p className="text-[12px] text-slate-500">Database hasil <strong>finishing</strong></p><button onClick={() => onOpenFinishingEntry?.()} className="px-3 py-1.5 text-[11px] font-semibold bg-emerald-500 text-white rounded-lg hover:bg-emerald-600">➕ Entry Finishing Baru</button></div>
+            <div className="relative max-w-xs mb-3"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" /><input type="text" placeholder="Cari..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full h-8 pl-8 pr-3 text-[12px] border border-gray-200 rounded-lg" /></div>
+            <div className="border border-gray-200 rounded-lg overflow-x-auto">
+              <table className="w-full text-[11px] border-collapse">
+                <thead><tr className="bg-slate-50 border-b border-gray-200"><th className="text-left py-2.5 px-3 font-semibold">Tanggal</th><th className="text-left py-2.5 px-3 font-semibold">Work Code</th><th className="text-left py-2.5 px-3 font-semibold">PIC</th><th className="text-right py-2.5 px-3 font-semibold">Qty</th><th className="text-center py-2.5 px-3 font-semibold">Bukti</th></tr></thead>
+                <tbody>{finishingLogData.length === 0 ? <tr><td colSpan={5} className="py-8 text-center text-slate-400">Belum ada</td></tr> : finishingLogData.map(fr => <tr key={fr.id} className="border-b border-gray-100 hover:bg-slate-50/30"><td className="py-2.5 px-3">{fr.tanggalImport ? formatDate(fr.tanggalImport) : '—'}</td><td className="py-2.5 px-3"><div className="font-medium">{workOrders.find(w => w.id === fr.workOrderId)?.product || '—'}</div><div className="text-[10px] text-slate-400">{workOrders.find(w => w.id === fr.workOrderId)?.workCode || fr.workOrderId}</div></td><td className="py-2.5 px-3">{fr.picFinishing || fr.inputBy || '—'}</td><td className="py-2.5 px-3 text-right font-semibold">{fr.qtyFinishing}</td><td className="py-2.5 px-3 text-center">{fr.imageName ? <Image className="w-3.5 h-3.5 text-emerald-500" /> : '—'}</td></tr>)}</tbody>
+              </table>
             </div>
-            <div><h3 className="text-[13px] font-semibold text-slate-700 mb-2">🟢 Riwayat Finishing ({finishingHistory.length} laporan)</h3>
-              <div className="border border-gray-200 rounded-lg overflow-hidden">
-                <table className="w-full text-[11px] border-collapse">
-                  <thead><tr className="bg-slate-50 border-b border-gray-200"><th className="text-left py-2 px-3 font-semibold">Work Code</th><th className="text-right py-2 px-3 font-semibold">Qty Finishing</th><th className="text-left py-2 px-3 font-semibold">Input By</th><th className="text-left py-2 px-3 font-semibold">Tanggal</th><th className="text-left py-2 px-3 font-semibold">Source</th></tr></thead>
-                  <tbody>{finishingHistory.length === 0 ? <tr><td colSpan={5} className="py-6 text-center text-slate-400">Belum ada</td></tr> : finishingHistory.map(fr => { const wo = workOrders.find(w => w.id === fr.workOrderId); return <tr key={fr.id} className="border-b border-gray-100 hover:bg-slate-50/30"><td className="py-2 px-3"><div className="font-medium">{wo?.product || '—'}</div><div className="text-[10px] text-slate-400">{wo?.workCode || fr.workOrderId}</div></td><td className="py-2 px-3 text-right font-semibold text-emerald-600">{fr.qtyFinishing}</td><td className="py-2 px-3 text-slate-600">{fr.inputBy || '—'}</td><td className="py-2 px-3 text-slate-600">{fr.tanggalImport ? formatDate(fr.tanggalImport) : '—'}</td><td className="py-2 px-3 text-slate-500">{fr.source || '—'}</td></tr>; })}</tbody>
-                </table>
-              </div>
+          </div>
+        )}
+
+        {/* PASANG KANCING LOG */}
+        {activeTab === 'kancing' && (
+          <div>
+            <div className="flex items-center justify-between mb-3"><p className="text-[12px] text-slate-500">Database hasil <strong>pasang kancing manual</strong> (lubangi + jahit kancing)</p><button onClick={() => onOpenKancingEntry?.()} className="px-3 py-1.5 text-[11px] font-semibold bg-violet-500 text-white rounded-lg hover:bg-violet-600">➕ Entry Pasang Kancing Baru</button></div>
+            <div className="relative max-w-xs mb-3"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" /><input type="text" placeholder="Cari..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full h-8 pl-8 pr-3 text-[12px] border border-gray-200 rounded-lg" /></div>
+            <div className="border border-gray-200 rounded-lg overflow-x-auto">
+              <table className="w-full text-[11px] border-collapse">
+                <thead><tr className="bg-slate-50 border-b border-gray-200"><th className="text-left py-2.5 px-3 font-semibold">Tanggal</th><th className="text-left py-2.5 px-3 font-semibold">Work Code</th><th className="text-left py-2.5 px-3 font-semibold">PIC</th><th className="text-right py-2.5 px-3 font-semibold">Qty</th><th className="text-center py-2.5 px-3 font-semibold">Bukti</th></tr></thead>
+                <tbody>{kancingLogData.length === 0 ? <tr><td colSpan={5} className="py-8 text-center text-slate-400">Belum ada</td></tr> : kancingLogData.map(kr => <tr key={kr.id} className="border-b border-gray-100 hover:bg-slate-50/30"><td className="py-2.5 px-3">{formatDate(kr.tanggalLaporan)}</td><td className="py-2.5 px-3"><div className="font-medium">{workOrders.find(w => w.id === kr.workOrderId)?.product || '—'}</div><div className="text-[10px] text-slate-400">{kr.workCode}</div></td><td className="py-2.5 px-3">{kr.picKancing}</td><td className="py-2.5 px-3 text-right font-semibold">{kr.qtyKancing}</td><td className="py-2.5 px-3 text-center">{kr.imageName ? <Image className="w-3.5 h-3.5 text-violet-500" /> : '—'}</td></tr>)}</tbody>
+              </table>
             </div>
           </div>
         )}

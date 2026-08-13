@@ -83,6 +83,21 @@ export interface FinishingRecord {
   source: string;
   syncStatus: 'OK' | 'FAILED';
   inputBy?: string;
+  picFinishing?: string;
+  imageName?: string;
+}
+
+export interface KancingRecord {
+  id: string;
+  workOrderId: string;
+  workCode: string;
+  picKancing: string;
+  qtyKancing: number;
+  tanggalLaporan: string;
+  inputBy?: string;
+  inputAt: string;
+  imageUrl?: string;
+  imageName?: string;
 }
 
 export interface Invoice {

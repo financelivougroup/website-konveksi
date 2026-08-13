@@ -3,6 +3,8 @@ import { computeCutVsUpload, computeStatusStock } from '@/lib/utils';
 import { Landing } from '@/pages/Landing';
 import ProductionMonitoring from '@/pages/ProductionMonitoring';
 import SewingEntryForm from '@/pages/SewingEntryForm';
+import FinishingEntryForm from '@/pages/FinishingEntryForm';
+import KancingEntryForm from '@/pages/KancingEntryForm';
 import InvoicingPage from '@/pages/InvoicingPage';
 import { RegisterPoPage } from '@/pages/RegisterPoPage';
 import { PlanningProduksiPage } from '@/pages/PlanningProduksiPage';
@@ -121,7 +123,7 @@ export default function App() {
     }));
   }, [updateModuleViews]);
 
-  const isPipelineView = currentView === 'production-monitoring' || currentView === 'sewing-entry';
+  const isPipelineView = currentView === 'production-monitoring' || currentView === 'sewing-entry' || currentView === 'finishing-entry' || currentView === 'kancing-entry';
 
   const mv = isPipelineView ? { views: [], tabSettings: {} } : getModuleViews(currentView);
   const settings = isPipelineView ? makeDefaultSettings('production-monitoring') : getSettings(currentView, currentViewTab);
@@ -585,8 +587,12 @@ export default function App() {
       {/* Main Content */}
       {currentView === 'sewing-entry' ? (
         <SewingEntryForm onBack={() => setCurrentView('production-monitoring')} />
+      ) : currentView === 'finishing-entry' ? (
+        <FinishingEntryForm onBack={() => setCurrentView('production-monitoring')} />
+      ) : currentView === 'kancing-entry' ? (
+        <KancingEntryForm onBack={() => setCurrentView('production-monitoring')} />
       ) : currentView === 'production-monitoring' ? (
-        <ProductionMonitoring onOpenSewingEntry={() => setCurrentView('sewing-entry')} />
+        <ProductionMonitoring onOpenSewingEntry={() => setCurrentView('sewing-entry')} onOpenFinishingEntry={() => setCurrentView('finishing-entry')} onOpenKancingEntry={() => setCurrentView('kancing-entry')} />
       ) : currentView === 'invoicing' ? (
         <InvoicingPage />
       ) : currentView === 'register-po' ? (

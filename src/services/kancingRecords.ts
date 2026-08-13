@@ -1,58 +1,58 @@
 import { supabase } from '@/lib/supabase'
 import { generateId } from '@/lib/utils'
-import type { FinishingRecord } from '@/types/pipeline'
+import type { KancingRecord } from '@/types/pipeline'
 
-const TABLE = 'finishing_records'
+const TABLE = 'kancing_records'
 
-function mapRow(row: Record<string, unknown>): FinishingRecord {
+function mapRow(row: Record<string, unknown>): KancingRecord {
   return {
     id: row.id as string,
     workOrderId: row.work_order_id as string,
-    qtyFinishing: row.qty_finishing as number,
-    tanggalImport: row.tgl_import as string,
-    syncedAt: row.synced_at as string,
-    source: row.source as string,
-    syncStatus: (row.sync_status as FinishingRecord['syncStatus']) ?? 'OK',
+    workCode: (row.work_code as string | null) ?? '',
+    picKancing: row.pic_kancing as string,
+    qtyKancing: row.qty_kancing as number,
+    tanggalLaporan: row.tgl_laporan as string,
     inputBy: (row.input_by as string | null) ?? undefined,
-    picFinishing: (row.pic_finishing as string | null) ?? undefined,
+    inputAt: row.input_at as string,
+    imageUrl: (row.image_url as string | null) ?? undefined,
     imageName: (row.image_name as string | null) ?? undefined,
   }
 }
 
-export async function fetchAll(): Promise<{ data: FinishingRecord[] | null; error: Error | null }> {
+export async function fetchAll(): Promise<{ data: KancingRecord[] | null; error: Error | null }> {
   const { data, error } = await supabase
     .from(TABLE)
     .select('*')
-    .order('synced_at', { ascending: false })
+    .order('input_at', { ascending: false })
   if (error) return { data: null, error }
   return { data: (data as Record<string, unknown>[] | null)?.map(mapRow) ?? null, error: null }
 }
 
-export async function fetchByWorkOrder(workOrderId: string): Promise<{ data: FinishingRecord[] | null; error: Error | null }> {
+export async function fetchByWorkOrder(workOrderId: string): Promise<{ data: KancingRecord[] | null; error: Error | null }> {
   const { data, error } = await supabase
     .from(TABLE)
     .select('*')
     .eq('work_order_id', workOrderId)
-    .order('synced_at', { ascending: false })
+    .order('input_at', { ascending: false })
   if (error) return { data: null, error }
   return { data: (data as Record<string, unknown>[] | null)?.map(mapRow) ?? null, error: null }
 }
 
-export async function create(input: Omit<FinishingRecord, 'id'>): Promise<{ data: FinishingRecord | null; error: Error | null }> {
-  const id = await generateId('FR', TABLE)
+export async function create(input: Omit<KancingRecord, 'id'>): Promise<{ data: KancingRecord | null; error: Error | null }> {
+  const id = await generateId('KR', TABLE)
   const { data, error } = await supabase
     .from(TABLE)
     .insert({
       id,
       work_order_id: input.workOrderId,
-      qty_finishing: input.qtyFinishing,
-      tgl_import: input.tanggalImport,
-      synced_at: input.syncedAt || new Date().toISOString(),
-      source: input.source,
-      sync_status: input.syncStatus,
+      work_code: input.workCode,
+      pic_kancing: input.picKancing,
+      qty_kancing: input.qtyKancing,
+      tgl_laporan: input.tanggalLaporan,
       input_by: input.inputBy ?? null,
-      pic_finishing: input.picFinishing ?? null,
-      image_name: input.imageName ?? null,
+      input_at: input.inputAt || new Date().toISOString(),
+      image_url: input.imageUrl ?? '',
+      image_name: input.imageName ?? '',
     })
     .select()
     .single()
