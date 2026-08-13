@@ -187,15 +187,15 @@ Website Konveksi/
 
 ## Latest Progress
 
-### 2026-08-13 — Finishing Log tab + kolom Finishing di RAW DATA
+### 2026-08-13 — Finishing Log & Pasang Kancing Log (format Sewing Log)
 
-- Tab baru **Finishing Log** di Production Monitoring (di antara Sewing Log dan Kanban), pola mengikuti Cutting Log:
-  - **Antrian Finishing**: semua WO yang total finishingnya masih < qty order (input boleh berulang, pola Sewing). Tiap input menambah satu baris `finishing_records` (`source='manual'`, `sync_status='OK'`, tanggal = tanggal input, `input_by` = nama login).
-  - **Riwayat Finishing**: daftar semua laporan finishing (work code, qty, input by, tanggal, source).
-- **RAW DATA**: kolom baru **Finishing** di antara Jahit dan Sisa — total `finishing_records.qty_finishing` per WO (hijau saat ≥ qty order). Sisa tetap `cutting − jahit`.
-- Migration: `finishing_records.input_by TEXT` (diterapkan via Supabase MCP; audit trail sejajar dengan cutting/sewing).
-- Service `finishingRecords` di-upgrade: mapping snake_case yang benar, mendukung `input_by`, tambah `remove()`.
-- `npm run build` hijau.
+Revisi atas Finishing Log versi queue (hari yang sama):
+- **Finishing Log** kini read-only dengan format **sama persis seperti Sewing Log**: tabel Tanggal | Work Code | PIC | Qty | Bukti + tombol **➕ Entry Finishing Baru** → halaman form terpisah `FinishingEntryForm` (pilih WO, PIC Finishing, qty, bukti, tanggal; boleh entry berulang sampai qty terpenuhi).
+- **Tab baru Pasang Kancing Log** (`kancing`) + halaman form `KancingEntryForm` — untuk kerja manual (lubangi + jahit kancing), tersimpan terpisah di tabel baru `kancing_records` (`work_order_id`, `work_code`, `pic_kancing`, `qty_kancing`, `tgl_laporan`, `input_by`, `input_at`, `image_url`, `image_name`) + service `kancingRecords`.
+- Skema (via Supabase MCP): `finishing_records` + `pic_finishing` & `image_name`, + policy write authenticated/anon (sebelumnya hanya SELECT — insert pasti gagal); tabel baru `kancing_records` + RLS; `finishing_records.input_by` (commit pagi hari ini).
+- Kolom **Finishing** di RAW DATA tetap ada (total qty finishing per WO).
+- Urutan tab: RAW DATA → Cutting Log → Sewing Log → Finishing Log → Pasang Kancing Log → Kanban.
+- `npm run build` hijau (commit `654be3a`).
 
 ### 2026-08-10 — Kanban per product note + full-screen detail
 
