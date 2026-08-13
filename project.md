@@ -187,6 +187,15 @@ Website Konveksi/
 
 ## Latest Progress
 
+### 2026-08-14 — Header Production Monitoring: redesign formal
+
+- Header & tab bar Production Monitoring didesain ulang tampilannya jadi formal, siap dipakai sebagai aplikasi:
+  - Judul/subtitle lebih rapi; tombol **Pull Order Entry** solid gelap dengan shadow saat hover; chip user menampilkan nama akun yang login (bukan label statis "Role: Owner").
+  - Tab menjadi **segmented control** dalam kontainer putih ber-border dengan soft shadow; tab aktif solid slate-900 dengan teks putih, tab lain **naik + ber-shadow saat hover**.
+  - Emoji diganti ikon lucide (Table2, Scissors, Shirt, PackageCheck, CircleDot, Kanban).
+  - Caption satu baris di bawah tab menjelaskan tab aktif.
+- `npm run build` hijau (commit `b4ea69d`).
+
 ### 2026-08-13 — Finishing Log & Pasang Kancing Log (format Sewing Log)
 
 Revisi atas Finishing Log versi queue (hari yang sama):
