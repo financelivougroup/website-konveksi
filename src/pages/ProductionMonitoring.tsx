@@ -400,15 +400,14 @@ export default function ProductionMonitoring({ onOpenSewingEntry, onOpenFinishin
   const TAB_ICONS: Record<TabType, ComponentType<{ className?: string }>> = {
     raw: Table2, cutting: Scissors, sewing: Shirt, finishing: PackageCheck, kancing: CircleDot, kanban: Kanban,
   };
-  const tabs: { id: TabType; label: string; desc: string }[] = [
-    { id: 'raw', label: 'Raw Data', desc: 'Daftar work order beserta progress cutting, jahit, dan finishing.' },
-    { id: 'cutting', label: 'Cutting Log', desc: 'Riwayat pemotongan per work order.' },
-    { id: 'sewing', label: 'Sewing Log', desc: 'Database hasil jahitan yang telah lulus QC.' },
-    { id: 'finishing', label: 'Finishing Log', desc: 'Database hasil finishing per work order.' },
-    { id: 'kancing', label: 'Pasang Kancing Log', desc: 'Database hasil pasang kancing manual — lubangi dan jahit kancing.' },
-    { id: 'kanban', label: 'Kanban', desc: 'Papan produksi per product note.' },
+  const tabs: { id: TabType; label: string }[] = [
+    { id: 'raw', label: 'Raw Data' },
+    { id: 'cutting', label: 'Cutting Log' },
+    { id: 'sewing', label: 'Sewing Log' },
+    { id: 'finishing', label: 'Finishing Log' },
+    { id: 'kancing', label: 'Pasang Kancing Log' },
+    { id: 'kanban', label: 'Kanban' },
   ];
-  const activeTabInfo = tabs.find(t => t.id === activeTab);
   const activeDragGroup = activeDragId ? kanbanGroups.find(g => g.productNote === activeDragId) : null;
 
   if (loading) return <div className="flex-1 flex items-center justify-center"><div className="text-slate-400 text-sm">Loading production data...</div></div>;
@@ -453,7 +452,6 @@ export default function ProductionMonitoring({ onOpenSewingEntry, onOpenFinishin
             );
           })}
         </div>
-        {activeTabInfo && <p className="mt-2 text-[11px] text-slate-400">{activeTabInfo.desc}</p>}
       </div>
 
       <div className="flex-1 px-8 pt-5 pb-6 overflow-auto">
