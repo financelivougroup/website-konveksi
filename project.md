@@ -187,6 +187,16 @@ Website Konveksi/
 
 ## Latest Progress
 
+### 2026-08-13 — Finishing Log tab + kolom Finishing di RAW DATA
+
+- Tab baru **Finishing Log** di Production Monitoring (di antara Sewing Log dan Kanban), pola mengikuti Cutting Log:
+  - **Antrian Finishing**: semua WO yang total finishingnya masih < qty order (input boleh berulang, pola Sewing). Tiap input menambah satu baris `finishing_records` (`source='manual'`, `sync_status='OK'`, tanggal = tanggal input, `input_by` = nama login).
+  - **Riwayat Finishing**: daftar semua laporan finishing (work code, qty, input by, tanggal, source).
+- **RAW DATA**: kolom baru **Finishing** di antara Jahit dan Sisa — total `finishing_records.qty_finishing` per WO (hijau saat ≥ qty order). Sisa tetap `cutting − jahit`.
+- Migration: `finishing_records.input_by TEXT` (diterapkan via Supabase MCP; audit trail sejajar dengan cutting/sewing).
+- Service `finishingRecords` di-upgrade: mapping snake_case yang benar, mendukung `input_by`, tambah `remove()`.
+- `npm run build` hijau.
+
 ### 2026-08-10 — Kanban per product note + full-screen detail
 
 - Card Kanban kini **per product note** (bukan per work code): menampilkan **product note, product, brand, total qty** (Σ semua work code di dalamnya, termasuk FINISHED/INVOICED). Kolom card = **status tertinggi** dari work code dalam group.
