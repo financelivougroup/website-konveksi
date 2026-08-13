@@ -194,7 +194,8 @@ Website Konveksi/
   - Tab menjadi **segmented control** dalam kontainer putih ber-border dengan soft shadow; tab aktif solid slate-900 dengan teks putih, tab lain **naik + ber-shadow saat hover**.
   - Emoji diganti ikon lucide (Table2, Scissors, Shirt, PackageCheck, CircleDot, Kanban).
   - Caption satu baris di bawah tab menjelaskan tab aktif.
-- `npm run build` hijau (commit `b4ea69d`).
+- Lanjutan: palet disesuaikan **moodboard biru abu-abu** — tab aktif & tombol utama biru-600 dengan shadow bernuansa biru, hover biru-50/700; spacing diperlebar (`px-8`, header lebih tinggi); tab bar kini **memanjang full width** dengan lebar tab sama rata (`flex-1`) sampai ujung.
+- `npm run build` hijau (commit `b4ea69d`, `1b65c7d`).
 
 ### 2026-08-13 — Finishing Log & Pasang Kancing Log (format Sewing Log)
 
