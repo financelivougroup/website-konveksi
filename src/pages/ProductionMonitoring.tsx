@@ -415,24 +415,24 @@ export default function ProductionMonitoring({ onOpenSewingEntry, onOpenFinishin
 
   return (
     <div className="flex-1 flex flex-col min-w-0 overflow-auto">
-      <div className="px-6 pt-5 pb-0">
-        <div className="flex items-center justify-between mb-5">
+      <div className="px-8 pt-6 pb-0">
+        <div className="flex items-center justify-between mb-7">
           <div>
-            <h1 className="text-[17px] font-semibold tracking-tight text-slate-900">Production Monitoring</h1>
-            <p className="text-[12px] text-slate-500 mt-0.5">Work Order → Cutting → Sewing → Finishing</p>
+            <h1 className="text-[18px] font-semibold tracking-tight text-slate-900">Production Monitoring</h1>
+            <p className="text-[12px] text-slate-500 mt-1">Work Order → Cutting → Sewing → Finishing</p>
           </div>
-          <div className="flex items-center gap-2">
-            <button onClick={() => setShowPullModal(true)} className="h-8 px-3.5 text-[12px] font-medium bg-slate-900 text-white rounded-lg hover:bg-slate-700 hover:shadow-md transition-all flex items-center gap-1.5">
+          <div className="flex items-center gap-2.5">
+            <button onClick={() => setShowPullModal(true)} className="h-9 px-4 text-[12px] font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 hover:shadow-md hover:shadow-blue-200 transition-all flex items-center gap-2">
               <DownloadCloud className="w-3.5 h-3.5" /> Pull Order Entry
             </button>
-            <div className="h-8 px-3 text-[12px] text-slate-500 bg-white border border-slate-200 rounded-lg flex items-center gap-1.5">
-              <User className="w-3.5 h-3.5 text-slate-400" /> {currentDisplayName}
+            <div className="h-9 px-4 text-[12px] text-slate-600 bg-white border border-slate-200 rounded-lg flex items-center gap-2">
+              <User className="w-3.5 h-3.5 text-blue-500" /> {currentDisplayName}
             </div>
           </div>
         </div>
         {toast && <div className="mb-3 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-[12px] text-blue-700">{toast}</div>}
         {pullMessage && <div className="mb-3 px-3 py-2 bg-green-50 border border-green-200 rounded-lg text-[12px] text-green-700">{pullMessage}</div>}
-        <div className="inline-flex items-center gap-1 max-w-full overflow-x-auto bg-white border border-slate-200/80 rounded-xl p-1.5 shadow-sm shadow-slate-200/60">
+        <div className="flex items-stretch gap-2 w-full overflow-x-auto bg-white border border-slate-200/80 rounded-xl p-2 shadow-sm shadow-slate-200/60">
           {tabs.map(t => {
             const Icon = TAB_ICONS[t.id];
             const active = activeTab === t.id;
@@ -442,22 +442,22 @@ export default function ProductionMonitoring({ onOpenSewingEntry, onOpenFinishin
                 onClick={() => setActiveTab(t.id)}
                 aria-pressed={active}
                 className={cn(
-                  'shrink-0 h-9 px-3.5 rounded-lg text-[12px] font-medium inline-flex items-center gap-2 whitespace-nowrap transition-all duration-200 ease-out',
+                  'flex-1 min-w-0 h-11 px-4 rounded-lg text-[12px] font-medium inline-flex items-center justify-center gap-2 whitespace-nowrap transition-all duration-200 ease-out',
                   active
-                    ? 'bg-slate-900 text-white shadow-sm'
-                    : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900 hover:-translate-y-px hover:shadow-md hover:shadow-slate-200',
+                    ? 'bg-blue-600 text-white shadow-md shadow-blue-200'
+                    : 'text-slate-500 hover:bg-blue-50 hover:text-blue-700 hover:-translate-y-px hover:shadow-md hover:shadow-blue-100',
                 )}
               >
-                <Icon className={cn('w-3.5 h-3.5', active ? 'text-white' : 'text-slate-400')} />
+                <Icon className={cn('w-3.5 h-3.5 shrink-0', active ? 'text-white' : 'text-slate-400')} />
                 {t.label}
               </button>
             );
           })}
         </div>
-        {activeTabInfo && <p className="mt-2 text-[11px] text-slate-400">{activeTabInfo.desc}</p>}
+        {activeTabInfo && <p className="mt-2.5 text-[11px] text-slate-400">{activeTabInfo.desc}</p>}
       </div>
 
-      <div className="flex-1 px-6 pt-4 pb-5 overflow-auto">
+      <div className="flex-1 px-8 pt-5 pb-6 overflow-auto">
         {/* RAW DATA */}
         {activeTab === 'raw' && (
           <div>
