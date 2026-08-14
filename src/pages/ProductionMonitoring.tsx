@@ -43,10 +43,35 @@ import { STATUS_ORDER, deriveStatus, validateStatusTransition } from '@/lib/prod
 
 type TabType = 'raw' | 'cutting' | 'sewing' | 'finishing' | 'kancing' | 'kanban';
 
-// ===== Status Badge =====
+// ===== Data table design system (formal/enterprise) =====
+// Zebra rows #FFFFFF/#F9FAFB, hover #F0F1F3, selected #EFF6FF.
+// Horizontal dividers only (#E5E7EB rows, #D1D5DB under header). Sticky header.
+const T_WRAP = 'bg-white border border-gray-200 rounded-lg overflow-auto max-h-[calc(100vh-250px)]';
+const T_TABLE = 'w-full text-[13px] leading-[1.45] border-collapse';
+const T_HEAD_ROW = 'bg-white border-b-2 border-[#D1D5DB] sticky top-0 z-10';
+const T_TH = 'py-2.5 px-4 text-[12px] font-semibold text-[#4B5563] whitespace-nowrap';
+const T_TD = 'py-3 px-4 align-middle';
+
+function rowClass(i: number, selected?: boolean) {
+  if (selected) return 'bg-[#EFF6FF] hover:bg-[#E4EDFB] border-b border-[#E5E7EB] transition-colors';
+  return cn(
+    'border-b border-[#E5E7EB] hover:bg-[#F0F1F3] transition-colors',
+    i % 2 === 1 ? 'bg-[#F9FAFB]' : 'bg-white',
+  );
+}
+
+// ===== Status Badge (solid pill, white text) =====
+const STATUS_BADGE: Record<ProductionStatus, string> = {
+  NEW: 'bg-slate-500',
+  CUTTING: 'bg-blue-600',
+  PROGRESS: 'bg-amber-500',
+  FINISHED: 'bg-emerald-600',
+  INVOICED: 'bg-violet-600',
+};
+
 function StatusBadge({ status }: { status: ProductionStatus }) {
   return (
-    <span className={cn('inline-block px-2 py-0.5 rounded text-[10px] font-semibold', productionStatusColor[status] || 'bg-gray-100 text-gray-700')}>
+    <span className={cn('inline-block px-2.5 py-1 rounded-md text-[11px] font-medium text-white whitespace-nowrap', STATUS_BADGE[status] || 'bg-gray-500')}>
       {productionStatusLabel[status] || status}
     </span>
   );
@@ -488,35 +513,36 @@ export default function ProductionMonitoring({ onOpenSewingEntry, onOpenFinishin
               )}
               <span className="text-[11px] text-slate-400 ml-auto">{filteredWO.length} work orders</span>
             </div>
-            <div className="border border-gray-200 rounded-lg overflow-x-auto">
-              <table className="w-full text-[11px] border-collapse">
-                <thead><tr className="bg-slate-50 border-b border-gray-200">
-                  <th className="w-8 py-2 px-2"><input type="checkbox" checked={selectedRows.size === filteredWO.length && filteredWO.length > 0} onChange={handleToggleAll} className="w-3.5 h-3.5 rounded border-gray-300 text-blue-500" /></th>
-                  <th className="text-left py-2 px-2.5 font-semibold text-slate-600">Product</th>
-                  <th className="text-left py-2 px-2.5 font-semibold text-slate-600">Work Code</th>
-                  <th className="text-left py-2 px-2.5 font-semibold text-slate-600">Brand</th>
-                  <th className="text-right py-2 px-2.5 font-semibold text-slate-600">Qty</th>
-                  <th className="text-right py-2 px-2.5 font-semibold text-slate-600">Cutting</th>
-                  <th className="text-right py-2 px-2.5 font-semibold text-slate-600">Jahit</th>
-                  <th className="text-right py-2 px-2.5 font-semibold text-slate-600">Finishing</th>
-                  <th className="text-right py-2 px-2.5 font-semibold text-slate-600">Sisa</th>
-                  <th className="text-center py-2 px-2.5 font-semibold text-slate-600">Status</th>
+            <div className={T_WRAP}>
+              <table className={T_TABLE}>
+                <thead><tr className={T_HEAD_ROW}>
+                  <th className={cn(T_TH, 'w-12 text-center')}><input type="checkbox" checked={selectedRows.size === decoratedWO.length && decoratedWO.length > 0} onChange={handleToggleAll} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 align-middle" /></th>
+                  <th className={cn(T_TH, 'text-left')}>Product</th>
+                  <th className={cn(T_TH, 'text-left')}>Work Code</th>
+                  <th className={cn(T_TH, 'text-left')}>Brand</th>
+                  <th className={cn(T_TH, 'text-right')}>Qty</th>
+                  <th className={cn(T_TH, 'text-right')}>Cutting</th>
+                  <th className={cn(T_TH, 'text-right')}>Jahit</th>
+                  <th className={cn(T_TH, 'text-right')}>Finishing</th>
+                  <th className={cn(T_TH, 'text-right')}>Sisa</th>
+                  <th className={cn(T_TH, 'text-center')}>Status</th>
                 </tr></thead>
                 <tbody>
-                  {decoratedWO.length === 0 && <tr><td colSpan={10} className="py-8 text-center text-slate-400">Tidak ada</td></tr>}
-                  {decoratedWO.map(wo => {
+                  {decoratedWO.length === 0 && <tr><td colSpan={10} className="py-10 text-center text-[13px] text-gray-400">Tidak ada data work order</td></tr>}
+                  {decoratedWO.map((wo, i) => {
                     const sisa = Math.max(0, wo.cuttingTotal - wo.sewingTotal);
-                    return <tr key={wo.id} className={cn('border-b border-gray-100 hover:bg-slate-50/50', selectedRows.has(wo.id) && 'bg-blue-50/40')}>
-                      <td className="py-2 px-2 text-center"><input type="checkbox" checked={selectedRows.has(wo.id)} onChange={() => handleToggleRow(wo.id)} className="w-3.5 h-3.5 rounded border-gray-300 text-blue-500" /></td>
-                      <td className="py-2 px-2.5 font-medium text-slate-800">{wo.product}</td>
-                      <td className="py-2 px-2.5 text-slate-500 max-w-[160px] truncate" title={wo.workCode}>{wo.workCode}</td>
-                      <td className="py-2 px-2.5 text-slate-600">{wo.brand}</td>
-                      <td className="py-2 px-2.5 text-right font-semibold">{wo.quantity}</td>
-                      <td className="py-2 px-2.5 text-right">{wo.cuttingTotal > 0 ? <span className="text-green-600 font-semibold">{wo.cuttingTotal} ✓</span> : <span className="text-slate-300">—</span>}</td>
-                      <td className="py-2 px-2.5 text-right">{wo.sewingTotal > 0 ? <span className={cn('font-semibold', wo.sewingTotal >= wo.quantity ? 'text-green-600' : 'text-amber-600')}>{wo.sewingTotal}</span> : <span className="text-slate-300">—</span>}</td>
-                      <td className="py-2 px-2.5 text-right">{wo.finishingTotal > 0 ? <span className={cn('font-semibold', wo.finishingTotal >= wo.quantity ? 'text-green-600' : 'text-amber-600')}>{wo.finishingTotal}</span> : <span className="text-slate-300">—</span>}</td>
-                      <td className="py-2 px-2.5 text-right">{wo.cuttingTotal > 0 ? <span className={cn('font-semibold', sisa === 0 ? 'text-green-600' : 'text-amber-600')}>{sisa}</span> : <span className="text-slate-300">—</span>}</td>
-                      <td className="py-2 px-2.5 text-center"><StatusBadge status={wo.derivedStatus} /></td>
+                    const selected = selectedRows.has(wo.id);
+                    return <tr key={wo.id} className={rowClass(i, selected)}>
+                      <td className={cn(T_TD, 'text-center')}><input type="checkbox" checked={selected} onChange={() => handleToggleRow(wo.id)} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 align-middle" /></td>
+                      <td className={cn(T_TD, 'font-medium text-gray-900 max-w-[220px] truncate')} title={wo.product}>{wo.product}</td>
+                      <td className={cn(T_TD, 'text-gray-500 max-w-[200px] truncate')} title={wo.workCode}>{wo.workCode}</td>
+                      <td className={cn(T_TD, 'text-gray-700')}>{wo.brand}</td>
+                      <td className={cn(T_TD, 'text-right font-medium tabular-nums text-gray-900')}>{wo.quantity}</td>
+                      <td className={cn(T_TD, 'text-right tabular-nums')}>{wo.cuttingTotal > 0 ? <span className="text-emerald-600 font-medium">{wo.cuttingTotal}</span> : <span className="text-gray-300">—</span>}</td>
+                      <td className={cn(T_TD, 'text-right tabular-nums')}>{wo.sewingTotal > 0 ? <span className={cn('font-medium', wo.sewingTotal >= wo.quantity ? 'text-emerald-600' : 'text-amber-600')}>{wo.sewingTotal}</span> : <span className="text-gray-300">—</span>}</td>
+                      <td className={cn(T_TD, 'text-right tabular-nums')}>{wo.finishingTotal > 0 ? <span className={cn('font-medium', wo.finishingTotal >= wo.quantity ? 'text-emerald-600' : 'text-amber-600')}>{wo.finishingTotal}</span> : <span className="text-gray-300">—</span>}</td>
+                      <td className={cn(T_TD, 'text-right tabular-nums')}>{wo.cuttingTotal > 0 ? <span className={cn('font-medium', sisa === 0 ? 'text-emerald-600' : 'text-amber-600')}>{sisa}</span> : <span className="text-gray-300">—</span>}</td>
+                      <td className={cn(T_TD, 'text-center')}><StatusBadge status={wo.derivedStatus} /></td>
                     </tr>;
                   })}
                 </tbody>
@@ -531,18 +557,18 @@ export default function ProductionMonitoring({ onOpenSewingEntry, onOpenFinishin
             {cuttingMessage && <div className="mb-3 px-3 py-2 bg-green-50 border border-green-200 rounded-lg text-[12px] text-green-700">{cuttingMessage}</div>}
             <div className="mb-4"><h3 className="text-[13px] font-semibold text-slate-700 mb-2">🔵 Antrian Cutting — {cuttingQueueWO.length} WO</h3>
               <div className="border border-gray-200 rounded-lg overflow-hidden">
-                {cuttingQueueWO.length === 0 ? <div className="py-6 text-center text-slate-400 text-[12px]">✅ Semua sudah di-cutting</div> :
-                  <table className="w-full text-[11px] border-collapse">
-                    <thead><tr className="bg-slate-50 border-b border-gray-200"><th className="text-left py-2 px-3 font-semibold">Work Code</th><th className="text-left py-2 px-3 font-semibold">Brand</th><th className="text-right py-2 px-3 font-semibold">Qty</th><th className="text-center py-2 px-3 font-semibold">Cutting</th><th className="text-center py-2 px-3 font-semibold">Action</th></tr></thead>
-                    <tbody>{cuttingQueueWO.map(wo => <tr key={wo.id} className="border-b border-gray-100 hover:bg-blue-50/30"><td className="py-2 px-3"><div className="font-medium">{wo.product}</div><div className="text-[10px] text-slate-400">{wo.workCode}</div></td><td className="py-2 px-3 text-slate-600">{wo.brand}</td><td className="py-2 px-3 text-right font-semibold">{wo.quantity}</td><td className="py-2 px-3 text-center"><input type="number" value={cuttingInputs[wo.id] || ''} onChange={e => setCuttingInputs(prev => ({ ...prev, [wo.id]: e.target.value }))} className="w-24 h-7 px-2 text-[11px] border border-gray-200 rounded text-center" /></td><td className="py-2 px-3 text-center"><button onClick={() => handleInputCutting(wo.id)} className="px-3 py-1 text-[10px] font-semibold bg-blue-500 text-white rounded-md hover:bg-blue-600">Simpan 🔒</button></td></tr>)}</tbody>
+                {cuttingQueueWO.length === 0 ? <div className="py-8 text-center text-gray-400 text-[13px]">Semua work order sudah di-cutting</div> :
+                  <table className={T_TABLE}>
+                    <thead><tr className={T_HEAD_ROW}><th className={cn(T_TH, 'text-left')}>Work Code</th><th className={cn(T_TH, 'text-left')}>Brand</th><th className={cn(T_TH, 'text-right')}>Qty</th><th className={cn(T_TH, 'text-center')}>Cutting</th><th className={cn(T_TH, 'text-center')}>Action</th></tr></thead>
+                    <tbody>{cuttingQueueWO.map((wo, i) => <tr key={wo.id} className={rowClass(i)}><td className={cn(T_TD, 'min-w-[240px]')}><div className="font-medium text-gray-900">{wo.product}</div><div className="text-[11px] text-gray-400 truncate" title={wo.workCode}>{wo.workCode}</div></td><td className={cn(T_TD, 'text-gray-700')}>{wo.brand}</td><td className={cn(T_TD, 'text-right font-medium tabular-nums text-gray-900')}>{wo.quantity}</td><td className={cn(T_TD, 'text-center')}><input type="number" value={cuttingInputs[wo.id] || ''} onChange={e => setCuttingInputs(prev => ({ ...prev, [wo.id]: e.target.value }))} className="w-24 h-8 px-2 text-[13px] border border-gray-300 rounded-md text-center focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 tabular-nums" /></td><td className={cn(T_TD, 'text-center')}><button onClick={() => handleInputCutting(wo.id)} className="px-3.5 py-1.5 text-[12px] font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">Simpan</button></td></tr>)}</tbody>
                   </table>}
               </div>
             </div>
             <div><h3 className="text-[13px] font-semibold text-slate-700 mb-2">🟢 Riwayat Cutting ({cuttingDoneWO.length} WO)</h3>
               <div className="border border-gray-200 rounded-lg overflow-hidden">
-                <table className="w-full text-[11px] border-collapse">
-                  <thead><tr className="bg-slate-50 border-b border-gray-200"><th className="text-left py-2 px-3 font-semibold">Work Code</th><th className="text-right py-2 px-3 font-semibold">Qty</th><th className="text-right py-2 px-3 font-semibold">Cutting</th><th className="text-right py-2 px-3 font-semibold">Sisa</th><th className="text-left py-2 px-3 font-semibold">Input By</th><th className="text-left py-2 px-3 font-semibold">Tanggal</th></tr></thead>
-                  <tbody>{cuttingDoneWO.map(wo => { const cr = getCuttingForWO(wo.id); return <tr key={wo.id} className="border-b border-gray-100 hover:bg-slate-50/30"><td className="py-2 px-3"><div className="font-medium">{wo.product}</div><div className="text-[10px] text-slate-400">{wo.workCode}</div></td><td className="py-2 px-3 text-right">{wo.quantity}</td><td className="py-2 px-3 text-right font-semibold text-green-600">{cr?.totalCutting || '—'}</td><td className="py-2 px-3 text-right text-slate-500">{cr?.sisaCutting || '—'}</td><td className="py-2 px-3 text-slate-600">{cr?.inputBy || '—'}</td><td className="py-2 px-3 text-slate-600">{cr ? formatDate(cr.inputAt) : '—'}</td></tr>; })}</tbody>
+                <table className={T_TABLE}>
+                  <thead><tr className={T_HEAD_ROW}><th className={cn(T_TH, 'text-left')}>Work Code</th><th className={cn(T_TH, 'text-right')}>Qty</th><th className={cn(T_TH, 'text-right')}>Cutting</th><th className={cn(T_TH, 'text-right')}>Sisa</th><th className={cn(T_TH, 'text-left')}>Input By</th><th className={cn(T_TH, 'text-left')}>Tanggal</th></tr></thead>
+                  <tbody>{cuttingDoneWO.map((wo, i) => { const cr = getCuttingForWO(wo.id); return <tr key={wo.id} className={rowClass(i)}><td className={cn(T_TD, 'min-w-[240px]')}><div className="font-medium text-gray-900">{wo.product}</div><div className="text-[11px] text-gray-400 truncate" title={wo.workCode}>{wo.workCode}</div></td><td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>{wo.quantity}</td><td className={cn(T_TD, 'text-right font-medium tabular-nums text-emerald-600')}>{cr?.totalCutting || '—'}</td><td className={cn(T_TD, 'text-right tabular-nums text-gray-500')}>{cr?.sisaCutting || '—'}</td><td className={cn(T_TD, 'text-gray-700')}>{cr?.inputBy || '—'}</td><td className={cn(T_TD, 'text-gray-700 whitespace-nowrap')}>{cr ? formatDate(cr.inputAt) : '—'}</td></tr>; })}</tbody>
                 </table>
               </div>
             </div>
@@ -554,10 +580,10 @@ export default function ProductionMonitoring({ onOpenSewingEntry, onOpenFinishin
           <div>
             <div className="flex items-center justify-between mb-3"><p className="text-[12px] text-slate-500">Database hasil jahitan <strong>LULUS QC</strong></p><button onClick={() => onOpenSewingEntry?.()} className="px-3 py-1.5 text-[11px] font-semibold bg-blue-500 text-white rounded-lg hover:bg-blue-600">➕ Entry Jahitan Baru</button></div>
             <div className="relative max-w-xs mb-3"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" /><input type="text" placeholder="Cari..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full h-8 pl-8 pr-3 text-[12px] border border-gray-200 rounded-lg" /></div>
-            <div className="border border-gray-200 rounded-lg overflow-x-auto">
-              <table className="w-full text-[11px] border-collapse">
-                <thead><tr className="bg-slate-50 border-b border-gray-200"><th className="text-left py-2.5 px-3 font-semibold">Tanggal</th><th className="text-left py-2.5 px-3 font-semibold">Work Code</th><th className="text-left py-2.5 px-3 font-semibold">PIC</th><th className="text-right py-2.5 px-3 font-semibold">Qty</th><th className="text-center py-2.5 px-3 font-semibold">Bukti</th></tr></thead>
-                <tbody>{sewingData.length === 0 ? <tr><td colSpan={5} className="py-8 text-center text-slate-400">Belum ada</td></tr> : sewingData.map(sr => <tr key={sr.id} className="border-b border-gray-100 hover:bg-slate-50/30"><td className="py-2.5 px-3">{formatDate(sr.tanggalLaporan)}</td><td className="py-2.5 px-3"><div className="font-medium">{workOrders.find(w => w.id === sr.workOrderId)?.product || '—'}</div><div className="text-[10px] text-slate-400">{sr.workCode}</div></td><td className="py-2.5 px-3">{sr.picPenjahit}</td><td className="py-2.5 px-3 text-right font-semibold">{sr.qtySelesai}</td><td className="py-2.5 px-3 text-center">{sr.imageName ? <Image className="w-3.5 h-3.5 text-blue-500" /> : '—'}</td></tr>)}</tbody>
+            <div className={T_WRAP}>
+              <table className={T_TABLE}>
+                <thead><tr className={T_HEAD_ROW}><th className={cn(T_TH, 'text-left')}>Tanggal</th><th className={cn(T_TH, 'text-left')}>Work Code</th><th className={cn(T_TH, 'text-left')}>PIC</th><th className={cn(T_TH, 'text-right')}>Qty</th><th className={cn(T_TH, 'text-center')}>Bukti</th></tr></thead>
+                <tbody>{sewingData.length === 0 ? <tr><td colSpan={5} className="py-10 text-center text-[13px] text-gray-400">Belum ada data jahitan</td></tr> : sewingData.map((sr, i) => <tr key={sr.id} className={rowClass(i)}><td className={cn(T_TD, 'text-gray-700 whitespace-nowrap')}>{formatDate(sr.tanggalLaporan)}</td><td className={cn(T_TD, 'min-w-[240px]')}><div className="font-medium text-gray-900">{workOrders.find(w => w.id === sr.workOrderId)?.product || '—'}</div><div className="text-[11px] text-gray-400 truncate" title={sr.workCode}>{sr.workCode}</div></td><td className={cn(T_TD, 'text-gray-700')}>{sr.picPenjahit}</td><td className={cn(T_TD, 'text-right font-medium tabular-nums text-gray-900')}>{sr.qtySelesai}</td><td className={cn(T_TD, 'text-center')}>{sr.imageName ? <Image className="w-4 h-4 text-blue-500 inline" /> : <span className="text-gray-300">—</span>}</td></tr>)}</tbody>
               </table>
             </div>
           </div>
@@ -568,10 +594,10 @@ export default function ProductionMonitoring({ onOpenSewingEntry, onOpenFinishin
           <div>
             <div className="flex items-center justify-between mb-3"><p className="text-[12px] text-slate-500">Database hasil <strong>finishing</strong></p><button onClick={() => onOpenFinishingEntry?.()} className="px-3 py-1.5 text-[11px] font-semibold bg-emerald-500 text-white rounded-lg hover:bg-emerald-600">➕ Entry Finishing Baru</button></div>
             <div className="relative max-w-xs mb-3"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" /><input type="text" placeholder="Cari..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full h-8 pl-8 pr-3 text-[12px] border border-gray-200 rounded-lg" /></div>
-            <div className="border border-gray-200 rounded-lg overflow-x-auto">
-              <table className="w-full text-[11px] border-collapse">
-                <thead><tr className="bg-slate-50 border-b border-gray-200"><th className="text-left py-2.5 px-3 font-semibold">Tanggal</th><th className="text-left py-2.5 px-3 font-semibold">Work Code</th><th className="text-left py-2.5 px-3 font-semibold">PIC</th><th className="text-right py-2.5 px-3 font-semibold">Qty</th><th className="text-center py-2.5 px-3 font-semibold">Bukti</th></tr></thead>
-                <tbody>{finishingLogData.length === 0 ? <tr><td colSpan={5} className="py-8 text-center text-slate-400">Belum ada</td></tr> : finishingLogData.map(fr => <tr key={fr.id} className="border-b border-gray-100 hover:bg-slate-50/30"><td className="py-2.5 px-3">{fr.tanggalImport ? formatDate(fr.tanggalImport) : '—'}</td><td className="py-2.5 px-3"><div className="font-medium">{workOrders.find(w => w.id === fr.workOrderId)?.product || '—'}</div><div className="text-[10px] text-slate-400">{workOrders.find(w => w.id === fr.workOrderId)?.workCode || fr.workOrderId}</div></td><td className="py-2.5 px-3">{fr.picFinishing || fr.inputBy || '—'}</td><td className="py-2.5 px-3 text-right font-semibold">{fr.qtyFinishing}</td><td className="py-2.5 px-3 text-center">{fr.imageName ? <Image className="w-3.5 h-3.5 text-emerald-500" /> : '—'}</td></tr>)}</tbody>
+            <div className={T_WRAP}>
+              <table className={T_TABLE}>
+                <thead><tr className={T_HEAD_ROW}><th className={cn(T_TH, 'text-left')}>Tanggal</th><th className={cn(T_TH, 'text-left')}>Work Code</th><th className={cn(T_TH, 'text-left')}>PIC</th><th className={cn(T_TH, 'text-right')}>Qty</th><th className={cn(T_TH, 'text-center')}>Bukti</th></tr></thead>
+                <tbody>{finishingLogData.length === 0 ? <tr><td colSpan={5} className="py-10 text-center text-[13px] text-gray-400">Belum ada data finishing</td></tr> : finishingLogData.map((fr, i) => <tr key={fr.id} className={rowClass(i)}><td className={cn(T_TD, 'text-gray-700 whitespace-nowrap')}>{fr.tanggalImport ? formatDate(fr.tanggalImport) : '—'}</td><td className={cn(T_TD, 'min-w-[240px]')}><div className="font-medium text-gray-900">{workOrders.find(w => w.id === fr.workOrderId)?.product || '—'}</div><div className="text-[11px] text-gray-400 truncate" title={workOrders.find(w => w.id === fr.workOrderId)?.workCode || fr.workOrderId}>{workOrders.find(w => w.id === fr.workOrderId)?.workCode || fr.workOrderId}</div></td><td className={cn(T_TD, 'text-gray-700')}>{fr.picFinishing || fr.inputBy || '—'}</td><td className={cn(T_TD, 'text-right font-medium tabular-nums text-gray-900')}>{fr.qtyFinishing}</td><td className={cn(T_TD, 'text-center')}>{fr.imageName ? <Image className="w-4 h-4 text-emerald-500 inline" /> : <span className="text-gray-300">—</span>}</td></tr>)}</tbody>
               </table>
             </div>
           </div>
@@ -582,10 +608,10 @@ export default function ProductionMonitoring({ onOpenSewingEntry, onOpenFinishin
           <div>
             <div className="flex items-center justify-between mb-3"><p className="text-[12px] text-slate-500">Database hasil <strong>pasang kancing manual</strong> (lubangi + jahit kancing)</p><button onClick={() => onOpenKancingEntry?.()} className="px-3 py-1.5 text-[11px] font-semibold bg-violet-500 text-white rounded-lg hover:bg-violet-600">➕ Entry Pasang Kancing Baru</button></div>
             <div className="relative max-w-xs mb-3"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" /><input type="text" placeholder="Cari..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full h-8 pl-8 pr-3 text-[12px] border border-gray-200 rounded-lg" /></div>
-            <div className="border border-gray-200 rounded-lg overflow-x-auto">
-              <table className="w-full text-[11px] border-collapse">
-                <thead><tr className="bg-slate-50 border-b border-gray-200"><th className="text-left py-2.5 px-3 font-semibold">Tanggal</th><th className="text-left py-2.5 px-3 font-semibold">Work Code</th><th className="text-left py-2.5 px-3 font-semibold">PIC</th><th className="text-right py-2.5 px-3 font-semibold">Qty</th><th className="text-center py-2.5 px-3 font-semibold">Bukti</th></tr></thead>
-                <tbody>{kancingLogData.length === 0 ? <tr><td colSpan={5} className="py-8 text-center text-slate-400">Belum ada</td></tr> : kancingLogData.map(kr => <tr key={kr.id} className="border-b border-gray-100 hover:bg-slate-50/30"><td className="py-2.5 px-3">{formatDate(kr.tanggalLaporan)}</td><td className="py-2.5 px-3"><div className="font-medium">{workOrders.find(w => w.id === kr.workOrderId)?.product || '—'}</div><div className="text-[10px] text-slate-400">{kr.workCode}</div></td><td className="py-2.5 px-3">{kr.picKancing}</td><td className="py-2.5 px-3 text-right font-semibold">{kr.qtyKancing}</td><td className="py-2.5 px-3 text-center">{kr.imageName ? <Image className="w-3.5 h-3.5 text-violet-500" /> : '—'}</td></tr>)}</tbody>
+            <div className={T_WRAP}>
+              <table className={T_TABLE}>
+                <thead><tr className={T_HEAD_ROW}><th className={cn(T_TH, 'text-left')}>Tanggal</th><th className={cn(T_TH, 'text-left')}>Work Code</th><th className={cn(T_TH, 'text-left')}>PIC</th><th className={cn(T_TH, 'text-right')}>Qty</th><th className={cn(T_TH, 'text-center')}>Bukti</th></tr></thead>
+                <tbody>{kancingLogData.length === 0 ? <tr><td colSpan={5} className="py-10 text-center text-[13px] text-gray-400">Belum ada data pasang kancing</td></tr> : kancingLogData.map((kr, i) => <tr key={kr.id} className={rowClass(i)}><td className={cn(T_TD, 'text-gray-700 whitespace-nowrap')}>{formatDate(kr.tanggalLaporan)}</td><td className={cn(T_TD, 'min-w-[240px]')}><div className="font-medium text-gray-900">{workOrders.find(w => w.id === kr.workOrderId)?.product || '—'}</div><div className="text-[11px] text-gray-400 truncate" title={kr.workCode}>{kr.workCode}</div></td><td className={cn(T_TD, 'text-gray-700')}>{kr.picKancing}</td><td className={cn(T_TD, 'text-right font-medium tabular-nums text-gray-900')}>{kr.qtyKancing}</td><td className={cn(T_TD, 'text-center')}>{kr.imageName ? <Image className="w-4 h-4 text-violet-500 inline" /> : <span className="text-gray-300">—</span>}</td></tr>)}</tbody>
               </table>
             </div>
           </div>
@@ -646,19 +672,19 @@ export default function ProductionMonitoring({ onOpenSewingEntry, onOpenFinishin
 
                 {/* Work code list */}
                 <h3 className="text-[12px] font-bold text-slate-700 mb-2">Daftar Work Code</h3>
-                <div className="border border-gray-200 rounded-lg overflow-x-auto mb-5">
-                  <table className="w-full text-[11px] border-collapse">
-                    <thead><tr className="bg-slate-50 border-b border-gray-200"><th className="text-left py-2.5 px-3 font-semibold">Work Code</th><th className="text-left py-2.5 px-3 font-semibold">Warna</th><th className="text-left py-2.5 px-3 font-semibold">Size</th><th className="text-right py-2.5 px-3 font-semibold">Qty</th><th className="text-right py-2.5 px-3 font-semibold">Cutting</th><th className="text-right py-2.5 px-3 font-semibold">Jahit</th><th className="text-center py-2.5 px-3 font-semibold">Status</th></tr></thead>
+                <div className="bg-white border border-gray-200 rounded-lg overflow-auto mb-5">
+                  <table className={T_TABLE}>
+                    <thead><tr className={T_HEAD_ROW}><th className={cn(T_TH, 'text-left')}>Work Code</th><th className={cn(T_TH, 'text-left')}>Warna</th><th className={cn(T_TH, 'text-left')}>Size</th><th className={cn(T_TH, 'text-right')}>Qty</th><th className={cn(T_TH, 'text-right')}>Cutting</th><th className={cn(T_TH, 'text-right')}>Jahit</th><th className={cn(T_TH, 'text-center')}>Status</th></tr></thead>
                     <tbody>
-                      {selectedGroup.workOrders.map(wo => (
-                        <tr key={wo.id} className="border-b border-gray-100 hover:bg-slate-50/30">
-                          <td className="py-2.5 px-3 font-mono text-[10px] text-slate-600">{wo.workCode}</td>
-                          <td className="py-2.5 px-3">{wo.warna}</td>
-                          <td className="py-2.5 px-3">{wo.size}</td>
-                          <td className="py-2.5 px-3 text-right font-semibold">{wo.quantity}</td>
-                          <td className="py-2.5 px-3 text-right">{(wo as WorkOrder & { cuttingTotal?: number }).cuttingTotal ?? '—'}</td>
-                          <td className="py-2.5 px-3 text-right">{(wo as WorkOrder & { sewingTotal?: number }).sewingTotal ?? '—'}</td>
-                          <td className="py-2.5 px-3 text-center"><StatusBadge status={(wo as WorkOrder & { derivedStatus: ProductionStatus }).derivedStatus} /></td>
+                      {selectedGroup.workOrders.map((wo, i) => (
+                        <tr key={wo.id} className={rowClass(i)}>
+                          <td className={cn(T_TD, 'font-mono text-[12px] text-gray-600')}>{wo.workCode}</td>
+                          <td className={cn(T_TD, 'text-gray-700')}>{wo.warna}</td>
+                          <td className={cn(T_TD, 'text-gray-700')}>{wo.size}</td>
+                          <td className={cn(T_TD, 'text-right font-medium tabular-nums text-gray-900')}>{wo.quantity}</td>
+                          <td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>{(wo as WorkOrder & { cuttingTotal?: number }).cuttingTotal ?? '—'}</td>
+                          <td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>{(wo as WorkOrder & { sewingTotal?: number }).sewingTotal ?? '—'}</td>
+                          <td className={cn(T_TD, 'text-center')}><StatusBadge status={(wo as WorkOrder & { derivedStatus: ProductionStatus }).derivedStatus} /></td>
                         </tr>
                       ))}
                     </tbody>
