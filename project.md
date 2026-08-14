@@ -187,6 +187,16 @@ Website Konveksi/
 
 ## Latest Progress
 
+### 2026-08-14 — Styling tabel Production Monitoring (formal design system)
+
+- Semua tabel di Production Monitoring (Raw Data, Cutting queue/history, Sewing/Finishing/Pasang Kancing Log, tabel work-code di overlay full-screen) kini memakai **design system terpusat**:
+  - Zebra stripe putih/#F9FAFB, hover #F0F1F3, baris terpilih #EFF6FF
+  - Border horizontal saja: 1px #E5E7EB antar baris, 2px #D1D5DB di bawah header
+  - Header sticky latar putih; tipografi 12px semibold #4B5563 (header) / 13px reguler (isi), angka tabular-nums, teks panjang truncate + tooltip
+  - Padding cell 12-16px horizontal, tinggi baris ±44px; checkbox rata tengah vertikal
+  - **Status badge pill solid** teks putih: New=slate, Cutting=biru, Progress=amber, Finished=hijau, Invoiced=ungu
+- Commit `c57227c`, build hijau.
+
 ### 2026-08-14 — Header Production Monitoring: redesign formal
 
 - Header & tab bar Production Monitoring didesain ulang tampilannya jadi formal, siap dipakai sebagai aplikasi:
