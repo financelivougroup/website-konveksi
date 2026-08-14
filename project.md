@@ -197,6 +197,10 @@ Website Konveksi/
   - **Status badge pill solid** teks putih: New=slate, Cutting=biru, Progress=amber, Finished=hijau, Invoiced=ungu
 - Commit `c57227c`, build hijau.
 
+### 2026-08-14 — Bubble Laporan Pasang Kancing di Kanban card overlay
+
+- Overlay full-screen kanban card kini punya **3 bubble laporan**: Laporan Jahit, Laporan Finishing, dan **Laporan Pasang Kancing** (violet, ikon CircleDot). Masing-masing mengagregat record semua work order dalam product note itu; tetap satu bubble terbuka dalam satu waktu (commit `e2fda8e`).
+
 ### 2026-08-14 — Header Production Monitoring: redesign formal
 
 - Header & tab bar Production Monitoring didesain ulang tampilannya jadi formal, siap dipakai sebagai aplikasi:
