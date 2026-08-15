@@ -187,6 +187,12 @@ Website Konveksi/
 
 ## Latest Progress
 
+### 2026-08-15 — Complain: semua field wajib + dropdown PIC/Posisi/Tingkat seragam dengan Produk
+
+- Tulisan "(otomatis)" di header Poin dihapus (commit `067a92a`).
+- **Semua field form complain sekarang wajib**: tanggal, produk, warna, work code, PIC, posisi, tingkat, potongan/PCS (boleh 0, tidak boleh kosong), detail complain.
+- **PIC, Posisi, Tingkat** kini memakai komponen dropdown custom yang sama persis dengan field Produk: tombol tertutup dengan placeholder "Pilih ...", klik membuka panel pilihan, klik di luar menutup; dropdown PIC ada search-nya. Select native dengan opsi "— Pilih X —" dihapus.
+
 ### 2026-08-15 — Complain: field Produk jadi dropdown tertutup dengan search di dalamnya
 
 - Field Produk di form complain tidak lagi menampilkan list produk secara permanen — sekarang tampil seperti dropdown lain (hanya nilai terpilih / placeholder), klik baru membuka panel berisi search box di atas dan daftar produk di bawah; pilih produk atau klik di luar menutup panel; membuka ulang mereset search ke daftar penuh (commit `db908fd`).
