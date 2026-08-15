@@ -44,10 +44,10 @@ const SEED_DATA: Record<string, Record<string, unknown>[]> = {
     { supplier: 'PT Kain Jaya', note: 'DEF456 CSC-003-Navy', source_product: 'CSC', product_id: 'CSC-003', kode_produksi: 'DEF456', status: 'Dalam Perjalanan', received_at: '-' },
   ],
   register_penjahit: [
-    { pic_penjahit: 'Budi Santoso', konveksi_team: 'Budi', status: 'Aktif' },
-    { pic_penjahit: 'Ani Wulandari', konveksi_team: 'Ani', status: 'Aktif' },
-    { pic_penjahit: 'Caca', konveksi_team: 'Caca', status: 'Aktif' },
-    { pic_penjahit: 'Dedi Kurniawan', konveksi_team: 'Dedi', status: 'Non-Aktif' },
+    { pic_penjahit: 'Budi Santoso', posisi: 'Penjahit', status: 'Aktif' },
+    { pic_penjahit: 'Ani Wulandari', posisi: 'Leader', status: 'Aktif' },
+    { pic_penjahit: 'Caca', posisi: 'Penjahit', status: 'Aktif' },
+    { pic_penjahit: 'Dedi Kurniawan', posisi: 'Finishing', status: 'Non-Aktif' },
   ],
   daftar_libur: [
     { tanggal: '2026-06-01', hari: 'Senin', keterangan: 'Hari Libur Nasional' },

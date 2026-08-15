@@ -306,9 +306,6 @@ function RegisterPenjahitForm({ row, readOnly }: { row: Record<string, unknown> 
             <option value="Finishing">Finishing</option>
           </select>
         </FormField>
-        <FormField label="Konveksi Team">
-          <input type="text" id="form-konveksiTeam" className="form-input" defaultValue={row?.konveksiTeam as string || ''} placeholder="Tim konveksi (opsional)" readOnly={readOnly} />
-        </FormField>
         <FormField label="Status">
           <select id="form-status" className="form-input" defaultValue={row?.status as string || 'Aktif'} disabled={readOnly}>
             <option value="Aktif">Aktif</option>

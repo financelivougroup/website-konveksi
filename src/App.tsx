@@ -10,6 +10,7 @@ import { RegisterPoPage } from '@/pages/RegisterPoPage';
 import { PlanningProduksiPage } from '@/pages/PlanningProduksiPage';
 import { ComplainPenaltiPage } from '@/pages/ComplainPenaltiPage';
 import { TargetJahitPage } from '@/pages/TargetJahitPage';
+import { RegisterKaryawanPage } from '@/pages/RegisterKaryawanPage';
 import OrderEntry from '@/pages/OrderEntry';
 import { Sidebar } from '@/components/Layout/Sidebar';
 import { AuthGate } from '@/components/Auth/AuthGate';
@@ -605,6 +606,8 @@ export default function App() {
         <ComplainPenaltiPage />
       ) : currentView === 'target-jahit' ? (
         <TargetJahitPage />
+      ) : currentView === 'register-penjahit' ? (
+        <RegisterKaryawanPage />
       ) : (
       <main className="flex-1 flex flex-col min-w-0">
         {/* Top Bar */}

@@ -153,7 +153,6 @@ export const viewConfig: Record<ModuleId, ViewConfig> = {
     columns: [
       { key: 'picPenjahit', label: 'Nama Karyawan', width: '180px', icon: 'User' },
       { key: 'posisi', label: 'Posisi', width: '120px', badge: true, icon: 'Briefcase' },
-      { key: 'konveksiTeam', label: 'Konveksi Team', width: '150px', icon: 'Users' },
       { key: 'status', label: 'Status', width: '100px', badge: true, icon: 'Activity' },
     ],
   },
@@ -245,10 +244,10 @@ export const mockData: Record<ModuleId, Record<string, unknown>[]> = {
     { id: 3, tanggal: '2026-06-18', hari: 'Kamis', keterangan: 'Idul Fitri' },
   ],
   'register-penjahit': [
-    { id: 1, picPenjahit: 'Budi Santoso', konveksiTeam: 'Budi', posisi: 'Penjahit', status: 'Aktif' },
-    { id: 2, picPenjahit: 'Ani Wulandari', konveksiTeam: 'Ani', posisi: 'Leader', status: 'Aktif' },
-    { id: 3, picPenjahit: 'Caca', konveksiTeam: 'Caca', posisi: 'Penjahit', status: 'Aktif' },
-    { id: 4, picPenjahit: 'Dedi Kurniawan', konveksiTeam: 'Dedi', posisi: 'Finishing', status: 'Non-Aktif' },
+    { id: 1, picPenjahit: 'Budi Santoso', posisi: 'Penjahit', status: 'Aktif' },
+    { id: 2, picPenjahit: 'Ani Wulandari', posisi: 'Leader', status: 'Aktif' },
+    { id: 3, picPenjahit: 'Caca', posisi: 'Penjahit', status: 'Aktif' },
+    { id: 4, picPenjahit: 'Dedi Kurniawan', posisi: 'Finishing', status: 'Non-Aktif' },
   ],
   'master-product': [
     { id: 1, brand: 'Cassca', productId: 'CSC-001', product: 'Kaos Polos', category: 'Atasan', statusProduct: 'Aktif', warningStock: '-' },
