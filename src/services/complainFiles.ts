@@ -102,6 +102,15 @@ export async function createComplainFileRecord(input: { complainId: number; file
   return { data: data ? mapRow(data as DbRow) : null, error: null };
 }
 
+/**
+ * Hapus objek storage bukti complain berdasarkan path (best-effort —
+ * dipakai saat complain dihapus dan row complain_files hilang oleh CASCADE).
+ */
+export async function removeComplainFilesByPaths(paths: string[]): Promise<void> {
+  if (paths.length === 0) return;
+  await supabase.storage.from(BUCKET).remove(paths);
+}
+
 export async function removeComplainFile(id: string): Promise<{ error: Error | null }> {
   const { data, error: fetchError } = await supabase
     .from(TABLE)

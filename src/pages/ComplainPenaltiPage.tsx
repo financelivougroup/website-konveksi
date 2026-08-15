@@ -16,6 +16,7 @@ import {
   uploadComplainProof,
   createComplainFileRecord,
   removeComplainFile,
+  removeComplainFilesByPaths,
   type ComplainFileRow,
 } from '@/services/complainFiles';
 import { fetchAll as fetchStaff } from '@/services/registerPenjahit';
@@ -403,11 +404,16 @@ export function ComplainPenaltiPage() {
 
   async function handleDelete(item: ComplainPenaltiRow) {
     if (!confirm('Yakin ingin hapus complain ini? File bukti terkait juga akan terhapus.')) return;
+    // Ambil path file bukti SEBELUM hapus DB — row complain_files ikut terhapus oleh CASCADE.
+    const { data: files } = await fetchFilesByComplainId(item.id);
     const { error } = await removeComplain(item.id);
     if (error) {
       flash(`❌ Error: ${error.message}`);
       return;
     }
+    // Best-effort: hapus objek storage juga; kegagalan jangan menghambat UI
+    // (row DB sudah hilang, file yang tersisa jadi orphan).
+    await removeComplainFilesByPaths((files ?? []).map((f) => f.filePath)).catch(() => {});
     flash('✅ Complain berhasil dihapus.');
     void refresh();
   }
