@@ -294,12 +294,20 @@ function DaftarLiburForm({ row, readOnly }: { row: Record<string, unknown> | nul
 function RegisterPenjahitForm({ row, readOnly }: { row: Record<string, unknown> | null; isAddingNew: boolean; readOnly: boolean }) {
   return (
     <div className="space-y-5">
-      <Section title="Input Manual">
-        <FormField label="PIC Penjahit" required>
-          <input type="text" id="form-picPenjahit" className="form-input" defaultValue={row?.picPenjahit as string || ''} placeholder="Nama untuk dropdown di Selesai Jahit" readOnly={readOnly} />
+      <Section title="Data Karyawan">
+        <FormField label="Nama Karyawan" required>
+          <input type="text" id="form-picPenjahit" className="form-input" defaultValue={row?.picPenjahit as string || ''} placeholder="Nama lengkap karyawan" readOnly={readOnly} />
+        </FormField>
+        <FormField label="Posisi" required>
+          <select id="form-posisi" className="form-input" defaultValue={row?.posisi as string || ''} disabled={readOnly}>
+            <option value="">Pilih Posisi...</option>
+            <option value="Leader">Leader</option>
+            <option value="Penjahit">Penjahit</option>
+            <option value="Finishing">Finishing</option>
+          </select>
         </FormField>
         <FormField label="Konveksi Team">
-          <input type="text" id="form-konveksiTeam" className="form-input" defaultValue={row?.konveksiTeam as string || ''} placeholder="Nama untuk dropdown di Target Jahit" readOnly={readOnly} />
+          <input type="text" id="form-konveksiTeam" className="form-input" defaultValue={row?.konveksiTeam as string || ''} placeholder="Tim konveksi (opsional)" readOnly={readOnly} />
         </FormField>
         <FormField label="Status">
           <select id="form-status" className="form-input" defaultValue={row?.status as string || 'Aktif'} disabled={readOnly}>

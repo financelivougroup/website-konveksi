@@ -261,11 +261,11 @@ export function PlanningProduksiPage() {
                   <option value="">— Pilih Penjahit —</option>
                   {/* Show the currently selected name even if that penjahit is now
                       Non-Aktif, so historical rows stay editable and readable. */}
-                  {form.namaPenjahit && !penjahitList.some((p) => p.pic_penjahit === form.namaPenjahit) && (
+                  {form.namaPenjahit && !penjahitList.some((p) => p.picPenjahit === form.namaPenjahit) && (
                     <option value={form.namaPenjahit}>{form.namaPenjahit} (Non-Aktif)</option>
                   )}
                   {penjahitList.map((p) => (
-                    <option key={p.id} value={p.pic_penjahit}>{p.pic_penjahit}</option>
+                    <option key={p.id} value={p.picPenjahit}>{p.picPenjahit}</option>
                   ))}
                 </select>
                 {penjahitList.length === 0 && <p className="text-[10px] text-slate-400 mt-1">Belum ada penjahit terdaftar — tambahkan di Register Penjahit.</p>}

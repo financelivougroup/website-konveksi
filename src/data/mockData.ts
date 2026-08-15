@@ -147,11 +147,12 @@ export const viewConfig: Record<ModuleId, ViewConfig> = {
     ],
   },
   'register-penjahit': {
-    title: 'Register Penjahit',
+    title: 'Register Karyawan Tim Jahit',
     editable: true,
     sync: false,
     columns: [
-      { key: 'picPenjahit', label: 'PIC Penjahit', width: '180px', icon: 'User' },
+      { key: 'picPenjahit', label: 'Nama Karyawan', width: '180px', icon: 'User' },
+      { key: 'posisi', label: 'Posisi', width: '120px', badge: true, icon: 'Briefcase' },
       { key: 'konveksiTeam', label: 'Konveksi Team', width: '150px', icon: 'Users' },
       { key: 'status', label: 'Status', width: '100px', badge: true, icon: 'Activity' },
     ],
@@ -244,10 +245,10 @@ export const mockData: Record<ModuleId, Record<string, unknown>[]> = {
     { id: 3, tanggal: '2026-06-18', hari: 'Kamis', keterangan: 'Idul Fitri' },
   ],
   'register-penjahit': [
-    { id: 1, picPenjahit: 'Budi Santoso', konveksiTeam: 'Budi', status: 'Aktif' },
-    { id: 2, picPenjahit: 'Ani Wulandari', konveksiTeam: 'Ani', status: 'Aktif' },
-    { id: 3, picPenjahit: 'Caca', konveksiTeam: 'Caca', status: 'Aktif' },
-    { id: 4, picPenjahit: 'Dedi Kurniawan', konveksiTeam: 'Dedi', status: 'Non-Aktif' },
+    { id: 1, picPenjahit: 'Budi Santoso', konveksiTeam: 'Budi', posisi: 'Penjahit', status: 'Aktif' },
+    { id: 2, picPenjahit: 'Ani Wulandari', konveksiTeam: 'Ani', posisi: 'Leader', status: 'Aktif' },
+    { id: 3, picPenjahit: 'Caca', konveksiTeam: 'Caca', posisi: 'Penjahit', status: 'Aktif' },
+    { id: 4, picPenjahit: 'Dedi Kurniawan', konveksiTeam: 'Dedi', posisi: 'Finishing', status: 'Non-Aktif' },
   ],
   'master-product': [
     { id: 1, brand: 'Cassca', productId: 'CSC-001', product: 'Kaos Polos', category: 'Atasan', statusProduct: 'Aktif', warningStock: '-' },
@@ -346,7 +347,7 @@ export const navGroups = [
       { id: 'register-po' as const, label: 'Register PO', icon: 'ClipboardList' },
       { id: 'target-jahit' as const, label: 'Target Jahit', icon: 'Target' },
       { id: 'planning-produksi' as const, label: 'Planning Produksi', icon: 'Target' },
-      { id: 'register-penjahit' as const, label: 'Register Penjahit', icon: 'Users' },
+      { id: 'register-penjahit' as const, label: 'Register Karyawan', icon: 'Users' },
       { id: 'complain-penalti' as const, label: 'Complain & Penalti', icon: 'AlertTriangle' },
     ],
   },

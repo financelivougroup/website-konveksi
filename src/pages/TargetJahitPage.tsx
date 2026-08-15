@@ -89,7 +89,7 @@ export function TargetJahitPage() {
       const { data: registerRows } = await fetchAllRegister();
       let names: string[] = [];
       if (registerRows && registerRows.length > 0) {
-        names = registerRows.map((r: RegisterPenjahitRow) => r.pic_penjahit);
+        names = registerRows.map((r: RegisterPenjahitRow) => r.picPenjahit);
       } else {
         names = Array.from(new Set(items.map((r) => r.nama).filter(Boolean))) as string[];
       }
