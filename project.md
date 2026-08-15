@@ -187,6 +187,10 @@ Website Konveksi/
 
 ## Latest Progress
 
+### 2026-08-15 — Planning Produksi: kolom Size
+
+- Tabel `planning_produksi` mendapat kolom `size` (diterapkan via Supabase MCP; migration record `2026-08-15-planning-produksi-size.sql`). Form tambah/edit punya field Size, tabel menampilkan kolom Size antara Warna dan Qty, dan pencarian ikut mencakupnya (commit `62fe329`).
+
 ### 2026-08-15 — Complain: status otomatis NEED PROCEED → SOLVED
 
 - Status tidak lagi dipilih user di form. Complain baru otomatis berstatus **NEED PROCEED** (default DB, diterapkan via Supabase MCP); setelah potongan gaji dieksekusi, tombol **Solve** di tabel mengubahnya jadi **SOLVED** — badge amber → hijau (commit `df92260`).
