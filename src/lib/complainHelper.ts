@@ -6,7 +6,13 @@ export const TINGKAT_OPTIONS = [
   { key: 'berat', label: 'Berat', poin: 3 },
 ];
 
-export const STATUS_OPTIONS = ['Baru', 'Diproses', 'Selesai'];
+// Status lifecycle: complain baru dibuat otomatis berstatus NEED PROCEED;
+// setelah pemotongan gaji dieksekusi, statusnya diganti SOLVED (via tombol
+// di tabel — bukan pilihan user di form).
+export const COMPLAIN_STATUS = {
+  NEED_PROCEED: 'NEED PROCEED',
+  SOLVED: 'SOLVED',
+} as const;
 
 // posisi complain -> key komponen di register_po_components
 export const POTONGAN_POSISI_KEY: Record<string, string> = {

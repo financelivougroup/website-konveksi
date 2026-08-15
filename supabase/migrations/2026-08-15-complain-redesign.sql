@@ -8,6 +8,12 @@ ALTER TABLE public.complain_penalti ADD COLUMN IF NOT EXISTS tingkat TEXT;
 ALTER TABLE public.complain_penalti ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'Baru';
 ALTER TABLE public.complain_penalti DROP COLUMN IF EXISTS bukti_url;
 
+-- Status lifecycle (applied live after the initial rollout): new complains
+-- start as NEED PROCEED; marked SOLVED via a table action once the salary
+-- deduction has been executed.
+ALTER TABLE public.complain_penalti ALTER COLUMN status SET DEFAULT 'NEED PROCEED';
+UPDATE public.complain_penalti SET status = 'NEED PROCEED' WHERE status = 'Baru';
+
 -- complain_files: file records per complain (max 3 enforced in the UI)
 CREATE TABLE IF NOT EXISTS public.complain_files (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

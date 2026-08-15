@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import type { ChangeEvent } from 'react';
-import { Plus, RefreshCw, Search, Camera, Pencil, Trash2, X } from 'lucide-react';
+import { Plus, RefreshCw, Search, Camera, Pencil, Trash2, X, CheckCircle } from 'lucide-react';
 import { cn, formatCurrency } from '@/lib/utils';
 import { T_WRAP, T_TABLE, T_HEAD_ROW, T_TH, T_TD, rowClass } from '@/lib/tableStyles';
 import {
@@ -22,7 +22,7 @@ import {
 import { fetchAll as fetchStaff } from '@/services/registerPenjahit';
 import {
   TINGKAT_OPTIONS,
-  STATUS_OPTIONS,
+  COMPLAIN_STATUS,
   fetchComplainOptions,
   suggestPotongan,
   type ComplainOption,
@@ -52,10 +52,10 @@ const TINGKAT_BADGE: Record<string, string> = {
   berat: 'bg-rose-600',
 };
 
+// STATUS: NEED PROCEED (baru dibuat, potongan belum dieksekusi) / SOLVED.
 const STATUS_BADGE: Record<string, string> = {
-  Baru: 'bg-blue-600',
-  Diproses: 'bg-amber-500',
-  Selesai: 'bg-emerald-600',
+  'NEED PROCEED': 'bg-amber-500',
+  SOLVED: 'bg-emerald-600',
 };
 
 function today(): string {
@@ -72,9 +72,10 @@ interface ComplainForm {
   tingkat: string; // ringan/sedang/berat
   potonganPerPcs: string;
   detailComplain: string;
-  status: string; // default 'Baru'
 }
 
+// Status tidak diisi user — complain baru otomatis 'NEED PROCEED' (default DB),
+// lalu berubah 'SOLVED' lewat tombol aksi di tabel setelah potongan dieksekusi.
 const EMPTY_FORM: ComplainForm = {
   tanggal: today(),
   product: '',
@@ -85,7 +86,6 @@ const EMPTY_FORM: ComplainForm = {
   tingkat: '',
   potonganPerPcs: '',
   detailComplain: '',
-  status: 'Baru',
 };
 
 interface PendingFile {
@@ -370,7 +370,6 @@ export function ComplainPenaltiPage() {
       tingkat: item.tingkat ?? '',
       potonganPerPcs: String(item.potonganPerPcs),
       detailComplain: item.detailComplain ?? '',
-      status: item.status,
     });
     setProductSearch(item.product);
     setProductDropdownOpen(false);
@@ -464,6 +463,8 @@ export function ComplainPenaltiPage() {
       return;
     }
     setSaving(true);
+    // Status tidak dikirim: create memakai default DB ('NEED PROCEED'),
+    // dan update tidak boleh menimpa status yang sudah SOLVED.
     const fields = {
       tanggal: form.tanggal,
       product: form.product,
@@ -476,7 +477,6 @@ export function ComplainPenaltiPage() {
       potonganPerPcs: Number(form.potonganPerPcs || 0),
       poin: selectedPoin, // otomatis dari tingkat
       tingkat: form.tingkat || null,
-      status: form.status,
       inputBy: profile.displayName,
     };
     try {
@@ -529,6 +529,18 @@ export function ComplainPenaltiPage() {
     // (row DB sudah hilang, file yang tersisa jadi orphan).
     await removeComplainFilesByPaths((files ?? []).map((f) => f.filePath)).catch(() => {});
     flash('✅ Complain berhasil dihapus.');
+    void refresh();
+  }
+
+  // Setelah pemotongan gaji dieksekusi, status complain berubah jadi SOLVED.
+  async function handleSolve(item: ComplainPenaltiRow) {
+    if (!confirm(`Tandai complain ${item.product} sebagai SOLVED? (pemotongan sudah dieksekusi)`)) return;
+    const { error } = await updateComplain(item.id, { status: COMPLAIN_STATUS.SOLVED });
+    if (error) {
+      flash(`❌ Error: ${error.message}`);
+      return;
+    }
+    flash('✅ Complain ditandai SOLVED.');
     void refresh();
   }
 
@@ -680,6 +692,15 @@ export function ComplainPenaltiPage() {
                     </td>
                     <td className={cn(T_TD, 'text-center whitespace-nowrap')}>
                       <div className="flex items-center justify-center gap-1">
+                        {item.status === COMPLAIN_STATUS.NEED_PROCEED && (
+                          <button
+                            onClick={() => void handleSolve(item)}
+                            title="Tandai SOLVED — potongan sudah dieksekusi"
+                            className="h-7 px-2 rounded-md inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600 hover:bg-emerald-50 transition-colors"
+                          >
+                            <CheckCircle className="w-3.5 h-3.5" /> Solve
+                          </button>
+                        )}
                         <button
                           onClick={() => void openEdit(item)}
                           title="Edit complain"
@@ -879,26 +900,15 @@ export function ComplainPenaltiPage() {
                 </div>
               </div>
 
-              {/* Row 5: Status | Poin (otomatis dari tingkat) */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className={labelCls}>Status</label>
-                  <select value={form.status} onChange={(e) => setField('status', e.target.value)} className={inputCls}>
-                    {STATUS_OPTIONS.map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
-                    ))}
-                  </select>
+              {/* Row 5: Poin (otomatis dari tingkat) — status dikelola otomatis, bukan pilihan user */}
+              <div>
+                <label className={labelCls}>Poin</label>
+                <div className="w-full h-9 px-3 text-[12px] border border-gray-200 rounded-lg bg-slate-50 flex items-center font-semibold text-slate-700">
+                  {form.tingkat
+                    ? `${selectedPoin} poin — ${TINGKAT_OPTIONS.find((t) => t.key === form.tingkat)?.label ?? form.tingkat}`
+                    : '—'}
                 </div>
-                <div>
-                  <label className={labelCls}>Poin</label>
-                  <div className="w-full h-9 px-3 text-[12px] border border-gray-200 rounded-lg bg-slate-50 flex items-center font-semibold text-slate-700">
-                    {form.tingkat
-                      ? `${selectedPoin} poin — ${TINGKAT_OPTIONS.find((t) => t.key === form.tingkat)?.label ?? form.tingkat}`
-                      : '—'}
-                  </div>
-                </div>
+                <p className="mt-1 text-[10px] text-slate-400">Status baru otomatis NEED PROCEED; tandai SOLVED dari tabel setelah potongan dieksekusi.</p>
               </div>
 
               {/* Detail complain */}

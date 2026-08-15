@@ -33,12 +33,14 @@ function mapRow(row: Record<string, unknown>): ComplainPenaltiRow {
     potonganPerPcs: row.potongan_per_pcs as number,
     poin: row.poin as number,
     tingkat: (row.tingkat as string | null) ?? null,
-    status: (row.status as string) ?? 'Baru',
+    status: (row.status as string) ?? 'NEED PROCEED',
     inputBy: (row.input_by as string | null) ?? null,
   }
 }
 
-function toColumns(input: Omit<ComplainPenaltiRow, 'id'>): Record<string, unknown> {
+// status sengaja opsional: create memakai default DB ('NEED PROCEED'),
+// update eksplisit dipakai untuk menandai SOLVED.
+function toColumns(input: Omit<ComplainPenaltiRow, 'id' | 'status'> & { status?: string }): Record<string, unknown> {
   return {
     tanggal: input.tanggal,
     product: input.product,
@@ -51,7 +53,7 @@ function toColumns(input: Omit<ComplainPenaltiRow, 'id'>): Record<string, unknow
     potongan_per_pcs: input.potonganPerPcs,
     poin: input.poin,
     tingkat: input.tingkat,
-    status: input.status,
+    ...(input.status !== undefined ? { status: input.status } : {}),
     input_by: input.inputBy,
   }
 }
@@ -65,7 +67,7 @@ export async function list(): Promise<{ data: ComplainPenaltiRow[] | null; error
 }
 
 export async function create(
-  input: Omit<ComplainPenaltiRow, 'id'>,
+  input: Omit<ComplainPenaltiRow, 'id' | 'status'> & { status?: string },
 ): Promise<{ data: ComplainPenaltiRow | null; error: Error | null }> {
   const { data, error } = await supabase
     .from(TABLE)
