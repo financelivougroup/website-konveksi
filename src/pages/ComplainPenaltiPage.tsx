@@ -97,6 +97,92 @@ const inputCls =
   'w-full h-9 px-3 text-[12px] border border-gray-200 rounded-lg outline-none bg-white focus:border-blue-300 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed';
 const labelCls = 'block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1';
 
+// Dropdown custom (tampilan sama dengan field Produk): tombol tertutup dengan
+// placeholder, klik membuka panel daftar pilihan, klik di luar menutup.
+function FieldDropdown({
+  value,
+  placeholder,
+  options,
+  onSelect,
+  searchable = false,
+  emptyHint,
+}: {
+  value: string;
+  placeholder: string;
+  options: Array<{ value: string; label: string }>;
+  onSelect: (v: string) => void;
+  searchable?: boolean;
+  emptyHint?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const ref = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  const q = search.trim().toLowerCase();
+  const filtered = q ? options.filter((o) => o.label.toLowerCase().includes(q)) : options;
+  const selectedLabel = options.find((o) => o.value === value)?.label ?? (value || undefined);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => {
+          if (!o) setSearch('');
+          return !o;
+        })}
+        className={cn(inputCls, 'flex items-center justify-between text-left bg-white cursor-pointer')}
+      >
+        <span className={selectedLabel ? 'text-slate-800' : 'text-slate-400'}>{selectedLabel ?? placeholder}</span>
+        <svg className={cn('w-3 h-3 text-slate-400 transition-transform', open && 'rotate-180')} viewBox="0 0 12 12" fill="none"><path d="M2.5 4.5L6 8l3.5-3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+      </button>
+      {open && (
+        <div className="absolute z-20 mt-1 w-full border border-gray-200 rounded-lg bg-white shadow-lg">
+          {searchable && (
+            <div className="p-2 border-b border-gray-100">
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Cari..."
+                autoFocus
+                className="w-full h-8 px-2.5 text-[12px] border border-gray-200 rounded-md outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+              />
+            </div>
+          )}
+          <div className="max-h-40 overflow-y-auto divide-y divide-gray-100">
+            {filtered.length === 0 ? (
+              <p className="px-3 py-2 text-[11px] text-slate-400">{emptyHint ?? 'Tidak ada pilihan yang cocok.'}</p>
+            ) : (
+              filtered.map((o) => (
+                <button
+                  key={o.value}
+                  type="button"
+                  onClick={() => { onSelect(o.value); setOpen(false); }}
+                  className={cn(
+                    'w-full text-left px-3 py-1.5 text-[12px] transition-colors hover:bg-blue-50',
+                    value === o.value ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-slate-700',
+                  )}
+                >
+                  {o.label}
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ComplainPenaltiPage() {
   const { profile } = useAuth();
 
@@ -357,8 +443,18 @@ export function ComplainPenaltiPage() {
   }
 
   // ===== Simpan / hapus =====
+  // Semua field wajib diisi. Potongan/PCS boleh 0, tapi tidak boleh kosong.
   const isValid = Boolean(
-    form.tanggal && form.product && form.warna && form.workCode && form.pic && form.posisi && form.tingkat,
+    form.tanggal &&
+      form.product &&
+      form.warna &&
+      form.workCode &&
+      form.pic &&
+      form.posisi &&
+      form.tingkat &&
+      form.potonganPerPcs.trim() !== '' &&
+      Number(form.potonganPerPcs) >= 0 &&
+      form.detailComplain.trim() !== '',
   );
   const selectedPoin = TINGKAT_OPTIONS.find((t) => t.key === form.tingkat)?.poin ?? 0;
 
@@ -738,25 +834,23 @@ export function ComplainPenaltiPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className={labelCls}>PIC *</label>
-                  <select value={form.pic} onChange={(e) => setField('pic', e.target.value)} className={inputCls}>
-                    <option value="">— Pilih PIC —</option>
-                    {staffOptions.map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
-                    ))}
-                  </select>
+                  <FieldDropdown
+                    value={form.pic}
+                    placeholder="Pilih PIC..."
+                    options={staffOptions.map((s) => ({ value: s, label: s }))}
+                    onSelect={(v) => setField('pic', v)}
+                    searchable
+                    emptyHint="Belum ada karyawan aktif — daftarkan di Register Karyawan."
+                  />
                 </div>
                 <div>
                   <label className={labelCls}>Posisi *</label>
-                  <select value={form.posisi} onChange={(e) => setField('posisi', e.target.value)} className={inputCls}>
-                    <option value="">— Pilih Posisi —</option>
-                    {POSISI_OPTIONS.map((p) => (
-                      <option key={p.key} value={p.key}>
-                        {p.label}
-                      </option>
-                    ))}
-                  </select>
+                  <FieldDropdown
+                    value={form.posisi}
+                    placeholder="Pilih Posisi..."
+                    options={POSISI_OPTIONS.map((p) => ({ value: p.key, label: p.label }))}
+                    onSelect={(v) => setField('posisi', v)}
+                  />
                 </div>
               </div>
 
@@ -764,17 +858,15 @@ export function ComplainPenaltiPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className={labelCls}>Tingkat *</label>
-                  <select value={form.tingkat} onChange={(e) => setField('tingkat', e.target.value)} className={inputCls}>
-                    <option value="">— Pilih Tingkat —</option>
-                    {TINGKAT_OPTIONS.map((t) => (
-                      <option key={t.key} value={t.key}>
-                        {t.label} ({t.poin} poin)
-                      </option>
-                    ))}
-                  </select>
+                  <FieldDropdown
+                    value={form.tingkat}
+                    placeholder="Pilih Tingkat..."
+                    options={TINGKAT_OPTIONS.map((t) => ({ value: t.key, label: `${t.label} (${t.poin} poin)` }))}
+                    onSelect={(v) => setField('tingkat', v)}
+                  />
                 </div>
                 <div>
-                  <label className={labelCls}>Potongan/PCS</label>
+                  <label className={labelCls}>Potongan/PCS *</label>
                   <input
                     type="number"
                     min={0}
@@ -800,7 +892,7 @@ export function ComplainPenaltiPage() {
                   </select>
                 </div>
                 <div>
-                  <label className={labelCls}>Poin (otomatis)</label>
+                  <label className={labelCls}>Poin</label>
                   <div className="w-full h-9 px-3 text-[12px] border border-gray-200 rounded-lg bg-slate-50 flex items-center font-semibold text-slate-700">
                     {form.tingkat
                       ? `${selectedPoin} poin — ${TINGKAT_OPTIONS.find((t) => t.key === form.tingkat)?.label ?? form.tingkat}`
@@ -811,7 +903,7 @@ export function ComplainPenaltiPage() {
 
               {/* Detail complain */}
               <div>
-                <label className={labelCls}>Detail Complain</label>
+                <label className={labelCls}>Detail Complain *</label>
                 <textarea
                   value={form.detailComplain}
                   onChange={(e) => setField('detailComplain', e.target.value)}
