@@ -116,9 +116,23 @@ export function ComplainPenaltiPage() {
   const [editTarget, setEditTarget] = useState<ComplainPenaltiRow | null>(null);
   const [form, setForm] = useState<ComplainForm>(EMPTY_FORM);
   const [productSearch, setProductSearch] = useState('');
+  const [productDropdownOpen, setProductDropdownOpen] = useState(false);
   const [existingFiles, setExistingFiles] = useState<ComplainFileRow[]>([]);
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const [saving, setSaving] = useState(false);
+
+  // Dropdown Produk: tutup saat klik di luar panel.
+  const productDropdownRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!productDropdownOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (productDropdownRef.current && !productDropdownRef.current.contains(e.target as Node)) {
+        setProductDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [productDropdownOpen]);
 
   // Saran potongan terakhir yang diterapkan — supaya saran tidak menimpa input manual user.
   const lastSuggestionRef = useRef<string | null>(null);
@@ -229,6 +243,7 @@ export function ComplainPenaltiPage() {
 
   function selectProduct(p: string) {
     setProductSearch(p);
+    setProductDropdownOpen(false);
     if (form.product === p) return;
     // Cascade reset: ganti product -> reset warna, workCode, potongan.
     lastSuggestionRef.current = null;
@@ -249,6 +264,7 @@ export function ComplainPenaltiPage() {
     setForm({ ...EMPTY_FORM, tanggal: today() });
     lastSuggestionRef.current = null;
     setProductSearch('');
+    setProductDropdownOpen(false);
     setExistingFiles([]);
     setPendingFiles([]);
     setModalOpen(true);
@@ -271,6 +287,7 @@ export function ComplainPenaltiPage() {
       status: item.status,
     });
     setProductSearch(item.product);
+    setProductDropdownOpen(false);
     setExistingFiles([]);
     setPendingFiles([]);
     setModalOpen(true);
@@ -283,6 +300,7 @@ export function ComplainPenaltiPage() {
       prev.forEach((p) => URL.revokeObjectURL(p.previewUrl));
       return [];
     });
+    setProductDropdownOpen(false);
     setModalOpen(false);
   }, []);
 
@@ -627,32 +645,54 @@ export function ComplainPenaltiPage() {
                 </div>
                 <div>
                   <label className={labelCls}>Produk *</label>
-                  <input
-                    type="text"
-                    value={productSearch}
-                    onChange={(e) => setProductSearch(e.target.value)}
-                    placeholder="Cari produk..."
-                    className={inputCls}
-                  />
-                  <div className="mt-1 max-h-32 overflow-y-auto border border-gray-200 rounded-lg bg-white divide-y divide-gray-100">
-                    {complainOptions.length === 0 ? (
-                      <p className="px-3 py-2 text-[11px] text-slate-400">Memuat produk dari data produksi...</p>
-                    ) : filteredProducts.length === 0 ? (
-                      <p className="px-3 py-2 text-[11px] text-slate-400">Tidak ada produk yang cocok.</p>
-                    ) : (
-                      filteredProducts.map((p) => (
-                        <button
-                          key={p}
-                          type="button"
-                          onClick={() => selectProduct(p)}
-                          className={cn(
-                            'w-full text-left px-3 py-1.5 text-[12px] transition-colors hover:bg-blue-50',
-                            form.product === p ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-slate-700',
+                  <div ref={productDropdownRef} className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setProductDropdownOpen((o) => {
+                        if (!o) setProductSearch(''); // buka: mulai dengan daftar penuh
+                        return !o;
+                      })}
+                      className={cn(inputCls, 'flex items-center justify-between text-left bg-white cursor-pointer')}
+                    >
+                      <span className={form.product ? 'text-slate-800' : 'text-slate-400'}>
+                        {form.product || 'Pilih produk...'}
+                      </span>
+                      <svg className={cn('w-3 h-3 text-slate-400 transition-transform', productDropdownOpen && 'rotate-180')} viewBox="0 0 12 12" fill="none"><path d="M2.5 4.5L6 8l3.5-3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                    </button>
+                    {productDropdownOpen && (
+                      <div className="absolute z-20 mt-1 w-full border border-gray-200 rounded-lg bg-white shadow-lg">
+                        <div className="p-2 border-b border-gray-100">
+                          <input
+                            type="text"
+                            value={productSearch}
+                            onChange={(e) => setProductSearch(e.target.value)}
+                            placeholder="Cari produk..."
+                            autoFocus
+                            className="w-full h-8 px-2.5 text-[12px] border border-gray-200 rounded-md outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                          />
+                        </div>
+                        <div className="max-h-40 overflow-y-auto divide-y divide-gray-100">
+                          {complainOptions.length === 0 ? (
+                            <p className="px-3 py-2 text-[11px] text-slate-400">Memuat produk dari data produksi...</p>
+                          ) : filteredProducts.length === 0 ? (
+                            <p className="px-3 py-2 text-[11px] text-slate-400">Tidak ada produk yang cocok.</p>
+                          ) : (
+                            filteredProducts.map((p) => (
+                              <button
+                                key={p}
+                                type="button"
+                                onClick={() => selectProduct(p)}
+                                className={cn(
+                                  'w-full text-left px-3 py-1.5 text-[12px] transition-colors hover:bg-blue-50',
+                                  form.product === p ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-slate-700',
+                                )}
+                              >
+                                {p}
+                              </button>
+                            ))
                           )}
-                        >
-                          {p}
-                        </button>
-                      ))
+                        </div>
+                      </div>
                     )}
                   </div>
                 </div>
