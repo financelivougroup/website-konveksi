@@ -65,9 +65,16 @@ export function PlanningProduksiPage() {
 
   const loadPenjahit = useCallback(async () => {
     const { data } = await fetchAllPenjahit();
-    // Only show active penjahit; inactive (resigned) ones are hidden from the
-    // dropdown but their historical planning rows remain in the database.
-    setPenjahitList((data ?? []).filter((p) => (p.status ?? 'Aktif').toLowerCase() === 'aktif'));
+    // Only employees with posisi "Penjahit" who are still Aktif are selectable.
+    // Other positions (Leader, Finishing) and resigned employees are hidden,
+    // but their historical planning rows remain in the database.
+    setPenjahitList(
+      (data ?? []).filter(
+        (p) =>
+          (p.status ?? 'Aktif').toLowerCase() === 'aktif' &&
+          (p.posisi ?? '').toLowerCase() === 'penjahit',
+      ),
+    );
   }, []);
 
   const openCreate = useCallback(() => {
@@ -268,7 +275,7 @@ export function PlanningProduksiPage() {
                     <option key={p.id} value={p.picPenjahit}>{p.picPenjahit}</option>
                   ))}
                 </select>
-                {penjahitList.length === 0 && <p className="text-[10px] text-slate-400 mt-1">Belum ada penjahit terdaftar — tambahkan di Register Penjahit.</p>}
+                {penjahitList.length === 0 && <p className="text-[10px] text-slate-400 mt-1">Belum ada karyawan aktif dengan posisi Penjahit — daftarkan di Register Karyawan.</p>}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
