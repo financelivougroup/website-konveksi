@@ -23,6 +23,7 @@ interface PlanningForm {
   namaPenjahit: string;
   product: string;
   warna: string;
+  size: string;
   qty: string;
   bulanTarget: string;
 }
@@ -31,6 +32,7 @@ const EMPTY_FORM: PlanningForm = {
   namaPenjahit: '',
   product: '',
   warna: '',
+  size: '',
   qty: '',
   bulanTarget: currentMonth(),
 };
@@ -90,6 +92,7 @@ export function PlanningProduksiPage() {
       namaPenjahit: item.namaPenjahit,
       product: item.product,
       warna: item.warna ?? '',
+      size: item.size ?? '',
       qty: String(item.qty),
       bulanTarget: item.bulanTarget,
     });
@@ -113,6 +116,7 @@ export function PlanningProduksiPage() {
       namaPenjahit: form.namaPenjahit,
       product: form.product,
       warna: form.warna || null,
+      size: form.size || null,
       qty: Number(form.qty),
       bulanTarget: form.bulanTarget,
     };
@@ -167,7 +171,7 @@ export function PlanningProduksiPage() {
     if (!search) return items;
     const q = search.toLowerCase();
     return items.filter((d) =>
-      [d.namaPenjahit, d.product, d.warna ?? '', d.bulanTarget]
+      [d.namaPenjahit, d.product, d.warna ?? '', d.size ?? '', d.bulanTarget]
         .some((v) => String(v).toLowerCase().includes(q)),
     );
   }, [items, search]);
@@ -286,6 +290,10 @@ export function PlanningProduksiPage() {
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Warna</label>
                   <input type="text" value={form.warna} onChange={(e) => setField('warna', e.target.value)} placeholder="e.g. Hitam" className="w-full h-9 px-3 text-[12px] border border-gray-200 rounded-lg outline-none bg-white focus:border-sky-300" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Size</label>
+                  <input type="text" value={form.size} onChange={(e) => setField('size', e.target.value)} placeholder="e.g. M" className="w-full h-9 px-3 text-[12px] border border-gray-200 rounded-lg outline-none bg-white focus:border-sky-300" />
                 </div>
               </div>
 

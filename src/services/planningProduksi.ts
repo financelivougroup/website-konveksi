@@ -7,6 +7,7 @@ export interface PlanningProduksiRow {
   namaPenjahit: string
   product: string
   warna: string | null
+  size: string | null
   qty: number
   bulanTarget: string
   status: string
@@ -18,6 +19,7 @@ function mapRow(row: Record<string, unknown>): PlanningProduksiRow {
     namaPenjahit: row.nama_penjahit as string,
     product: row.product as string,
     warna: (row.warna as string | null) ?? null,
+    size: (row.size as string | null) ?? null,
     qty: row.qty as number,
     bulanTarget: row.bulan_target as string,
     status: row.status as string,
@@ -29,6 +31,7 @@ function toColumns(input: Omit<PlanningProduksiRow, 'id'>): Record<string, unkno
     nama_penjahit: input.namaPenjahit,
     product: input.product,
     warna: input.warna,
+    size: input.size,
     qty: input.qty,
     bulan_target: input.bulanTarget,
     status: input.status,
@@ -66,6 +69,7 @@ export async function update(
   if (updates.namaPenjahit !== undefined) fields.nama_penjahit = updates.namaPenjahit
   if (updates.product !== undefined) fields.product = updates.product
   if (updates.warna !== undefined) fields.warna = updates.warna
+  if (updates.size !== undefined) fields.size = updates.size
   if (updates.qty !== undefined) fields.qty = updates.qty
   if (updates.bulanTarget !== undefined) fields.bulan_target = updates.bulanTarget
   if (updates.status !== undefined) fields.status = updates.status

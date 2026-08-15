@@ -95,6 +95,7 @@ export const viewConfig: Record<ModuleId, ViewConfig> = {
       { key: 'namaPenjahit', label: 'Nama Penjahit', width: '150px', icon: 'User' },
       { key: 'product', label: 'Product', width: '120px', icon: 'Box' },
       { key: 'warna', label: 'Warna', width: '80px', icon: 'Palette' },
+      { key: 'size', label: 'Size', width: '60px', icon: 'Ruler' },
       { key: 'qty', label: 'Qty', width: '80px', align: 'right', icon: 'TrendingUp' },
       { key: 'bulanTarget', label: 'Bulan Target', width: '110px', icon: 'Calendar' },
       { key: 'status', label: 'Status', width: '100px', badge: true, icon: 'Tag' },
