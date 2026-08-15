@@ -187,6 +187,12 @@ Website Konveksi/
 
 ## Latest Progress
 
+### 2026-08-15 — Complain: status otomatis NEED PROCEED → SOLVED
+
+- Status tidak lagi dipilih user di form. Complain baru otomatis berstatus **NEED PROCEED** (default DB, diterapkan via Supabase MCP); setelah potongan gaji dieksekusi, tombol **Solve** di tabel mengubahnya jadi **SOLVED** — badge amber → hijau (commit `df92260`).
+- Dropdown Status dihapus dari form; service `create()` tidak lagi menerima status.
+- Migration record `2026-08-15-complain-redesign.sql` diperbarui dengan ALTER DEFAULT + UPDATE nilai lama.
+
 ### 2026-08-15 — Complain: semua field wajib + dropdown PIC/Posisi/Tingkat seragam dengan Produk
 
 - Tulisan "(otomatis)" di header Poin dihapus (commit `067a92a`).
