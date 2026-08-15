@@ -7,13 +7,15 @@ export interface ComplainPenaltiRow {
   tanggal: string
   product: string
   warna: string | null
+  workCode: string | null
   pcs: number
   posisi: string
   pic: string | null
   detailComplain: string | null
   potonganPerPcs: number
   poin: number
-  buktiUrl: string | null
+  tingkat: string | null
+  status: string
   inputBy: string | null
 }
 
@@ -23,13 +25,15 @@ function mapRow(row: Record<string, unknown>): ComplainPenaltiRow {
     tanggal: row.tanggal as string,
     product: row.product as string,
     warna: (row.warna as string | null) ?? null,
+    workCode: (row.work_code as string | null) ?? null,
     pcs: row.pcs as number,
     posisi: row.posisi as string,
     pic: (row.pic as string | null) ?? null,
     detailComplain: (row.detail_complain as string | null) ?? null,
     potonganPerPcs: row.potongan_per_pcs as number,
     poin: row.poin as number,
-    buktiUrl: (row.bukti_url as string | null) ?? null,
+    tingkat: (row.tingkat as string | null) ?? null,
+    status: (row.status as string) ?? 'Baru',
     inputBy: (row.input_by as string | null) ?? null,
   }
 }
@@ -39,13 +43,15 @@ function toColumns(input: Omit<ComplainPenaltiRow, 'id'>): Record<string, unknow
     tanggal: input.tanggal,
     product: input.product,
     warna: input.warna,
+    work_code: input.workCode,
     pcs: input.pcs,
     posisi: input.posisi,
     pic: input.pic,
     detail_complain: input.detailComplain,
     potongan_per_pcs: input.potonganPerPcs,
     poin: input.poin,
-    bukti_url: input.buktiUrl,
+    tingkat: input.tingkat,
+    status: input.status,
     input_by: input.inputBy,
   }
 }
@@ -77,13 +83,15 @@ export async function update(
   if (updates.tanggal !== undefined) fields.tanggal = updates.tanggal
   if (updates.product !== undefined) fields.product = updates.product
   if (updates.warna !== undefined) fields.warna = updates.warna
+  if (updates.workCode !== undefined) fields.work_code = updates.workCode
   if (updates.pcs !== undefined) fields.pcs = updates.pcs
   if (updates.posisi !== undefined) fields.posisi = updates.posisi
   if (updates.pic !== undefined) fields.pic = updates.pic
   if (updates.detailComplain !== undefined) fields.detail_complain = updates.detailComplain
   if (updates.potonganPerPcs !== undefined) fields.potongan_per_pcs = updates.potonganPerPcs
   if (updates.poin !== undefined) fields.poin = updates.poin
-  if (updates.buktiUrl !== undefined) fields.bukti_url = updates.buktiUrl
+  if (updates.tingkat !== undefined) fields.tingkat = updates.tingkat
+  if (updates.status !== undefined) fields.status = updates.status
   if (updates.inputBy !== undefined) fields.input_by = updates.inputBy
 
   const { error } = await supabase.from(TABLE).update(fields).eq('id', id)

@@ -43,6 +43,23 @@ export async function fetchFilesByComplainId(complainId: number): Promise<{ data
   return { data: rows, error: null };
 }
 
+/**
+ * Hitung jumlah file bukti per complain_id dalam satu query.
+ * Return: { [complainId]: count }. Key selalu string (bigint bisa tiba
+ * sebagai string dari supabase-js), value jumlah foto.
+ */
+export async function fetchFileCounts(): Promise<Record<string, number>> {
+  const { data, error } = await supabase.from(TABLE).select('complain_id');
+  if (error || !data) return {};
+  const counts: Record<string, number> = {};
+  for (const row of data as Array<{ complain_id: unknown }>) {
+    if (row.complain_id === null || row.complain_id === undefined) continue;
+    const key = String(row.complain_id);
+    counts[key] = (counts[key] ?? 0) + 1;
+  }
+  return counts;
+}
+
 export interface UploadComplainProofInput {
   complainId: number;
   file: File;
