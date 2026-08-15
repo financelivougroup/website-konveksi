@@ -187,6 +187,10 @@ Website Konveksi/
 
 ## Latest Progress
 
+### 2026-08-15 — Complain: field Produk jadi dropdown tertutup dengan search di dalamnya
+
+- Field Produk di form complain tidak lagi menampilkan list produk secara permanen — sekarang tampil seperti dropdown lain (hanya nilai terpilih / placeholder), klik baru membuka panel berisi search box di atas dan daftar produk di bawah; pilih produk atau klik di luar menutup panel; membuka ulang mereset search ke daftar penuh (commit `db908fd`).
+
 ### 2026-08-15 — Planning Produksi: dropdown hanya karyawan posisi Penjahit
 
 - Dropdown Nama Penjahit di Planning Produksi sekarang hanya menampilkan karyawan Register Karyawan yang **posisinya Penjahit DAN statusnya Aktif** (commit `5437cfb`). Leader/Finishing tidak lagi bisa dipilih; karyawan keluar (Non-Aktif) juga tetap tersembunyi.
