@@ -346,6 +346,7 @@ export const navGroups = [
       { id: 'register-po' as const, label: 'Register PO', icon: 'ClipboardList' },
       { id: 'target-jahit' as const, label: 'Target Jahit', icon: 'Target' },
       { id: 'planning-produksi' as const, label: 'Planning Produksi', icon: 'Target' },
+      { id: 'register-penjahit' as const, label: 'Register Penjahit', icon: 'Users' },
       { id: 'complain-penalti' as const, label: 'Complain & Penalti', icon: 'AlertTriangle' },
     ],
   },
