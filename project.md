@@ -187,6 +187,11 @@ Website Konveksi/
 
 ## Latest Progress
 
+### 2026-08-15 — Planning Produksi: dropdown hanya karyawan posisi Penjahit
+
+- Dropdown Nama Penjahit di Planning Produksi sekarang hanya menampilkan karyawan Register Karyawan yang **posisinya Penjahit DAN statusnya Aktif** (commit `5437cfb`). Leader/Finishing tidak lagi bisa dipilih; karyawan keluar (Non-Aktif) juga tetap tersembunyi.
+- Riwayat planning milik orang yang posisinya berubah atau keluar tetap utuh di database.
+
 ### 2026-08-15 — Complain form redesign: cascade dropdown + multi-foto
 
 - Form complain ditulis ulang (`src/pages/ComplainPenaltiPage.tsx`, commit `ffcba90`):
