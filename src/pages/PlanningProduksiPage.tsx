@@ -65,7 +65,9 @@ export function PlanningProduksiPage() {
 
   const loadPenjahit = useCallback(async () => {
     const { data } = await fetchAllPenjahit();
-    setPenjahitList(data ?? []);
+    // Only show active penjahit; inactive (resigned) ones are hidden from the
+    // dropdown but their historical planning rows remain in the database.
+    setPenjahitList((data ?? []).filter((p) => (p.status ?? 'Aktif').toLowerCase() === 'aktif'));
   }, []);
 
   const openCreate = useCallback(() => {
@@ -257,6 +259,11 @@ export function PlanningProduksiPage() {
                 <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Nama Penjahit *</label>
                 <select value={form.namaPenjahit} onChange={(e) => setField('namaPenjahit', e.target.value)} className="w-full h-9 px-3 text-[12px] border border-gray-200 rounded-lg outline-none bg-white focus:border-sky-300">
                   <option value="">— Pilih Penjahit —</option>
+                  {/* Show the currently selected name even if that penjahit is now
+                      Non-Aktif, so historical rows stay editable and readable. */}
+                  {form.namaPenjahit && !penjahitList.some((p) => p.pic_penjahit === form.namaPenjahit) && (
+                    <option value={form.namaPenjahit}>{form.namaPenjahit} (Non-Aktif)</option>
+                  )}
                   {penjahitList.map((p) => (
                     <option key={p.id} value={p.pic_penjahit}>{p.pic_penjahit}</option>
                   ))}
