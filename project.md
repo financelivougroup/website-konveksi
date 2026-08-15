@@ -203,6 +203,10 @@ Website Konveksi/
 - Alur karyawan keluar: set status **Non-Aktif** di modul Register Penjahit (soft delete, pilihan user B) — orangnya hilang dari dropdown baru, tapi **riwayat planning produksi tetap utuh** karena `nama_penjahit` tersimpan sebagai teks, bukan FK; berlaku juga untuk riwayat jahit/finishing/kancing.
 - Baris planning milik penjahit yang sudah Non-Aktif tetap bisa diedit — namanya muncul di select sebagai opsi "(Non-Aktif)".
 - Lanjutan: modul Register Penjahit ditambahkan ke sidebar, lalu direvisi menjadi **Register Karyawan Tim Jahit** — mendaftarkan semua karyawan tim jahit dengan dropdown **Posisi** (Leader / Penjahit / Finishing). Kolom `posisi` ditambahkan ke tabel `register_penjahit` (migration `2026-08-15-register-penjahit-posisi.sql`). Sekaligus memperbaiki mismatch snake/camel lama di service registerPenjahit supaya tabel dan form benar-benar merender data (commit `485327a`).
+- Revisi akhir Register Karyawan (commit `49a3187`):
+  - Kolom **Konveksi Team dihapus** seluruhnya — form, view config, service, seed data, dan kolom `konveksi_team` di DB ikut di-drop (via Supabase MCP).
+  - Tampilan tabel disamakan persis dengan Production Monitoring: token styling dipindah ke `src/lib/tableStyles.ts` (sumber tunggal) dan dipakai kedua halaman — zebra rows, sticky header, border horizontal saja, badge pill solid, tipografi & spacing sama.
+  - Halaman khusus `RegisterKaryawanPage` menggantikan render DataTable generik: search, filter posisi, modal tambah/edit, hapus dengan konfirmasi (riwayat tetap aman).
 
 ### 2026-08-14 — Bubble Laporan Pasang Kancing di Kanban card overlay
 
