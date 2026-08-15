@@ -187,6 +187,18 @@ Website Konveksi/
 
 ## Latest Progress
 
+### 2026-08-15 — Complain form redesign: cascade dropdown + multi-foto
+
+- Form complain ditulis ulang (`src/pages/ComplainPenaltiPage.tsx`, commit `ffcba90`):
+  - **Dropdown bertingkat dari data nyata**: Produk (combobox searchable dari `work_orders`) → Warna (auto, 1 warna langsung terpilih) → Work Code → PIC (dari Register Karyawan, hanya yang Aktif).
+  - **Saran potongan otomatis** dari Register PO (work code → production order → komponen sesuai posisi) — hanya mengisi default, tidak pernah menimpa input manual.
+  - **Level keparahan → poin otomatis**: Ringan=1, Sedang=2, Berat=3 (field poin manual dihapus).
+  - **Status tracking**: Baru → Diproses → Selesai.
+  - **Multi-foto maksimal 3**: upload ke Storage bucket baru `complain-proofs`, preview thumbnail, hapus per file; menggantikan field Bukti URL.
+- Skema (migration `2026-08-15-complain-redesign.sql`, diterapkan via Supabase MCP): `complain_penalti` + `work_code`/`tingkat`/`status`, drop `bukti_url` (kolom `pcs` tetap, selalu 1, dipakai `computeDebt`); tabel baru `complain_files` (FK CASCADE); bucket `complain-proofs` publik + policy authenticated.
+- Tabel complain memakai design system tabel Production Monitoring (zebra rows, header sticky, badge solid untuk tingkat & status).
+- Catatan minor tertunda: race kecil di openEdit, nilai PIC non-aktif di select edit (kosmetik), tanpa batas ukuran file sebelum upload.
+
 ### 2026-08-14 — Styling tabel Production Monitoring (formal design system)
 
 - Semua tabel di Production Monitoring (Raw Data, Cutting queue/history, Sewing/Finishing/Pasang Kancing Log, tabel work-code di overlay full-screen) kini memakai **design system terpusat**:
