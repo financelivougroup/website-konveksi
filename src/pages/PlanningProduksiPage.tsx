@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Plus, RefreshCw, Search, Sparkles } from 'lucide-react';
-import { DataTable } from '@/components/Table/DataTable';
-import { Pagination } from '@/components/Table/Pagination';
-import { viewConfig } from '@/data/mockData';
+import { Plus, RefreshCw, Search, Sparkles, Filter, ArrowUpDown, Download, Trash2, Pencil } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { formatDate } from '@/data/pipelineData';
+import { T_WRAP, T_TABLE, T_HEAD_ROW, T_TH, T_TD, rowClass } from '@/lib/tableStyles';
 import {
   list as listPlanning,
   create as createPlanning,
@@ -12,8 +12,6 @@ import {
 } from '@/services/planningProduksi';
 import { fetchAll as fetchAllPenjahit, type RegisterPenjahitRow } from '@/services/registerPenjahit';
 import { generateTargetsFromPlanning } from '@/services/staffDebt';
-
-const PAGE_SIZE = 10;
 
 function currentMonth(): string {
   return new Date().toISOString().slice(0, 7); // 'YYYY-MM'
@@ -41,7 +39,7 @@ export function PlanningProduksiPage() {
   const [items, setItems] = useState<PlanningProduksiRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [page, setPage] = useState(1);
+  const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<PlanningProduksiRow | null>(null);
@@ -176,12 +174,35 @@ export function PlanningProduksiPage() {
     );
   }, [items, search]);
 
-  const paginated = useMemo(() => {
-    const start = (page - 1) * PAGE_SIZE;
-    return filtered.slice(start, start + PAGE_SIZE);
-  }, [filtered, page]);
-
-  const config = viewConfig['planning-produksi'];
+  // Multi-select (same pattern as Production Monitoring RAW DATA).
+  const handleToggleRow = (id: number) => setSelectedRows(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const handleToggleAll = () => { if (selectedRows.size === filtered.length) setSelectedRows(new Set()); else setSelectedRows(new Set(filtered.map(r => r.id))); };
+  const handleImport = () => { if (selectedRows.size === 0) { alert('Pilih minimal 1!'); return; } alert(`✅ ${selectedRows.size} planning di-import`); setSelectedRows(new Set()); };
+  const handleExport = () => {
+    const esc = (v: string | number | null | undefined) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const header = ['Nama Penjahit', 'Product', 'Warna', 'Size', 'Qty', 'Bulan Target', 'Status'];
+    const lines = filtered.map((r) => [r.namaPenjahit, r.product, r.warna ?? '', r.size ?? '', r.qty, r.bulanTarget, r.status].map(esc).join(','));
+    const csv = '﻿' + [header.map(esc).join(','), ...lines].join('\r\n'); // BOM for Excel UTF-8
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `planning-produksi-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+  const handleBulkDelete = async () => {
+    if (selectedRows.size === 0) return;
+    if (!confirm(`Hapus ${selectedRows.size} planning produksi terpilih?`)) return;
+    let deleted = 0;
+    for (const id of selectedRows) {
+      const { error } = await removePlanning(Number(id));
+      if (!error) deleted++;
+    }
+    setItems(prev => prev.filter(r => !selectedRows.has(r.id)));
+    setSelectedRows(new Set());
+    setMessage(`✅ ${deleted} planning berhasil dihapus!`);
+    setTimeout(() => setMessage(null), 3000);
+  };
 
   if (loading) {
     return (
@@ -194,64 +215,85 @@ export function PlanningProduksiPage() {
   const setField = (k: keyof PlanningForm, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
   return (
-    <main className="flex-1 flex flex-col min-w-0">
-      <div className="px-5 py-3 flex items-center justify-between border-b border-gray-100">
-        <div>
-          <h1 className="text-lg font-bold text-slate-900">📐 Planning Produksi</h1>
+    <main className="flex-1 flex flex-col min-w-0 overflow-auto">
+      <div className="px-8 pt-4 pb-0">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h1 className="text-[17px] font-semibold tracking-tight text-slate-900">Planning Produksi</h1>
+          </div>
+          <div className="flex items-center gap-2.5">
+            <button onClick={refresh} className="h-8 px-3.5 text-[12px] font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 hover:shadow-md hover:shadow-slate-200 transition-all flex items-center gap-2">
+              <RefreshCw className="w-3.5 h-3.5" /> Refresh
+            </button>
+            <button onClick={handleGenerate} disabled={generating} className="h-8 px-3.5 text-[12px] font-medium bg-violet-500 text-white rounded-lg hover:bg-violet-600 hover:shadow-md hover:shadow-violet-200 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+              <Sparkles className="w-3.5 h-3.5" /> {generating ? 'Generating…' : 'Generate Target'}
+            </button>
+            <button onClick={openCreate} className="h-8 px-3.5 text-[12px] font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 hover:shadow-md hover:shadow-blue-200 transition-all flex items-center gap-2">
+              <Plus className="w-3.5 h-3.5" /> Tambah Planning Produksi
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={refresh} className="h-8 px-3 text-[11px] border border-gray-200 rounded-lg flex items-center gap-1.5 text-slate-600 hover:bg-gray-50">
-            <RefreshCw className="w-3.5 h-3.5" /> Refresh
-          </button>
-          <button onClick={handleGenerate} disabled={generating} className="h-8 px-3 text-[11px] font-semibold bg-violet-500 text-white rounded-lg hover:bg-violet-600 flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed">
-            <Sparkles className="w-3.5 h-3.5" /> {generating ? 'Generating…' : 'Generate Target'}
-          </button>
-          <button onClick={openCreate} className="h-8 px-3 text-[11px] font-semibold bg-sky-500 text-white rounded-lg hover:bg-sky-600 flex items-center gap-1.5">
-            <Plus className="w-3.5 h-3.5" /> Tambah Planning Produksi
-          </button>
-        </div>
+        {message && <div className="mb-3 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-[12px] text-blue-700">{message}</div>}
       </div>
 
-      {message && (
-        <div className="mx-5 mt-3 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-[12px] text-blue-700">{message}</div>
-      )}
-
-      <div className="px-5 py-2 flex items-center gap-2">
-        <div className="relative max-w-xs">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-          <input type="text" placeholder="Cari planning..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} className="w-full h-8 pl-8 pr-3 text-[12px] border border-gray-200 rounded-lg outline-none focus:border-sky-300 focus:ring-2 focus:ring-sky-100" />
+      <div className="flex-1 px-8 pt-5 pb-6 overflow-auto">
+        <div className="flex items-center gap-2 mb-3">
+          <div className="relative flex-1 max-w-xs"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" /><input type="text" placeholder="Cari planning..." value={search} onChange={e => setSearch(e.target.value)} className="w-full h-8 pl-8 pr-3 text-[12px] border border-gray-200 rounded-lg outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100" /></div>
+          <button className="h-8 px-2.5 text-[11px] border border-gray-200 rounded-lg flex items-center gap-1.5 text-slate-600 hover:bg-gray-50"><Filter className="w-3 h-3" /> Filter</button>
+          <button className="h-8 px-2.5 text-[11px] border border-gray-200 rounded-lg flex items-center gap-1.5 text-slate-600 hover:bg-gray-50"><ArrowUpDown className="w-3 h-3" /> Sort</button>
+          <button onClick={handleExport} className="h-8 px-2.5 text-[11px] border border-gray-200 rounded-lg flex items-center gap-1.5 text-slate-600 hover:bg-gray-50"><Download className="w-3 h-3" /> Export</button>
+          <button onClick={handleImport} className={cn('h-8 px-2.5 text-[11px] rounded-lg flex items-center gap-1.5 font-medium transition-colors', selectedRows.size > 0 ? 'bg-blue-500 text-white hover:bg-blue-600' : 'border border-gray-200 text-slate-400')}>📥 Import ({selectedRows.size})</button>
+          {selectedRows.size > 0 && (
+            <button onClick={handleBulkDelete} className="h-8 px-2.5 text-[11px] rounded-lg flex items-center gap-1.5 font-medium bg-red-500 text-white hover:bg-red-600 transition-colors">
+              <Trash2 className="w-3 h-3" /> Delete ({selectedRows.size})
+            </button>
+          )}
+          <div className="flex items-center gap-1.5 ml-auto">
+            <label className="text-[11px] text-slate-500">Generate untuk bulan</label>
+            <input type="month" value={genMonth} onChange={(e) => setGenMonth(e.target.value)} className="h-8 px-2 text-[12px] border border-gray-200 rounded-lg outline-none focus:border-violet-300" />
+          </div>
+          <span className="text-[11px] text-slate-400">{filtered.length} planning produksi</span>
         </div>
-        <div className="flex items-center gap-1.5 ml-auto">
-          <label className="text-[11px] text-slate-500">Generate untuk bulan</label>
-          <input type="month" value={genMonth} onChange={(e) => setGenMonth(e.target.value)} className="h-8 px-2 text-[12px] border border-gray-200 rounded-lg outline-none focus:border-violet-300" />
+
+        <div className={T_WRAP}>
+          <table className={cn(T_TABLE, 'w-auto min-w-full whitespace-nowrap')}>
+            <thead><tr className={T_HEAD_ROW}>
+              <th className={cn(T_TH, 'w-12 text-center')}><input type="checkbox" checked={selectedRows.size === filtered.length && filtered.length > 0} onChange={handleToggleAll} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 align-middle" /></th>
+              <th className={cn(T_TH, 'text-left')}>Nama Penjahit</th>
+              <th className={cn(T_TH, 'text-left')}>Product</th>
+              <th className={cn(T_TH, 'text-left')}>Warna</th>
+              <th className={cn(T_TH, 'text-left')}>Size</th>
+              <th className={cn(T_TH, 'text-right')}>Qty</th>
+              <th className={cn(T_TH, 'text-left')}>Bulan Target</th>
+              <th className={cn(T_TH, 'text-center')}>Status</th>
+              <th className={cn(T_TH, 'text-right')}>Action</th>
+            </tr></thead>
+            <tbody>
+              {filtered.length === 0 && <tr><td colSpan={9} className="py-10 text-center text-[13px] text-gray-400">Belum ada planning produksi</td></tr>}
+              {filtered.map((r, i) => {
+                const selected = selectedRows.has(r.id);
+                return (
+                  <tr key={r.id} className={rowClass(i, selected)}>
+                    <td className={cn(T_TD, 'text-center')}><input type="checkbox" checked={selected} onChange={() => handleToggleRow(r.id)} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 align-middle" /></td>
+                    <td className={cn(T_TD, 'font-medium text-gray-900')}>{r.namaPenjahit}</td>
+                    <td className={cn(T_TD, 'text-gray-700')}>{r.product}</td>
+                    <td className={cn(T_TD, 'text-gray-700')}>{r.warna || <span className="text-gray-300">—</span>}</td>
+                    <td className={cn(T_TD, 'text-gray-700')}>{r.size || <span className="text-gray-300">—</span>}</td>
+                    <td className={cn(T_TD, 'text-right font-medium tabular-nums text-gray-900')}>{r.qty}</td>
+                    <td className={cn(T_TD, 'text-gray-500')}>{formatDate(r.bulanTarget + '-01')}</td>
+                    <td className={cn(T_TD, 'text-center')}><span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap bg-slate-100 text-slate-600">{r.status || '—'}</span></td>
+                    <td className={cn(T_TD, 'text-right')}>
+                      <div className="inline-flex gap-1">
+                        <button onClick={() => openEdit(r)} title="Edit" className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:bg-blue-50 hover:text-blue-600 transition-colors"><Pencil className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => handleDelete(r.id)} title="Hapus" className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:bg-red-50 hover:text-red-500 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
-      </div>
-
-      <DataTable
-        columns={config.columns.map((c, i) => ({ ...c, _originalIndex: i }))}
-        data={paginated as unknown as Record<string, unknown>[]}
-        selectedRows={new Set()}
-        rowHeight="medium"
-        condColors={[]}
-        editable={true}
-        sorts={[]}
-        onToggleRow={() => {}}
-        onToggleAll={() => {}}
-        onViewDetail={(id) => { const item = items.find((it) => it.id === Number(id)); if (item) openEdit(item); }}
-        onEditDetail={(id) => { const item = items.find((it) => it.id === Number(id)); if (item) openEdit(item); }}
-        onDeleteRow={(id) => handleDelete(Number(id))}
-        onResizeColumn={() => {}}
-        onReorderColumn={() => {}}
-        onRenameColumn={() => {}}
-        onUpdateNote={() => {}}
-        onSortColumn={() => {}}
-        onGroupColumn={() => {}}
-        onSetSource={() => {}}
-      />
-
-      <div className="px-5 pb-4 flex items-center justify-between">
-        <span className="text-[11px] text-slate-500">{filtered.length} planning produksi</span>
-        <Pagination total={filtered.length} currentPage={page} pageSize={PAGE_SIZE} onPageChange={setPage} />
       </div>
 
       {modalOpen && (
@@ -265,7 +307,7 @@ export function PlanningProduksiPage() {
             <div className="p-5 space-y-4 overflow-y-auto flex-1">
               <div>
                 <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Nama Penjahit *</label>
-                <select value={form.namaPenjahit} onChange={(e) => setField('namaPenjahit', e.target.value)} className="w-full h-9 px-3 text-[12px] border border-gray-200 rounded-lg outline-none bg-white focus:border-sky-300">
+                <select value={form.namaPenjahit} onChange={(e) => setField('namaPenjahit', e.target.value)} className="w-full h-9 px-3 text-[12px] border border-gray-200 rounded-lg outline-none bg-white focus:border-blue-300">
                   <option value="">— Pilih Penjahit —</option>
                   {/* Show the currently selected name even if that penjahit is now
                       Non-Aktif, so historical rows stay editable and readable. */}
@@ -282,33 +324,33 @@ export function PlanningProduksiPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Produk *</label>
-                  <input type="text" value={form.product} onChange={(e) => setField('product', e.target.value)} placeholder="e.g. Dress" className="w-full h-9 px-3 text-[12px] border border-gray-200 rounded-lg outline-none bg-white focus:border-sky-300" />
+                  <input type="text" value={form.product} onChange={(e) => setField('product', e.target.value)} placeholder="e.g. Dress" className="w-full h-9 px-3 text-[12px] border border-gray-200 rounded-lg outline-none bg-white focus:border-blue-300" />
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Warna</label>
-                  <input type="text" value={form.warna} onChange={(e) => setField('warna', e.target.value)} placeholder="e.g. Hitam" className="w-full h-9 px-3 text-[12px] border border-gray-200 rounded-lg outline-none bg-white focus:border-sky-300" />
+                  <input type="text" value={form.warna} onChange={(e) => setField('warna', e.target.value)} placeholder="e.g. Hitam" className="w-full h-9 px-3 text-[12px] border border-gray-200 rounded-lg outline-none bg-white focus:border-blue-300" />
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Size</label>
-                  <input type="text" value={form.size} onChange={(e) => setField('size', e.target.value)} placeholder="e.g. M" className="w-full h-9 px-3 text-[12px] border border-gray-200 rounded-lg outline-none bg-white focus:border-sky-300" />
+                  <input type="text" value={form.size} onChange={(e) => setField('size', e.target.value)} placeholder="e.g. M" className="w-full h-9 px-3 text-[12px] border border-gray-200 rounded-lg outline-none bg-white focus:border-blue-300" />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Qty *</label>
-                  <input type="number" min={0} value={form.qty} onChange={(e) => setField('qty', e.target.value)} placeholder="0" className="w-full h-9 px-3 text-[12px] border border-gray-200 rounded-lg outline-none bg-white focus:border-sky-300" />
+                  <input type="number" min={0} value={form.qty} onChange={(e) => setField('qty', e.target.value)} placeholder="0" className="w-full h-9 px-3 text-[12px] border border-gray-200 rounded-lg outline-none bg-white focus:border-blue-300" />
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Bulan Target *</label>
-                  <input type="month" value={form.bulanTarget} onChange={(e) => setField('bulanTarget', e.target.value)} className="w-full h-9 px-3 text-[12px] border border-gray-200 rounded-lg outline-none bg-white focus:border-sky-300" />
+                  <input type="month" value={form.bulanTarget} onChange={(e) => setField('bulanTarget', e.target.value)} className="w-full h-9 px-3 text-[12px] border border-gray-200 rounded-lg outline-none bg-white focus:border-blue-300" />
                 </div>
               </div>
             </div>
 
             <div className="px-5 py-3 border-t border-gray-200 flex justify-end gap-2 flex-shrink-0">
               <button onClick={() => setModalOpen(false)} className="px-4 py-1.5 text-[11px] text-slate-600 border border-gray-200 rounded-lg hover:bg-gray-50" disabled={saving}>Cancel</button>
-              <button onClick={handleSave} disabled={!isValid || saving} className="px-4 py-1.5 text-[11px] font-semibold bg-sky-500 text-white rounded-lg hover:bg-sky-600 disabled:opacity-50 disabled:cursor-not-allowed">{saving ? 'Saving…' : editTarget ? 'Update Planning' : 'Save Planning'}</button>
+              <button onClick={handleSave} disabled={!isValid || saving} className="px-4 py-1.5 text-[11px] font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed">{saving ? 'Saving…' : editTarget ? 'Update Planning' : 'Save Planning'}</button>
             </div>
           </div>
         </div>
