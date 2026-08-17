@@ -187,6 +187,12 @@ Website Konveksi/
 
 ## Latest Progress
 
+### 2026-08-17 — Filter & Sort aktif di semua modul + teks data RAW seragam tanpa bold
+
+- **Filter & Sort kini berfungsi penuh** di semua tabel (commit `d1fd46f`): komponen bersama baru `FilterButton`/`SortButton` (`src/components/Table/TableTools.tsx`) — panel popover multi-aturan; operator filter: mengandung/tidak mengandung/sama dengan/tidak sama dengan/lebih dari/kurang dari/kosong/tidak kosong (antar aturan AND); sort multi-level (naik/turun, nilai kosong selalu terakhir). Logika filter/sort di `src/lib/tableQuery.ts` (dipisah supaya TableTools tetap components-only, bebas warning react-refresh).
+- Terpasang di: **RAW DATA** (17 field), **Planning Produksi**, **Register PO** (dengan field Work Code/Brand/Product tambahan di displayData), **Complain & Penalti**, **Register Karyawan**, **Target Jahit** (field mengikuti kolom yang terlihat per role). Tombol menyala biru + badge jumlah saat aktif; counter baris & empty state mengikuti hasil filter ("Tidak ada hasil yang cocok dengan filter").
+- **Teks sel RAW DATA diseragamkan** atas permintaan user: semua font-mono 11px, font-medium/bold, dan beda warna dihapus — seluruh sel data kini 13px `text-gray-700` seragam; yang tersisa hanya pewarnaan angka progress (Cutting/Jahit/Finishing/Kancing/Sisa) dan badge Status. Tabel master lain (Register PO, Complain, Planning, Register Karyawan, nama di Target) ikut diratakan; ringkasan Utang Staf tetap punya penekanan sendiri (panel ringkasan, bukan tabel master).
+
 ### 2026-08-17 — Paritas tabel RAW ke Complain/Register PO/Target Jahit + hapus semua kolom Action + klik-baris-untuk-edit
 
 - **Paritas RAW DATA** diterapkan ke 3 modul (commit `bbecaac`): **Complain & Penalti** (checkbox multi-select + toolbar Filter/Sort/Export CSV/Import/Delete bulk; tombol **Solve** pindah ke dalam sel Status), **Register PO** (toolbar + multi-select penuh), dan **Target Jahit** (ditulis ulang dari DataTable generik ke design system — 22 kolom, aturan visibilitas per role dipertahankan, tab Utang Staf ikut di-token; baris read-only karena data hasil generate, keputusan user).
