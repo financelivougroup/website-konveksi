@@ -187,6 +187,10 @@ Website Konveksi/
 
 ## Latest Progress
 
+### 2026-08-17 — Register Karyawan: dropdown filter posisi dihapus
+
+- Dropdown "Semua Posisi / Leader / Penjahit / Finishing" di toolbar Register Karyawan dihapus atas permintaan user (commit `27a8259`). Pemfilteran berdasarkan posisi tetap bisa dilakukan lewat tombol **Filter** baru (field Posisi tersedia). Select Posisi di modal tambah/edit tidak berubah.
+
 ### 2026-08-17 — Filter & Sort aktif di semua modul + teks data RAW seragam tanpa bold
 
 - **Filter & Sort kini berfungsi penuh** di semua tabel (commit `d1fd46f`): komponen bersama baru `FilterButton`/`SortButton` (`src/components/Table/TableTools.tsx`) — panel popover multi-aturan; operator filter: mengandung/tidak mengandung/sama dengan/tidak sama dengan/lebih dari/kurang dari/kosong/tidak kosong (antar aturan AND); sort multi-level (naik/turun, nilai kosong selalu terakhir). Logika filter/sort di `src/lib/tableQuery.ts` (dipisah supaya TableTools tetap components-only, bebas warning react-refresh).
