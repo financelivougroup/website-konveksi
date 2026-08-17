@@ -19,6 +19,13 @@ function currentMonth(): string {
   return new Date().toISOString().slice(0, 7); // 'YYYY-MM'
 }
 
+// Status planning: draft (baru) → approved (boleh di-generate ke target jahit)
+// atau rejected. Badge: hijau = approved, merah = rejected, abu = draft.
+const PLAN_STATUS_BADGE: Record<string, string> = {
+  approved: 'bg-emerald-100 text-emerald-700',
+  rejected: 'bg-rose-100 text-rose-700',
+};
+
 interface PlanningForm {
   namaPenjahit: string;
   product: string;
@@ -143,6 +150,18 @@ export function PlanningProduksiPage() {
     }
     setSaving(false);
     setTimeout(() => setMessage(null), 3500);
+  }
+
+  // Status dropdown: draft → approved → (generate target jahit) / rejected.
+  async function handleStatusChange(id: number, status: string) {
+    const { error } = await updatePlanning(id, { status });
+    if (error) {
+      setMessage(`❌ Error: ${error.message}`);
+    } else {
+      setItems(prev => prev.map(r => (r.id === id ? { ...r, status } : r)));
+      setMessage(`✅ Status planning diubah jadi "${status}".`);
+    }
+    setTimeout(() => setMessage(null), 3000);
   }
 
   async function handleGenerate() {
@@ -283,7 +302,17 @@ export function PlanningProduksiPage() {
                     <td className={cn(T_TD, 'text-gray-700')}>{r.size || <span className="text-gray-300">—</span>}</td>
                     <td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>{r.qty}</td>
                     <td className={cn(T_TD, 'text-gray-500')}>{formatDate(r.bulanTarget + '-01')}</td>
-                    <td className={cn(T_TD, 'text-center')}><span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap bg-slate-100 text-slate-600">{r.status || '—'}</span></td>
+                    <td className={cn(T_TD, 'text-center')} onClick={(e) => e.stopPropagation()}>
+                      <select
+                        value={r.status || 'draft'}
+                        onChange={(e) => void handleStatusChange(r.id, e.target.value)}
+                        className={cn('h-7 px-2 rounded-md text-[11px] font-semibold border-0 outline-none cursor-pointer whitespace-nowrap', PLAN_STATUS_BADGE[r.status || ''] ?? 'bg-slate-100 text-slate-600')}
+                      >
+                        <option value="draft">draft</option>
+                        <option value="approved">approved</option>
+                        <option value="rejected">rejected</option>
+                      </select>
+                    </td>
                   </tr>
                 );
               })}

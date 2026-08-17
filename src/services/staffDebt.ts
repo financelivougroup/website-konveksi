@@ -176,10 +176,12 @@ export async function generateTargetsFromPlanning(
 ): Promise<GenerateTargetsResult> {
   const priceMap = await buildPriceMap()
 
+  // Only APPROVED planning rows may be generated into targets.
   const { data: planRows, error: planErr } = await supabase
     .from('planning_produksi')
     .select('*')
     .eq('bulan_target', bulanTarget)
+    .eq('status', 'approved')
   if (planErr) return { created: 0, error: planErr }
 
   // Group planning rows by staff.
