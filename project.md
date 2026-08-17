@@ -187,6 +187,12 @@ Website Konveksi/
 
 ## Latest Progress
 
+### 2026-08-17 — Planning Produksi: kolom Status bisa diedit + gate generate target
+
+- Kolom **Status** di tabel Planning Produksi kini **dropdown yang bisa diedit langsung** dari tabel: `draft` → `approved` / `rejected` (tersimpan ke `planning_produksi.status` via `updatePlanning`; klik dropdown tidak memicu modal edit — stopPropagation). Badge berwarna: hijau approved, merah rejected, abu-abu draft (commit `1960f8f`).
+- **Generate Target Jahit kini hanya memproses planning berstatus `approved`** untuk bulan terpilih (`generateTargetsFromPlanning` tambah filter `.eq('status', 'approved')`) — draft/rejected tidak ikut digenerate.
+- Tanpa perubahan skema DB (kolom `status` sudah ada tanpa constraint; data live masih kosong).
+
 ### 2026-08-17 — Register Karyawan: dropdown filter posisi dihapus
 
 - Dropdown "Semua Posisi / Leader / Penjahit / Finishing" di toolbar Register Karyawan dihapus atas permintaan user (commit `27a8259`). Pemfilteran berdasarkan posisi tetap bisa dilakukan lewat tombol **Filter** baru (field Posisi tersedia). Select Posisi di modal tambah/edit tidak berubah.
