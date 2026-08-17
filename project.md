@@ -187,6 +187,13 @@ Website Konveksi/
 
 ## Latest Progress
 
+### 2026-08-17 — Planning Produksi: tabel disamakan penuh dengan RAW DATA Production Monitoring
+
+- Halaman Planning Produksi ditulis ulang dari DataTable generik ke **design system tabel** + **fitur toolbar RAW DATA lengkap**: checkbox multi-select per baris + select-all di header, tombol **Filter, Sort, Export (CSV download nyata dengan BOM Excel), Import (mock alert, perilaku sama dengan Import di RAW DATA), dan Delete bulk** yang muncul saat ada baris terpilih, plus counter jumlah data di kanan (commit `2505daa`).
+- Kolom: ☑ | Nama Penjahit | Product | Warna | Size | Qty | Bulan Target (format tanggal via formatDate) | Status (badge) | Action (ikon Edit/Hapus). Tinggi baris compact seragam, zebra rows, sticky header, tabel fit content (`w-auto min-w-full whitespace-nowrap`).
+- Header & tombol disamakan dengan pola Production Monitoring/Register Karyawan (judul 17px semibold; Refresh putih, Generate Target violet, Tambah `blue-600`); modal form tidak berubah secara fungsional (aksen sky → blue). Kontrol "Generate untuk bulan" pindah ke toolbar kanan. Pagination DataTable dihapus (scroll penuh, data kecil).
+- Dependensi `DataTable`, `Pagination`, `viewConfig['planning-produksi']` dilepas dari halaman ini. Lint: hanya 1 temuan pre-existing `react-hooks/set-state-in-effect` (sama dengan baseline HEAD); `npm run build` hijau.
+
 ### 2026-08-17 — Register PO: tampilan disamakan dengan Production Monitoring
 
 - Tabel Register PO diganti dari DataTable generik ke **design system tabel** (`T_WRAP`/`T_TABLE`/`T_HEAD_ROW`/`T_TH`/`T_TD`/`rowClass`) — zebra rows, sticky header, border horizontal saja, tinggi baris compact seragam dengan RAW DATA & Register Karyawan. Kolom: PO ID | Total/PCS (Rp) | Created (formatDate) | Action (ikon Edit/Hapus seperti Register Karyawan) (commit `430eb5e`).
