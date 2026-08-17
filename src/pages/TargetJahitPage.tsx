@@ -1,20 +1,13 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { RefreshCw, Search } from 'lucide-react';
-import { DataTable } from '@/components/Table/DataTable';
-import { Pagination } from '@/components/Table/Pagination';
-import { viewConfig } from '@/data/mockData';
-import { fetchAll as fetchAllTarget, type TargetJahitRow } from '@/services/targetJahit';
+import { RefreshCw, Search, Trash2, Filter, ArrowUpDown, Download } from 'lucide-react';
+import { cn, formatCurrency } from '@/lib/utils';
+import { T_WRAP, T_TABLE, T_HEAD_ROW, T_TH, T_TD, rowClass } from '@/lib/tableStyles';
+import { fetchAll as fetchAllTarget, remove as removeTarget, type TargetJahitRow } from '@/services/targetJahit';
 import { fetchAll as fetchAllRegister, type RegisterPenjahitRow } from '@/services/registerPenjahit';
 import { computeDebt, type DebtSummary } from '@/services/staffDebt';
 import { useAuth } from '@/contexts/AuthContext';
-import { cn, formatCurrency } from '@/lib/utils';
 
-const PAGE_SIZE = 10;
-
-// Map live snake_case target_jahit columns to the camelCase keys the
-// viewConfig['target-jahit'] columns expect, so the shared DataTable renders
-// real values instead of undefined cells. Mirrors the alias map documented in
-// the approved Target Jahit sorting design.
+// Map live snake_case target_jahit columns to camelCase render keys.
 const TARGET_COLUMN_ALIAS: Record<string, string> = {
   bulan_tahun: 'bulanTahun',
   total_hari_kerja: 'totalHariKerja',
@@ -46,6 +39,33 @@ function normalizeTargetRow(row: TargetJahitRow): Record<string, unknown> {
   return out;
 }
 
+// Column definition — mirrors viewConfig['target-jahit'] order.
+interface ColDef { key: string; label: string; align?: 'right'; format?: 'currency' | 'percent'; badge?: boolean; inv?: boolean }
+const TARGET_COLUMNS: ColDef[] = [
+  { key: 'bulanTahun', label: 'Bulan Tahun' },
+  { key: 'nama', label: 'Nama' },
+  { key: 'posisi', label: 'Posisi', badge: true, inv: true },
+  { key: 'salary', label: 'Salary', align: 'right', format: 'currency' },
+  { key: 'totalHariKerja', label: 'Hari Kerja Efektif', align: 'right' },
+  { key: 'hariKerjaHariIni', label: 'Hari Kerja Hari Ini', align: 'right', inv: true },
+  { key: 'sisaHari', label: 'Sisa Hari', align: 'right', inv: true },
+  { key: 'targetDaily', label: 'Target | Daily', align: 'right' },
+  { key: 'targetNgebutHari', label: 'Target Ngebut | Daily', align: 'right' },
+  { key: 'targetMonthly', label: 'Target | Monthly', align: 'right' },
+  { key: 'realisasiMonthly', label: 'Realisasi | Monthly', align: 'right', inv: true },
+  { key: 'sisaTargetMonthly', label: 'Sisa Target | Monthly', align: 'right' },
+  { key: 'progressMonthly', label: 'Progress | Monthly', align: 'right', format: 'percent', inv: true },
+  { key: 'statusFinal', label: 'Status Final | Monthly', badge: true, inv: true },
+  { key: 'targetCostPosisi', label: 'Target Cost / Posisi', align: 'right', format: 'currency' },
+  { key: 'realisasiCostPosisi', label: 'Realisasi Cost / Posisi', align: 'right', format: 'currency' },
+  { key: 'targetAccum', label: 'Target Akumulasi', align: 'right' },
+  { key: 'realisasiAccum', label: 'Realisasi Akumulasi', align: 'right' },
+  { key: 'selisihAccum', label: 'Selisih Akumulasi', align: 'right' },
+  { key: 'targetNgebutHariAkumulasi', label: 'Target Ngebut | Akumulasi', align: 'right' },
+  { key: 'progressAccum', label: 'Progress Akumulasi', align: 'right', format: 'percent' },
+  { key: 'statusFinalAkumulasi', label: 'Status Final | Akumulasi', badge: true },
+];
+
 type TabKey = 'target' | 'utang-staf';
 
 interface DebtRow {
@@ -54,6 +74,23 @@ interface DebtRow {
   totalNilai: number;
   utang: number;
   status: string;
+}
+
+function renderCell(col: ColDef, row: Record<string, unknown>) {
+  const v = row[col.key];
+  if (col.format === 'currency') return v == null || v === '' ? <span className="text-gray-300">—</span> : formatCurrency(Number(v));
+  if (col.format === 'percent') return v == null || v === '' ? <span className="text-gray-300">—</span> : `${v}%`;
+  if (col.badge) {
+    const s = String(v ?? '').trim();
+    if (!s) return <span className="text-gray-300">—</span>;
+    const good = /tercapai/i.test(s);
+    return (
+      <span className={cn('inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap', good ? 'bg-emerald-100 text-emerald-700' : col.key === 'posisi' ? 'bg-slate-100 text-slate-600' : 'bg-amber-100 text-amber-700')}>
+        {s}
+      </span>
+    );
+  }
+  return v == null || v === '' ? <span className="text-gray-300">—</span> : String(v);
 }
 
 export function TargetJahitPage() {
@@ -66,7 +103,8 @@ export function TargetJahitPage() {
   const [items, setItems] = useState<TargetJahitRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [page, setPage] = useState(1);
+  const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
+  const [message, setMessage] = useState<string | null>(null);
 
   // Utang Staf state.
   const [debtRows, setDebtRows] = useState<DebtRow[]>([]);
@@ -132,27 +170,47 @@ export function TargetJahitPage() {
     );
   }, [items, search]);
 
-  const paginated = useMemo(() => {
-    const start = (page - 1) * PAGE_SIZE;
-    return filtered.slice(start, start + PAGE_SIZE).map(normalizeTargetRow);
-  }, [filtered, page]);
-
-  const config = viewConfig['target-jahit'];
+  const normalized = useMemo(() => filtered.map(normalizeTargetRow), [filtered]);
 
   // Access matrix (spec): inventory may see production data but NOT salary,
   // target/cost, or akumulasi columns. Owner/finance see everything.
-  const INVENTORY_VISIBLE_KEYS = new Set([
-    'nama',
-    'posisi',
-    'hariKerjaHariIni',
-    'sisaHari',
-    'realisasiMonthly',
-    'progressMonthly',
-    'statusFinal',
-  ]);
-  const visibleColumns = canSeeDebt
-    ? config.columns
-    : config.columns.filter((c) => INVENTORY_VISIBLE_KEYS.has(c.key));
+  const visibleColumns = useMemo(
+    () => (canSeeDebt ? TARGET_COLUMNS : TARGET_COLUMNS.filter((c) => c.inv)),
+    [canSeeDebt],
+  );
+
+  // Multi-select + toolbar (same pattern as Production Monitoring RAW DATA).
+  const handleToggleRow = (id: number) => setSelectedRows(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const handleToggleAll = () => { if (selectedRows.size === normalized.length) setSelectedRows(new Set()); else setSelectedRows(new Set(normalized.map(r => Number(r.id)))); };
+  const handleImport = () => { if (selectedRows.size === 0) { alert('Pilih minimal 1!'); return; } alert(`✅ ${selectedRows.size} target di-import`); setSelectedRows(new Set()); };
+  const handleExport = () => {
+    const esc = (v: string | number | null | undefined) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const header = visibleColumns.map((c) => c.label);
+    const lines = normalized.map((r) => visibleColumns.map((c) => {
+      const v = r[c.key];
+      return c.format === 'percent' && v != null && v !== '' ? `${v}%` : (v as string | number | null | undefined);
+    }).map(esc).join(','));
+    const csv = '﻿' + [header.map(esc).join(','), ...lines].join('\r\n'); // BOM for Excel UTF-8
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `target-jahit-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+  const handleBulkDelete = async () => {
+    if (selectedRows.size === 0) return;
+    if (!confirm(`Hapus ${selectedRows.size} target jahit terpilih?`)) return;
+    let deleted = 0;
+    for (const id of selectedRows) {
+      const { error } = await removeTarget(Number(id));
+      if (!error) deleted++;
+    }
+    setItems(prev => prev.filter(r => !selectedRows.has(Number(r.id))));
+    setSelectedRows(new Set());
+    setMessage(`✅ ${deleted} target berhasil dihapus!`);
+    setTimeout(() => setMessage(null), 3000);
+  };
 
   if (loading && tab === 'target') {
     return (
@@ -163,145 +221,153 @@ export function TargetJahitPage() {
   }
 
   return (
-    <main className="flex-1 flex flex-col min-w-0">
-      <div className="px-5 py-3 flex items-center justify-between border-b border-gray-100">
-        <div>
-          <h1 className="text-lg font-bold text-slate-900">🎯 Target Jahit</h1>
+    <main className="flex-1 flex flex-col min-w-0 overflow-auto">
+      <div className="px-8 pt-4 pb-0">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h1 className="text-[17px] font-semibold tracking-tight text-slate-900">Target Jahit</h1>
+          </div>
+          <div className="flex items-center gap-2.5">
+            {tab === 'target' && (
+              <button onClick={refresh} className="h-8 px-3.5 text-[12px] font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 hover:shadow-md hover:shadow-slate-200 transition-all flex items-center gap-2">
+                <RefreshCw className="w-3.5 h-3.5" /> Refresh
+              </button>
+            )}
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          {tab === 'target' && (
-            <button onClick={refresh} className="h-8 px-3 text-[11px] border border-gray-200 rounded-lg flex items-center gap-1.5 text-slate-600 hover:bg-gray-50">
-              <RefreshCw className="w-3.5 h-3.5" /> Refresh
-            </button>
-          )}
-        </div>
-      </div>
+        {message && <div className="mb-3 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-[12px] text-blue-700">{message}</div>}
 
-      {/* Tabs */}
-      <div className="px-5 pt-3 flex items-center gap-2">
-        <button
-          onClick={() => setTab('target')}
-          className={cn(
-            'h-8 px-4 text-[12px] font-medium rounded-lg transition-colors',
-            tab === 'target' ? 'bg-sky-500 text-white' : 'bg-white text-slate-600 border border-gray-200 hover:bg-gray-50',
-          )}
-        >
-          Target
-        </button>
-        {canSeeDebt ? (
+        {/* Tabs — segmented control, pola Production Monitoring */}
+        <div className="flex items-center gap-2">
           <button
-            onClick={() => setTab('utang-staf')}
+            onClick={() => setTab('target')}
             className={cn(
               'h-8 px-4 text-[12px] font-medium rounded-lg transition-colors',
-              tab === 'utang-staf' ? 'bg-sky-500 text-white' : 'bg-white text-slate-600 border border-gray-200 hover:bg-gray-50',
+              tab === 'target' ? 'bg-blue-600 text-white shadow-md shadow-blue-200' : 'bg-white text-slate-600 border border-gray-200 hover:bg-blue-50 hover:text-blue-700',
             )}
           >
-            Utang Staf
+            Target
           </button>
-        ) : (
-          <button
-            disabled
-            title="Hanya owner/finance yang dapat melihat."
-            className="h-8 px-4 text-[12px] font-medium rounded-lg bg-slate-50 text-slate-400 border border-gray-200 cursor-not-allowed"
-          >
-            Utang Staf 🔒
-          </button>
-        )}
-        {!canSeeDebt && (
-          <span className="text-[11px] text-slate-400 ml-2">
-            Hanya owner/finance yang dapat melihat.
-          </span>
-        )}
+          {canSeeDebt ? (
+            <button
+              onClick={() => setTab('utang-staf')}
+              className={cn(
+                'h-8 px-4 text-[12px] font-medium rounded-lg transition-colors',
+                tab === 'utang-staf' ? 'bg-blue-600 text-white shadow-md shadow-blue-200' : 'bg-white text-slate-600 border border-gray-200 hover:bg-blue-50 hover:text-blue-700',
+              )}
+            >
+              Utang Staf
+            </button>
+          ) : (
+            <button
+              disabled
+              title="Hanya owner/finance yang dapat melihat."
+              className="h-8 px-4 text-[12px] font-medium rounded-lg bg-slate-50 text-slate-400 border border-gray-200 cursor-not-allowed"
+            >
+              Utang Staf 🔒
+            </button>
+          )}
+          {!canSeeDebt && (
+            <span className="text-[11px] text-slate-400 ml-2">
+              Hanya owner/finance yang dapat melihat.
+            </span>
+          )}
+        </div>
       </div>
 
-      <div className="flex-1 flex flex-col overflow-y-auto">
+      <div className="flex-1 px-8 pt-5 pb-6 overflow-auto">
         {tab === 'target' && (
           <>
-            <div className="px-5 py-2">
-              <div className="relative max-w-xs">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="relative flex-1 max-w-xs">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
                 <input
                   type="text"
                   placeholder="Cari target..."
                   value={search}
-                  onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-                  className="w-full h-8 pl-8 pr-3 text-[12px] border border-gray-200 rounded-lg outline-none focus:border-sky-300 focus:ring-2 focus:ring-sky-100"
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="w-full h-8 pl-8 pr-3 text-[12px] border border-gray-200 rounded-lg outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
                 />
               </div>
+              <button className="h-8 px-2.5 text-[11px] border border-gray-200 rounded-lg flex items-center gap-1.5 text-slate-600 hover:bg-gray-50"><Filter className="w-3 h-3" /> Filter</button>
+              <button className="h-8 px-2.5 text-[11px] border border-gray-200 rounded-lg flex items-center gap-1.5 text-slate-600 hover:bg-gray-50"><ArrowUpDown className="w-3 h-3" /> Sort</button>
+              <button onClick={handleExport} className="h-8 px-2.5 text-[11px] border border-gray-200 rounded-lg flex items-center gap-1.5 text-slate-600 hover:bg-gray-50"><Download className="w-3 h-3" /> Export</button>
+              <button onClick={handleImport} className={cn('h-8 px-2.5 text-[11px] rounded-lg flex items-center gap-1.5 font-medium transition-colors', selectedRows.size > 0 ? 'bg-blue-500 text-white hover:bg-blue-600' : 'border border-gray-200 text-slate-400')}>📥 Import ({selectedRows.size})</button>
+              {selectedRows.size > 0 && (
+                <button onClick={handleBulkDelete} className="h-8 px-2.5 text-[11px] rounded-lg flex items-center gap-1.5 font-medium bg-red-500 text-white hover:bg-red-600 transition-colors">
+                  <Trash2 className="w-3 h-3" /> Delete ({selectedRows.size})
+                </button>
+              )}
+              <span className="text-[11px] text-slate-400 ml-auto">{filtered.length} target jahit</span>
             </div>
 
-            <DataTable
-              columns={visibleColumns.map((c, i) => ({ ...c, _originalIndex: i }))}
-              data={paginated as unknown as Record<string, unknown>[]}
-              selectedRows={new Set()}
-              rowHeight="medium"
-              condColors={[]}
-              editable={false}
-              sorts={[]}
-              onToggleRow={() => {}}
-              onToggleAll={() => {}}
-              onViewDetail={() => {}}
-              onEditDetail={() => {}}
-              onDeleteRow={() => {}}
-              onResizeColumn={() => {}}
-              onReorderColumn={() => {}}
-              onRenameColumn={() => {}}
-              onUpdateNote={() => {}}
-              onSortColumn={() => {}}
-              onGroupColumn={() => {}}
-              onSetSource={() => {}}
-            />
-
-            <div className="px-5 pb-4 flex items-center justify-between">
-              <span className="text-[11px] text-slate-500">{filtered.length} target jahit</span>
-              <Pagination total={filtered.length} currentPage={page} pageSize={PAGE_SIZE} onPageChange={setPage} />
+            <div className={T_WRAP}>
+              <table className={cn(T_TABLE, 'w-auto min-w-full whitespace-nowrap')}>
+                <thead><tr className={T_HEAD_ROW}>
+                  <th className={cn(T_TH, 'w-12 text-center')}><input type="checkbox" checked={selectedRows.size === normalized.length && normalized.length > 0} onChange={handleToggleAll} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 align-middle" /></th>
+                  {visibleColumns.map((c) => (
+                    <th key={c.key} className={cn(T_TH, c.align === 'right' ? 'text-right' : 'text-left')}>{c.label}</th>
+                  ))}
+                </tr></thead>
+                <tbody>
+                  {normalized.length === 0 && <tr><td colSpan={visibleColumns.length + 1} className="py-10 text-center text-[13px] text-gray-400">Belum ada target jahit</td></tr>}
+                  {normalized.map((row, i) => {
+                    const selected = selectedRows.has(Number(row.id));
+                    return (
+                      <tr key={String(row.id)} className={rowClass(i, selected)}>
+                        <td className={cn(T_TD, 'text-center')}><input type="checkbox" checked={selected} onChange={() => handleToggleRow(Number(row.id))} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 align-middle" /></td>
+                        {visibleColumns.map((c) => (
+                          <td key={c.key} className={cn(T_TD, c.align === 'right' ? 'text-right tabular-nums text-gray-700' : 'text-gray-700')}>
+                            {c.key === 'nama' ? <span className="font-medium text-gray-900">{renderCell(c, row)}</span> : renderCell(c, row)}
+                          </td>
+                        ))}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           </>
         )}
 
         {tab === 'utang-staf' && (
-          <div className="px-5 py-4">
+          <>
             {debtLoading ? (
               <p className="text-slate-400 text-sm">Menghitung utang staf...</p>
             ) : debtRows.length === 0 ? (
               <p className="text-slate-400 text-sm">Belum ada data utang staf.</p>
             ) : (
-              <table className="w-full text-[12px] border border-gray-200 rounded-lg overflow-hidden">
-                <thead>
-                  <tr className="bg-slate-50 text-slate-500 uppercase tracking-wider text-[10px]">
-                    <th className="px-4 py-2.5 font-semibold border-b border-gray-200 text-left">Nama</th>
-                    <th className="px-4 py-2.5 font-semibold border-b border-gray-200 text-right">Total Gaji</th>
-                    <th className="px-4 py-2.5 font-semibold border-b border-gray-200 text-right">Total Nilai PCS</th>
-                    <th className="px-4 py-2.5 font-semibold border-b border-gray-200 text-right">Utang</th>
-                    <th className="px-4 py-2.5 font-semibold border-b border-gray-200 text-left">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {debtRows.map((r) => (
-                    <tr key={r.nama} className="border-b border-gray-100 last:border-0 hover:bg-slate-50">
-                      <td className="px-4 py-1.5 font-medium text-slate-800">{r.nama}</td>
-                      <td className="px-4 py-1.5 text-right text-slate-600 tabular-nums">{formatCurrency(r.totalGaji)}</td>
-                      <td className="px-4 py-1.5 text-right text-slate-600 tabular-nums">{formatCurrency(r.totalNilai)}</td>
-                      <td className="px-4 py-1.5 text-right font-semibold tabular-nums text-rose-600">{formatCurrency(r.utang)}</td>
-                      <td className="px-4 py-1.5">
-                        <span
-                          className={cn(
-                            'inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium',
-                            r.status === 'Utang' ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600',
-                          )}
-                        >
-                          {r.status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div className={T_WRAP}>
+                <table className={cn(T_TABLE, 'w-auto min-w-full whitespace-nowrap')}>
+                  <thead><tr className={T_HEAD_ROW}>
+                    <th className={cn(T_TH, 'text-left')}>Nama</th>
+                    <th className={cn(T_TH, 'text-right')}>Total Gaji</th>
+                    <th className={cn(T_TH, 'text-right')}>Total Nilai PCS</th>
+                    <th className={cn(T_TH, 'text-right')}>Utang</th>
+                    <th className={cn(T_TH, 'text-center')}>Status</th>
+                  </tr></thead>
+                  <tbody>
+                    {debtRows.map((r, i) => (
+                      <tr key={r.nama} className={rowClass(i)}>
+                        <td className={cn(T_TD, 'font-medium text-gray-900')}>{r.nama}</td>
+                        <td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>{formatCurrency(r.totalGaji)}</td>
+                        <td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>{formatCurrency(r.totalNilai)}</td>
+                        <td className={cn(T_TD, 'text-right tabular-nums font-semibold text-rose-600')}>{formatCurrency(r.utang)}</td>
+                        <td className={cn(T_TD, 'text-center')}>
+                          <span className={cn('inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap', r.status === 'Utang' ? 'bg-rose-100 text-rose-600' : 'bg-emerald-100 text-emerald-600')}>
+                            {r.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
             <p className="text-[11px] text-slate-400 mt-3">
               Utang = Total Gaji − Total Nilai PCS (hasil kerja berharga). Nilai dihitung dari data target & sewing.
             </p>
-          </div>
+          </>
         )}
       </div>
     </main>

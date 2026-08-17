@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Plus, RefreshCw, Search, Pencil, Trash2 } from 'lucide-react';
+import { Plus, RefreshCw, Search, Trash2, Filter, ArrowUpDown, Download } from 'lucide-react';
 import { cn, formatCurrency } from '@/lib/utils';
 import { formatDate } from '@/data/pipelineData';
 import { T_WRAP, T_TABLE, T_HEAD_ROW, T_TH, T_TD, rowClass } from '@/lib/tableStyles';
@@ -38,6 +38,7 @@ export function RegisterPoPage() {
   const [items, setItems] = useState<RegisterPoListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<RegisterPoListItem | null>(null);
@@ -134,20 +135,6 @@ export function RegisterPoPage() {
     setTimeout(() => setMessage(null), 3500);
   }
 
-  async function handleDelete(id: string) {
-    if (!confirm('Yakin ingin hapus Register PO ini?')) return;
-    console.log('[RegisterPo] deleting id:', id);
-    const { error } = await removeRegisterPo(id);
-    console.log('[RegisterPo] delete result, error:', error);
-    if (error) {
-      setMessage(`❌ Error: ${error.message}`);
-    } else {
-      setMessage('✅ Register PO berhasil dihapus.');
-      await refresh();
-    }
-    setTimeout(() => setMessage(null), 3000);
-  }
-
   const displayData = useMemo(() => {
     return items.map((item) => ({
       id: item.po.id,
@@ -163,6 +150,36 @@ export function RegisterPoPage() {
     const q = search.toLowerCase();
     return displayData.filter((d) => String(d.productionOrderId).toLowerCase().includes(q));
   }, [displayData, search]);
+
+  // Multi-select + toolbar (same pattern as Production Monitoring RAW DATA).
+  const handleToggleRow = (id: string) => setSelectedRows(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const handleToggleAll = () => { if (selectedRows.size === filtered.length) setSelectedRows(new Set()); else setSelectedRows(new Set(filtered.map(r => String(r.id)))); };
+  const handleImport = () => { if (selectedRows.size === 0) { alert('Pilih minimal 1!'); return; } alert(`✅ ${selectedRows.size} Register PO di-import`); setSelectedRows(new Set()); };
+  const handleExport = () => {
+    const esc = (v: string | number | null | undefined) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const header = ['PO ID', 'Total/PCS', 'Created'];
+    const lines = filtered.map((r) => [r.productionOrderId, r.totalPerPcs, r.createdAt].map(esc).join(','));
+    const csv = '﻿' + [header.map(esc).join(','), ...lines].join('\r\n'); // BOM for Excel UTF-8
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `register-po-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+  const handleBulkDelete = async () => {
+    if (selectedRows.size === 0) return;
+    if (!confirm(`Hapus ${selectedRows.size} Register PO terpilih?`)) return;
+    let deleted = 0;
+    for (const id of selectedRows) {
+      const { error } = await removeRegisterPo(String(id));
+      if (!error) deleted++;
+    }
+    setItems(prev => prev.filter(it => !selectedRows.has(it.po.id)));
+    setSelectedRows(new Set());
+    setMessage(`✅ ${deleted} Register PO berhasil dihapus!`);
+    setTimeout(() => setMessage(null), 3000);
+  };
 
   if (loading) {
     return (
@@ -199,33 +216,38 @@ export function RegisterPoPage() {
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
             <input type="text" placeholder="Cari Register PO..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-full h-8 pl-8 pr-3 text-[12px] border border-gray-200 rounded-lg outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100" />
           </div>
+          <button className="h-8 px-2.5 text-[11px] border border-gray-200 rounded-lg flex items-center gap-1.5 text-slate-600 hover:bg-gray-50"><Filter className="w-3 h-3" /> Filter</button>
+          <button className="h-8 px-2.5 text-[11px] border border-gray-200 rounded-lg flex items-center gap-1.5 text-slate-600 hover:bg-gray-50"><ArrowUpDown className="w-3 h-3" /> Sort</button>
+          <button onClick={handleExport} className="h-8 px-2.5 text-[11px] border border-gray-200 rounded-lg flex items-center gap-1.5 text-slate-600 hover:bg-gray-50"><Download className="w-3 h-3" /> Export</button>
+          <button onClick={handleImport} className={cn('h-8 px-2.5 text-[11px] rounded-lg flex items-center gap-1.5 font-medium transition-colors', selectedRows.size > 0 ? 'bg-blue-500 text-white hover:bg-blue-600' : 'border border-gray-200 text-slate-400')}>📥 Import ({selectedRows.size})</button>
+          {selectedRows.size > 0 && (
+            <button onClick={handleBulkDelete} className="h-8 px-2.5 text-[11px] rounded-lg flex items-center gap-1.5 font-medium bg-red-500 text-white hover:bg-red-600 transition-colors">
+              <Trash2 className="w-3 h-3" /> Delete ({selectedRows.size})
+            </button>
+          )}
           <span className="text-[11px] text-slate-400 ml-auto">{filtered.length} register PO</span>
         </div>
 
         <div className={T_WRAP}>
-          <table className={T_TABLE}>
+          <table className={cn(T_TABLE, 'w-auto min-w-full whitespace-nowrap')}>
             <thead><tr className={T_HEAD_ROW}>
+              <th className={cn(T_TH, 'w-12 text-center')}><input type="checkbox" checked={selectedRows.size === filtered.length && filtered.length > 0} onChange={handleToggleAll} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 align-middle" /></th>
               <th className={cn(T_TH, 'text-left')}>PO ID</th>
               <th className={cn(T_TH, 'text-right')}>Total/PCS</th>
               <th className={cn(T_TH, 'text-left')}>Created</th>
-              <th className={cn(T_TH, 'text-right')}>Action</th>
             </tr></thead>
             <tbody>
               {filtered.length === 0 && <tr><td colSpan={4} className="py-10 text-center text-[13px] text-gray-400">Belum ada Register PO</td></tr>}
               {filtered.map((row, i) => {
                 const item = items.find((it) => it.po.id === row.id);
                 if (!item) return null;
+                const selected = selectedRows.has(String(row.id));
                 return (
-                  <tr key={row.id} className={rowClass(i)}>
+                  <tr key={row.id} className={cn(rowClass(i, selected), 'cursor-pointer')} onClick={() => openEdit(item)} title="Klik untuk edit">
+                    <td className={cn(T_TD, 'text-center')} onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={selected} onChange={() => handleToggleRow(String(row.id))} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 align-middle" /></td>
                     <td className={cn(T_TD, 'font-medium text-gray-900')} title={String(row.productionOrderId)}>{String(row.productionOrderId)}</td>
                     <td className={cn(T_TD, 'text-right tabular-nums font-medium text-gray-900')}>{formatCurrency(row.totalPerPcs)}</td>
                     <td className={cn(T_TD, 'text-gray-500 whitespace-nowrap')}>{formatDate(String(row.createdAt))}</td>
-                    <td className={cn(T_TD, 'text-right')}>
-                      <div className="inline-flex gap-1">
-                        <button onClick={() => openEdit(item)} title="Edit" className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:bg-blue-50 hover:text-blue-600 transition-colors"><Pencil className="w-3.5 h-3.5" /></button>
-                        <button onClick={() => handleDelete(String(row.id))} title="Hapus" className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:bg-red-50 hover:text-red-500 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
-                      </div>
-                    </td>
                   </tr>
                 );
               })}

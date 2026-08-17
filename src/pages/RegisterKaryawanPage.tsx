@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Plus, RefreshCw, Search, Pencil, Trash2, X } from 'lucide-react';
+import { Plus, RefreshCw, Search, Trash2, X, Filter, ArrowUpDown, Download } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { T_WRAP, T_TABLE, T_HEAD_ROW, T_TH, T_TD, rowClass } from '@/lib/tableStyles';
 import {
@@ -34,6 +34,7 @@ export function RegisterKaryawanPage() {
   const [items, setItems] = useState<RegisterPenjahitRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
   const [filterPosisi, setFilterPosisi] = useState<string>('all');
 
   const [modalOpen, setModalOpen] = useState(false);
@@ -104,18 +105,6 @@ export function RegisterKaryawanPage() {
     setTimeout(() => setMessage(null), 3500);
   }
 
-  async function handleDelete(item: RegisterPenjahitRow) {
-    if (!confirm(`Hapus karyawan "${item.picPenjahit}" dari daftar?\n\nRiwayat planning/jahit/finishing/kancing miliknya tetap tersimpan di database.`)) return;
-    const { error } = await removeKaryawan(item.id);
-    if (error) {
-      setMessage(`❌ Error: ${error.message}`);
-    } else {
-      setMessage('✅ Karyawan berhasil dihapus.');
-      await refresh();
-    }
-    setTimeout(() => setMessage(null), 3000);
-  }
-
   const filtered = useMemo(() => {
     return items.filter((d) => {
       if (filterPosisi !== 'all' && (d.posisi ?? '') !== filterPosisi) return false;
@@ -124,6 +113,36 @@ export function RegisterKaryawanPage() {
       return [d.picPenjahit, d.posisi ?? '', d.status].some((v) => String(v).toLowerCase().includes(q));
     });
   }, [items, search, filterPosisi]);
+
+  // Multi-select + toolbar (same pattern as Production Monitoring RAW DATA).
+  const handleToggleRow = (id: number) => setSelectedRows(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const handleToggleAll = () => { if (selectedRows.size === filtered.length) setSelectedRows(new Set()); else setSelectedRows(new Set(filtered.map(r => r.id))); };
+  const handleImport = () => { if (selectedRows.size === 0) { alert('Pilih minimal 1!'); return; } alert(`✅ ${selectedRows.size} karyawan di-import`); setSelectedRows(new Set()); };
+  const handleExport = () => {
+    const esc = (v: string | number | null | undefined) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const header = ['Nama Karyawan', 'Posisi', 'Status'];
+    const lines = filtered.map((r) => [r.picPenjahit, r.posisi ?? '', r.status].map(esc).join(','));
+    const csv = '﻿' + [header.map(esc).join(','), ...lines].join('\r\n'); // BOM for Excel UTF-8
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `register-karyawan-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+  const handleBulkDelete = async () => {
+    if (selectedRows.size === 0) return;
+    if (!confirm(`Hapus ${selectedRows.size} karyawan terpilih?\n\nRiwayat planning/jahit/finishing/kancing mereka tetap tersimpan di database.`)) return;
+    let deleted = 0;
+    for (const id of selectedRows) {
+      const { error } = await removeKaryawan(Number(id));
+      if (!error) deleted++;
+    }
+    setItems(prev => prev.filter(r => !selectedRows.has(r.id)));
+    setSelectedRows(new Set());
+    setMessage(`✅ ${deleted} karyawan berhasil dihapus!`);
+    setTimeout(() => setMessage(null), 3000);
+  };
 
   if (loading) {
     return (
@@ -164,40 +183,47 @@ export function RegisterKaryawanPage() {
             <option value="all">Semua Posisi</option>
             {POSISI_OPTIONS.map((p) => <option key={p} value={p}>{p}</option>)}
           </select>
+          <button className="h-8 px-2.5 text-[11px] border border-gray-200 rounded-lg flex items-center gap-1.5 text-slate-600 hover:bg-gray-50"><Filter className="w-3 h-3" /> Filter</button>
+          <button className="h-8 px-2.5 text-[11px] border border-gray-200 rounded-lg flex items-center gap-1.5 text-slate-600 hover:bg-gray-50"><ArrowUpDown className="w-3 h-3" /> Sort</button>
+          <button onClick={handleExport} className="h-8 px-2.5 text-[11px] border border-gray-200 rounded-lg flex items-center gap-1.5 text-slate-600 hover:bg-gray-50"><Download className="w-3 h-3" /> Export</button>
+          <button onClick={handleImport} className={cn('h-8 px-2.5 text-[11px] rounded-lg flex items-center gap-1.5 font-medium transition-colors', selectedRows.size > 0 ? 'bg-blue-500 text-white hover:bg-blue-600' : 'border border-gray-200 text-slate-400')}>📥 Import ({selectedRows.size})</button>
+          {selectedRows.size > 0 && (
+            <button onClick={handleBulkDelete} className="h-8 px-2.5 text-[11px] rounded-lg flex items-center gap-1.5 font-medium bg-red-500 text-white hover:bg-red-600 transition-colors">
+              <Trash2 className="w-3 h-3" /> Delete ({selectedRows.size})
+            </button>
+          )}
           <span className="text-[11px] text-slate-400 ml-auto">{filtered.length} karyawan</span>
         </div>
 
         <div className={T_WRAP}>
-          <table className={T_TABLE}>
+          <table className={cn(T_TABLE, 'w-auto min-w-full whitespace-nowrap')}>
             <thead><tr className={T_HEAD_ROW}>
+              <th className={cn(T_TH, 'w-12 text-center')}><input type="checkbox" checked={selectedRows.size === filtered.length && filtered.length > 0} onChange={handleToggleAll} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 align-middle" /></th>
               <th className={cn(T_TH, 'text-left')}>Nama Karyawan</th>
               <th className={cn(T_TH, 'text-left')}>Posisi</th>
               <th className={cn(T_TH, 'text-left')}>Status</th>
-              <th className={cn(T_TH, 'text-right')}>Action</th>
             </tr></thead>
             <tbody>
               {filtered.length === 0 && <tr><td colSpan={4} className="py-10 text-center text-[13px] text-gray-400">Belum ada karyawan terdaftar</td></tr>}
-              {filtered.map((item, i) => (
-                <tr key={item.id} className={rowClass(i)}>
-                  <td className={cn(T_TD, 'font-medium text-gray-900')}>{item.picPenjahit}</td>
-                  <td className={T_TD}>
-                    {item.posisi ? (
-                      <span className={cn('inline-block px-2.5 py-1 rounded-md text-[11px] font-medium text-white whitespace-nowrap', POSISI_BADGE[item.posisi] || 'bg-gray-500')}>{item.posisi}</span>
-                    ) : (
-                      <span className="text-gray-300">—</span>
-                    )}
-                  </td>
-                  <td className={T_TD}>
-                    <span className={cn('inline-block px-2.5 py-1 rounded-md text-[11px] font-medium text-white whitespace-nowrap', STATUS_BADGE[item.status] || 'bg-gray-500')}>{item.status}</span>
-                  </td>
-                  <td className={cn(T_TD, 'text-right')}>
-                    <div className="inline-flex gap-1">
-                      <button onClick={() => openEdit(item)} title="Edit" className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:bg-blue-50 hover:text-blue-600 transition-colors"><Pencil className="w-3.5 h-3.5" /></button>
-                      <button onClick={() => handleDelete(item)} title="Hapus" className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:bg-red-50 hover:text-red-500 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {filtered.map((item, i) => {
+                const selected = selectedRows.has(item.id);
+                return (
+                  <tr key={item.id} className={cn(rowClass(i, selected), 'cursor-pointer')} onClick={() => openEdit(item)} title="Klik untuk edit">
+                    <td className={cn(T_TD, 'text-center')} onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={selected} onChange={() => handleToggleRow(item.id)} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 align-middle" /></td>
+                    <td className={cn(T_TD, 'font-medium text-gray-900')}>{item.picPenjahit}</td>
+                    <td className={T_TD}>
+                      {item.posisi ? (
+                        <span className={cn('inline-block px-2.5 py-1 rounded-md text-[11px] font-medium text-white whitespace-nowrap', POSISI_BADGE[item.posisi] || 'bg-gray-500')}>{item.posisi}</span>
+                      ) : (
+                        <span className="text-gray-300">—</span>
+                      )}
+                    </td>
+                    <td className={T_TD}>
+                      <span className={cn('inline-block px-2.5 py-1 rounded-md text-[11px] font-medium text-white whitespace-nowrap', STATUS_BADGE[item.status] || 'bg-gray-500')}>{item.status}</span>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

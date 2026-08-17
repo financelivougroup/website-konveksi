@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import type { ChangeEvent } from 'react';
-import { Plus, RefreshCw, Search, Camera, Pencil, Trash2, X, CheckCircle } from 'lucide-react';
+import { Plus, RefreshCw, Search, Camera, X, CheckCircle, Trash2, Filter, ArrowUpDown, Download } from 'lucide-react';
 import { cn, formatCurrency } from '@/lib/utils';
 import { T_WRAP, T_TABLE, T_HEAD_ROW, T_TH, T_TD, rowClass } from '@/lib/tableStyles';
 import {
@@ -191,6 +191,7 @@ export function ComplainPenaltiPage() {
   const [fileCounts, setFileCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
   const [message, setMessage] = useState<string | null>(null);
 
   // ===== Opsi form (dari data produksi) =====
@@ -516,21 +517,6 @@ export function ComplainPenaltiPage() {
     }
   }
 
-  async function handleDelete(item: ComplainPenaltiRow) {
-    if (!confirm('Yakin ingin hapus complain ini? File bukti terkait juga akan terhapus.')) return;
-    // Ambil path file bukti SEBELUM hapus DB — row complain_files ikut terhapus oleh CASCADE.
-    const { data: files } = await fetchFilesByComplainId(item.id);
-    const { error } = await removeComplain(item.id);
-    if (error) {
-      flash(`❌ Error: ${error.message}`);
-      return;
-    }
-    // Best-effort: hapus objek storage juga; kegagalan jangan menghambat UI
-    // (row DB sudah hilang, file yang tersisa jadi orphan).
-    await removeComplainFilesByPaths((files ?? []).map((f) => f.filePath)).catch(() => {});
-    flash('✅ Complain berhasil dihapus.');
-    void refresh();
-  }
 
   // Setelah pemotongan gaji dieksekusi, status complain berubah jadi SOLVED.
   async function handleSolve(item: ComplainPenaltiRow) {
@@ -562,6 +548,41 @@ export function ComplainPenaltiPage() {
       ].some((v) => String(v).toLowerCase().includes(q)),
     );
   }, [items, search]);
+
+  // Multi-select + toolbar (same pattern as Production Monitoring RAW DATA).
+  const handleToggleRow = (id: string) => setSelectedRows(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const handleToggleAll = () => { if (selectedRows.size === filtered.length) setSelectedRows(new Set()); else setSelectedRows(new Set(filtered.map(r => String(r.id)))); };
+  const handleImport = () => { if (selectedRows.size === 0) { alert('Pilih minimal 1!'); return; } alert(`✅ ${selectedRows.size} complain di-import`); setSelectedRows(new Set()); };
+  const handleExport = () => {
+    const esc = (v: string | number | null | undefined) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const header = ['Tanggal', 'Work Code', 'Produk', 'Warna', 'Posisi', 'PIC', 'Poin', 'Potongan/PCS', 'Tingkat', 'Status'];
+    const lines = filtered.map((r) => [r.tanggal, r.workCode ?? '', r.product, r.warna ?? '', POSISI_LABEL[r.posisi] ?? r.posisi, r.pic ?? '', r.poin, r.potonganPerPcs, r.tingkat ?? '', r.status].map(esc).join(','));
+    const csv = '﻿' + [header.map(esc).join(','), ...lines].join('\r\n'); // BOM for Excel UTF-8
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `complain-penalti-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+  const handleBulkDelete = async () => {
+    if (selectedRows.size === 0) return;
+    if (!confirm(`Hapus ${selectedRows.size} complain terpilih? File bukti terkait juga akan terhapus.`)) return;
+    let deleted = 0;
+    for (const id of selectedRows) {
+      const item = items.find((it) => String(it.id) === id);
+      if (!item) continue;
+      const { data: files } = await fetchFilesByComplainId(item.id);
+      const { error } = await removeComplain(item.id);
+      if (!error) {
+        deleted++;
+        await removeComplainFilesByPaths((files ?? []).map((f) => f.filePath)).catch(() => {});
+      }
+    }
+    setItems(prev => prev.filter(it => !selectedRows.has(String(it.id))));
+    setSelectedRows(new Set());
+    flash(`✅ ${deleted} complain berhasil dihapus!`);
+  };
 
   if (loading) {
     return (
@@ -602,7 +623,7 @@ export function ComplainPenaltiPage() {
       </div>
 
       <div className="flex-1 px-8 pt-5 pb-6 overflow-auto">
-        {/* Toolbar: search + hitungan complain */}
+        {/* Toolbar: search + filter/sort/export/import/delete + hitungan complain */}
         <div className="flex items-center gap-2 mb-3">
           <div className="relative flex-1 max-w-xs">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
@@ -614,14 +635,24 @@ export function ComplainPenaltiPage() {
               className="w-full h-8 pl-8 pr-3 text-[12px] border border-gray-200 rounded-lg outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
             />
           </div>
+          <button className="h-8 px-2.5 text-[11px] border border-gray-200 rounded-lg flex items-center gap-1.5 text-slate-600 hover:bg-gray-50"><Filter className="w-3 h-3" /> Filter</button>
+          <button className="h-8 px-2.5 text-[11px] border border-gray-200 rounded-lg flex items-center gap-1.5 text-slate-600 hover:bg-gray-50"><ArrowUpDown className="w-3 h-3" /> Sort</button>
+          <button onClick={handleExport} className="h-8 px-2.5 text-[11px] border border-gray-200 rounded-lg flex items-center gap-1.5 text-slate-600 hover:bg-gray-50"><Download className="w-3 h-3" /> Export</button>
+          <button onClick={handleImport} className={cn('h-8 px-2.5 text-[11px] rounded-lg flex items-center gap-1.5 font-medium transition-colors', selectedRows.size > 0 ? 'bg-blue-500 text-white hover:bg-blue-600' : 'border border-gray-200 text-slate-400')}>📥 Import ({selectedRows.size})</button>
+          {selectedRows.size > 0 && (
+            <button onClick={handleBulkDelete} className="h-8 px-2.5 text-[11px] rounded-lg flex items-center gap-1.5 font-medium bg-red-500 text-white hover:bg-red-600 transition-colors">
+              <Trash2 className="w-3 h-3" /> Delete ({selectedRows.size})
+            </button>
+          )}
           <span className="text-[11px] text-slate-400 ml-auto">{filtered.length} complain</span>
         </div>
 
         {/* Tabel manual — design system tableStyles (sama dengan Production Monitoring) */}
         <div className={T_WRAP}>
-          <table className={T_TABLE}>
+          <table className={cn(T_TABLE, 'w-auto min-w-full whitespace-nowrap')}>
             <thead>
               <tr className={T_HEAD_ROW}>
+                <th className={cn(T_TH, 'w-12 text-center')}><input type="checkbox" checked={selectedRows.size === filtered.length && filtered.length > 0} onChange={handleToggleAll} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 align-middle" /></th>
                 <th className={cn(T_TH, 'text-left')}>Tanggal</th>
                 <th className={cn(T_TH, 'text-left')}>Work Code</th>
                 <th className={cn(T_TH, 'text-left')}>Produk</th>
@@ -632,7 +663,6 @@ export function ComplainPenaltiPage() {
                 <th className={cn(T_TH, 'text-center')}>Tingkat</th>
                 <th className={cn(T_TH, 'text-center')}>Status</th>
                 <th className={cn(T_TH, 'text-center')}>Bukti</th>
-                <th className={cn(T_TH, 'text-center')}>Action</th>
               </tr>
             </thead>
             <tbody>
@@ -646,10 +676,12 @@ export function ComplainPenaltiPage() {
               {filtered.map((item, i) => {
                 // id bigint bisa tiba sebagai string dari supabase-js — bandingkan sebagai string.
                 const photoCount = fileCounts[String(item.id)] ?? 0;
+                const selected = selectedRows.has(String(item.id));
                 return (
-                  <tr key={String(item.id)} className={rowClass(i)}>
+                  <tr key={String(item.id)} className={cn(rowClass(i, selected), 'cursor-pointer')} onClick={() => void openEdit(item)} title="Klik untuk edit">
+                    <td className={cn(T_TD, 'text-center')} onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={selected} onChange={() => handleToggleRow(String(item.id))} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 align-middle" /></td>
                     <td className={cn(T_TD, 'text-gray-700 whitespace-nowrap')}>{item.tanggal}</td>
-                    <td className={cn(T_TD, 'font-mono text-[12px] text-gray-600 max-w-[260px] truncate')} title={item.workCode ?? ''}>
+                    <td className={cn(T_TD, 'font-mono text-[12px] text-gray-600')} title={item.workCode ?? ''}>
                       {item.workCode ?? '—'}
                     </td>
                     <td className={cn(T_TD, 'font-medium text-gray-900')}>{item.product}</td>
@@ -671,7 +703,7 @@ export function ComplainPenaltiPage() {
                         <span className="text-gray-300">—</span>
                       )}
                     </td>
-                    <td className={cn(T_TD, 'text-center')}>
+                    <td className={cn(T_TD, 'text-center')} onClick={(e) => e.stopPropagation()}>
                       <span
                         className={cn(
                           'inline-block px-2.5 py-1 rounded-md text-[11px] font-medium text-white whitespace-nowrap',
@@ -680,6 +712,15 @@ export function ComplainPenaltiPage() {
                       >
                         {item.status}
                       </span>
+                      {item.status === COMPLAIN_STATUS.NEED_PROCEED && (
+                        <button
+                          onClick={() => void handleSolve(item)}
+                          title="Tandai SOLVED — potongan sudah dieksekusi"
+                          className="ml-1.5 h-7 px-2 rounded-md inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600 hover:bg-emerald-50 transition-colors align-middle"
+                        >
+                          <CheckCircle className="w-3.5 h-3.5" /> Solve
+                        </button>
+                      )}
                     </td>
                     <td className={cn(T_TD, 'text-center')}>
                       {photoCount > 0 ? (
@@ -689,33 +730,6 @@ export function ComplainPenaltiPage() {
                       ) : (
                         <span className="text-gray-300">—</span>
                       )}
-                    </td>
-                    <td className={cn(T_TD, 'text-center whitespace-nowrap')}>
-                      <div className="flex items-center justify-center gap-1">
-                        {item.status === COMPLAIN_STATUS.NEED_PROCEED && (
-                          <button
-                            onClick={() => void handleSolve(item)}
-                            title="Tandai SOLVED — potongan sudah dieksekusi"
-                            className="h-7 px-2 rounded-md inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600 hover:bg-emerald-50 transition-colors"
-                          >
-                            <CheckCircle className="w-3.5 h-3.5" /> Solve
-                          </button>
-                        )}
-                        <button
-                          onClick={() => void openEdit(item)}
-                          title="Edit complain"
-                          className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:bg-blue-50 hover:text-blue-600 transition-colors"
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => void handleDelete(item)}
-                          title="Hapus complain"
-                          className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-colors"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
                     </td>
                   </tr>
                 );

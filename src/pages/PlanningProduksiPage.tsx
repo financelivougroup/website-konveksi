@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Plus, RefreshCw, Search, Sparkles, Filter, ArrowUpDown, Download, Trash2, Pencil } from 'lucide-react';
+import { Plus, RefreshCw, Search, Sparkles, Filter, ArrowUpDown, Download, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatDate } from '@/data/pipelineData';
 import { T_WRAP, T_TABLE, T_HEAD_ROW, T_TH, T_TD, rowClass } from '@/lib/tableStyles';
@@ -141,18 +141,6 @@ export function PlanningProduksiPage() {
     setTimeout(() => setMessage(null), 3500);
   }
 
-  async function handleDelete(id: number) {
-    if (!confirm('Yakin ingin hapus planning produksi ini?')) return;
-    const { error } = await removePlanning(id);
-    if (error) {
-      setMessage(`❌ Error: ${error.message}`);
-    } else {
-      setMessage('✅ Planning produksi berhasil dihapus.');
-      await refresh();
-    }
-    setTimeout(() => setMessage(null), 3000);
-  }
-
   async function handleGenerate() {
     setGenerating(true);
     const { created, error } = await generateTargetsFromPlanning(genMonth);
@@ -266,15 +254,14 @@ export function PlanningProduksiPage() {
               <th className={cn(T_TH, 'text-right')}>Qty</th>
               <th className={cn(T_TH, 'text-left')}>Bulan Target</th>
               <th className={cn(T_TH, 'text-center')}>Status</th>
-              <th className={cn(T_TH, 'text-right')}>Action</th>
             </tr></thead>
             <tbody>
-              {filtered.length === 0 && <tr><td colSpan={9} className="py-10 text-center text-[13px] text-gray-400">Belum ada planning produksi</td></tr>}
+              {filtered.length === 0 && <tr><td colSpan={8} className="py-10 text-center text-[13px] text-gray-400">Belum ada planning produksi</td></tr>}
               {filtered.map((r, i) => {
                 const selected = selectedRows.has(r.id);
                 return (
-                  <tr key={r.id} className={rowClass(i, selected)}>
-                    <td className={cn(T_TD, 'text-center')}><input type="checkbox" checked={selected} onChange={() => handleToggleRow(r.id)} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 align-middle" /></td>
+                  <tr key={r.id} className={cn(rowClass(i, selected), 'cursor-pointer')} onClick={() => openEdit(r)} title="Klik untuk edit">
+                    <td className={cn(T_TD, 'text-center')} onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={selected} onChange={() => handleToggleRow(r.id)} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 align-middle" /></td>
                     <td className={cn(T_TD, 'font-medium text-gray-900')}>{r.namaPenjahit}</td>
                     <td className={cn(T_TD, 'text-gray-700')}>{r.product}</td>
                     <td className={cn(T_TD, 'text-gray-700')}>{r.warna || <span className="text-gray-300">—</span>}</td>
@@ -282,12 +269,6 @@ export function PlanningProduksiPage() {
                     <td className={cn(T_TD, 'text-right font-medium tabular-nums text-gray-900')}>{r.qty}</td>
                     <td className={cn(T_TD, 'text-gray-500')}>{formatDate(r.bulanTarget + '-01')}</td>
                     <td className={cn(T_TD, 'text-center')}><span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap bg-slate-100 text-slate-600">{r.status || '—'}</span></td>
-                    <td className={cn(T_TD, 'text-right')}>
-                      <div className="inline-flex gap-1">
-                        <button onClick={() => openEdit(r)} title="Edit" className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:bg-blue-50 hover:text-blue-600 transition-colors"><Pencil className="w-3.5 h-3.5" /></button>
-                        <button onClick={() => handleDelete(r.id)} title="Hapus" className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:bg-red-50 hover:text-red-500 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
-                      </div>
-                    </td>
                   </tr>
                 );
               })}
