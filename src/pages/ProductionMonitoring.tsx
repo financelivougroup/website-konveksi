@@ -577,7 +577,7 @@ export default function ProductionMonitoring({ onOpenSewingEntry, onOpenFinishin
                   {decoratedWO.map((wo, i) => {
                     const sisa = Math.max(0, wo.cuttingTotal - wo.sewingTotal);
                     const selected = selectedRows.has(wo.id);
-                    const TD = 'py-1.5 px-3 align-middle'; // compact padding — columns fit content, table scrolls horizontally
+                    const TD = T_TD; // unified compact row height (design-system token)
                     return <tr key={wo.id} className={rowClass(i, selected)}>
                       <td className={cn(TD, 'text-center')}><input type="checkbox" checked={selected} onChange={() => handleToggleRow(wo.id)} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 align-middle" /></td>
                       <td className={cn(TD, 'font-mono text-[11px] text-gray-600')} title={wo.productNote ?? undefined}>{wo.productNote || <span className="text-gray-300">—</span>}</td>
@@ -633,7 +633,7 @@ export default function ProductionMonitoring({ onOpenSewingEntry, onOpenFinishin
         {/* SEWING LOG */}
         {activeTab === 'sewing' && (
           <div>
-            <div className="flex items-center justify-between mb-3"><p className="text-[12px] text-slate-500">Database hasil jahitan <strong>LULUS QC</strong></p><button onClick={() => onOpenSewingEntry?.()} className="px-3 py-1.5 text-[11px] font-semibold bg-blue-500 text-white rounded-lg hover:bg-blue-600">➕ Entry Jahitan Baru</button></div>
+            <div className="flex items-center justify-end mb-3"><button onClick={() => onOpenSewingEntry?.()} className="px-3 py-1.5 text-[11px] font-semibold bg-blue-500 text-white rounded-lg hover:bg-blue-600">➕ Entry Jahitan Baru</button></div>
             <div className="relative max-w-xs mb-3"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" /><input type="text" placeholder="Cari..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full h-8 pl-8 pr-3 text-[12px] border border-gray-200 rounded-lg" /></div>
             <div className={T_WRAP}>
               <table className={T_TABLE}>
@@ -647,7 +647,7 @@ export default function ProductionMonitoring({ onOpenSewingEntry, onOpenFinishin
         {/* FINISHING LOG */}
         {activeTab === 'finishing' && (
           <div>
-            <div className="flex items-center justify-between mb-3"><p className="text-[12px] text-slate-500">Database hasil <strong>finishing</strong></p><button onClick={() => onOpenFinishingEntry?.()} className="px-3 py-1.5 text-[11px] font-semibold bg-emerald-500 text-white rounded-lg hover:bg-emerald-600">➕ Entry Finishing Baru</button></div>
+            <div className="flex items-center justify-end mb-3"><button onClick={() => onOpenFinishingEntry?.()} className="px-3 py-1.5 text-[11px] font-semibold bg-emerald-500 text-white rounded-lg hover:bg-emerald-600">➕ Entry Finishing Baru</button></div>
             <div className="relative max-w-xs mb-3"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" /><input type="text" placeholder="Cari..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full h-8 pl-8 pr-3 text-[12px] border border-gray-200 rounded-lg" /></div>
             <div className={T_WRAP}>
               <table className={T_TABLE}>
@@ -661,7 +661,7 @@ export default function ProductionMonitoring({ onOpenSewingEntry, onOpenFinishin
         {/* PASANG KANCING LOG */}
         {activeTab === 'kancing' && (
           <div>
-            <div className="flex items-center justify-between mb-3"><p className="text-[12px] text-slate-500">Database hasil <strong>pasang kancing manual</strong> (lubangi + jahit kancing)</p><button onClick={() => onOpenKancingEntry?.()} className="px-3 py-1.5 text-[11px] font-semibold bg-violet-500 text-white rounded-lg hover:bg-violet-600">➕ Entry Pasang Kancing Baru</button></div>
+            <div className="flex items-center justify-end mb-3"><button onClick={() => onOpenKancingEntry?.()} className="px-3 py-1.5 text-[11px] font-semibold bg-violet-500 text-white rounded-lg hover:bg-violet-600">➕ Entry Pasang Kancing Baru</button></div>
             <div className="relative max-w-xs mb-3"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" /><input type="text" placeholder="Cari..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full h-8 pl-8 pr-3 text-[12px] border border-gray-200 rounded-lg" /></div>
             <div className={T_WRAP}>
               <table className={T_TABLE}>

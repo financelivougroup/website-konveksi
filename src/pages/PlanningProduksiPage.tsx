@@ -198,9 +198,6 @@ export function PlanningProduksiPage() {
       <div className="px-5 py-3 flex items-center justify-between border-b border-gray-100">
         <div>
           <h1 className="text-lg font-bold text-slate-900">📐 Planning Produksi</h1>
-          <p className="text-[12px] text-slate-500 mt-0.5">
-            Rencana produksi bulanan per penjahit — dasar generate target jahit
-          </p>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={refresh} className="h-8 px-3 text-[11px] border border-gray-200 rounded-lg flex items-center gap-1.5 text-slate-600 hover:bg-gray-50">

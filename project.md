@@ -187,6 +187,12 @@ Website Konveksi/
 
 ## Latest Progress
 
+### 2026-08-17 — Hapus caption modul + tinggi baris tabel seragam (compact)
+
+- **7 caption dihapus** atas permintaan user: Sewing Log ("Database hasil jahitan LULUS QC"), Finishing Log, Pasang Kancing Log (ProductionMonitoring — tombol Entry dipindah ke kanan), Order Entry ("Buat order manual... sync Pancake"), Register PO, Target Jahit, Planning Produksi (subtitle `<p>` di header masing-masing halaman).
+- **Tinggi baris semua tabel disamakan mengikuti RAW DATA (compact)**: token `T_TD` di `tableStyles.ts` diubah `py-3 px-4` → `py-1.5 px-3` (dampak otomatis: Sewing/Finishing/Kancing Log, Register Karyawan — yang dikeluhkan masih tinggi — dan Complain); tabel hardcoded ikut dipadatkan: OrderEntry (`py-2.5→py-1.5`), InvoicingPage, Utang Staf di TargetJahitPage; preset `medium` DataTable (`py-2→py-1.5`, dipakai Planning Produksi & tab Target); override lokal `TD` di RAW dikembalikan ke token. Header `th` sengaja tidak diubah.
+- `npm run build` hijau.
+
 ### 2026-08-17 — View `master_raw_data` di Supabase (master table plek ketiplek RAW DATA)
 
 - Dibuat view `public.master_raw_data` via Supabase MCP (migration record `master_raw_data_view`): satu baris per work order dengan **persis** isi tab RAW DATA (19 kolom) — identitas master (product note, product, product id, variation id, information variation, warna, size, work code, brand, qty) + agregat progress (cutting, jahit, finishing, kancing, sisa, status).

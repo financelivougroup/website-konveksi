@@ -187,9 +187,6 @@ export function RegisterPoPage() {
       <div className="px-5 py-3 flex items-center justify-between border-b border-gray-100">
         <div>
           <h1 className="text-lg font-bold text-slate-900">📋 Register PO</h1>
-          <p className="text-[12px] text-slate-500 mt-0.5">
-            Set komponen biaya per Production Order — total jadi dasar invoice
-          </p>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={refresh} className="h-8 px-3 text-[11px] border border-gray-200 rounded-lg flex items-center gap-1.5 text-slate-600 hover:bg-gray-50">

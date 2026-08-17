@@ -38,7 +38,7 @@ interface DataTableProps {
 
 const rowHeightClasses = {
   short: '[&_td]:py-1',
-  medium: '[&_td]:py-2',
+  medium: '[&_td]:py-1.5',
   tall: '[&_td]:py-3.5',
   extra: '[&_td]:py-5',
 };

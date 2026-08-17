@@ -167,9 +167,6 @@ export function TargetJahitPage() {
       <div className="px-5 py-3 flex items-center justify-between border-b border-gray-100">
         <div>
           <h1 className="text-lg font-bold text-slate-900">🎯 Target Jahit</h1>
-          <p className="text-[12px] text-slate-500 mt-0.5">
-            Target produksi per penjahit + perhitungan utang staf
-          </p>
         </div>
         <div className="flex items-center gap-2">
           {tab === 'target' && (
@@ -282,11 +279,11 @@ export function TargetJahitPage() {
                 <tbody>
                   {debtRows.map((r) => (
                     <tr key={r.nama} className="border-b border-gray-100 last:border-0 hover:bg-slate-50">
-                      <td className="px-4 py-2.5 font-medium text-slate-800">{r.nama}</td>
-                      <td className="px-4 py-2.5 text-right text-slate-600 tabular-nums">{formatCurrency(r.totalGaji)}</td>
-                      <td className="px-4 py-2.5 text-right text-slate-600 tabular-nums">{formatCurrency(r.totalNilai)}</td>
-                      <td className="px-4 py-2.5 text-right font-semibold tabular-nums text-rose-600">{formatCurrency(r.utang)}</td>
-                      <td className="px-4 py-2.5">
+                      <td className="px-4 py-1.5 font-medium text-slate-800">{r.nama}</td>
+                      <td className="px-4 py-1.5 text-right text-slate-600 tabular-nums">{formatCurrency(r.totalGaji)}</td>
+                      <td className="px-4 py-1.5 text-right text-slate-600 tabular-nums">{formatCurrency(r.totalNilai)}</td>
+                      <td className="px-4 py-1.5 text-right font-semibold tabular-nums text-rose-600">{formatCurrency(r.utang)}</td>
+                      <td className="px-4 py-1.5">
                         <span
                           className={cn(
                             'inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium',

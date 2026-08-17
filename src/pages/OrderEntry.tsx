@@ -168,7 +168,7 @@ export default function OrderEntry() {
     <div className="flex-1 flex flex-col min-w-0 overflow-auto">
       <div className="p-4 sm:p-5">
         <div className="flex items-center justify-between mb-4">
-          <div><h1 className="text-lg font-bold text-slate-900">📋 Order Entry</h1><p className="text-[12px] text-slate-500 mt-0.5">Buat order manual atau Pull order dari website — Quantity sync dari Pancake</p></div>
+          <div><h1 className="text-lg font-bold text-slate-900">📋 Order Entry</h1></div>
           <div className="text-[10px] text-slate-400 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5">👤 <strong>Owner</strong></div>
         </div>
 
@@ -274,16 +274,16 @@ export default function OrderEntry() {
                 const qtyDisplay = po.quantity > 0 ? po.quantity : <span className="text-slate-300 italic">—</span>;
                 return (
                   <tr key={po.id} className="border-b border-gray-100 hover:bg-slate-50/50">
-                    <td className="py-2.5 px-2.5 text-slate-600 max-w-[180px] truncate font-mono text-[10px]" title={po.workCode}>{po.workCode}</td>
-                    <td className="py-2.5 px-2.5 font-medium text-slate-800">{po.product}</td>
-                    <td className="py-2.5 px-2.5 font-mono text-[10px] text-sky-700">{pid}</td>
-                    <td className="py-2.5 px-2.5 font-mono text-[10px] text-slate-500">{varId || '—'}</td>
-                    <td className="py-2.5 px-2.5 text-slate-600">{po.brand}</td>
-                    <td className="py-2.5 px-2.5 text-slate-600">{po.warna}</td>
-                    <td className="py-2.5 px-2.5 text-slate-600">{po.size}</td>
-                    <td className="py-2.5 px-2.5 text-right font-semibold text-slate-600">{qtyDisplay}</td>
-                    <td className="py-2.5 px-2.5 text-center">{statusBadge(po.status)}</td>
-                    <td className="py-2.5 px-2.5 text-center">
+                    <td className="py-1.5 px-2.5 text-slate-600 max-w-[180px] truncate font-mono text-[10px]" title={po.workCode}>{po.workCode}</td>
+                    <td className="py-1.5 px-2.5 font-medium text-slate-800">{po.product}</td>
+                    <td className="py-1.5 px-2.5 font-mono text-[10px] text-sky-700">{pid}</td>
+                    <td className="py-1.5 px-2.5 font-mono text-[10px] text-slate-500">{varId || '—'}</td>
+                    <td className="py-1.5 px-2.5 text-slate-600">{po.brand}</td>
+                    <td className="py-1.5 px-2.5 text-slate-600">{po.warna}</td>
+                    <td className="py-1.5 px-2.5 text-slate-600">{po.size}</td>
+                    <td className="py-1.5 px-2.5 text-right font-semibold text-slate-600">{qtyDisplay}</td>
+                    <td className="py-1.5 px-2.5 text-center">{statusBadge(po.status)}</td>
+                    <td className="py-1.5 px-2.5 text-center">
                       <div className="flex items-center justify-center gap-1.5">
                         {po.status === 'PLANNING' && (<>
                           <button onClick={() => handlePull(po.id)} className="px-2.5 py-1 text-[10px] font-semibold bg-green-500 text-white rounded hover:bg-green-600 flex items-center gap-1" title="Pull to Production"><ArrowRight className="w-3 h-3" /> Pull</button>

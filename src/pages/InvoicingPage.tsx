@@ -202,14 +202,14 @@ export function InvoicingPage() {
               const isDownloading = downloadingId === inv.id;
               return (
                 <tr key={inv.id} className="border-b border-gray-100 hover:bg-slate-50 transition-colors">
-                  <td className="px-3 py-2.5 text-slate-700">{inv.monthYear}</td>
-                  <td className="px-3 py-2.5 text-slate-700">{inv.clientName}</td>
-                  <td className="px-3 py-2.5 max-w-[180px] truncate font-mono text-[11px] text-slate-500" title={inv.workCode}>{inv.workCode}</td>
-                  <td className="px-3 py-2.5 text-right tabular-nums text-slate-700">{inv.pcsLinked}</td>
-                  <td className="px-3 py-2.5 text-right tabular-nums text-slate-700">{fmtCur(inv.unitPrice)}</td>
-                  <td className="px-3 py-2.5 font-mono text-[11px] text-slate-500">{inv.invoiceCode}</td>
-                  <td className="px-3 py-2.5 text-right font-semibold text-slate-800">{fmtCur(inv.totalAmount)}</td>
-                  <td className="px-3 py-2.5 text-center">
+                  <td className="px-3 py-1.5 text-slate-700">{inv.monthYear}</td>
+                  <td className="px-3 py-1.5 text-slate-700">{inv.clientName}</td>
+                  <td className="px-3 py-1.5 max-w-[180px] truncate font-mono text-[11px] text-slate-500" title={inv.workCode}>{inv.workCode}</td>
+                  <td className="px-3 py-1.5 text-right tabular-nums text-slate-700">{inv.pcsLinked}</td>
+                  <td className="px-3 py-1.5 text-right tabular-nums text-slate-700">{fmtCur(inv.unitPrice)}</td>
+                  <td className="px-3 py-1.5 font-mono text-[11px] text-slate-500">{inv.invoiceCode}</td>
+                  <td className="px-3 py-1.5 text-right font-semibold text-slate-800">{fmtCur(inv.totalAmount)}</td>
+                  <td className="px-3 py-1.5 text-center">
                     <span className={cn(
                       'inline-flex px-2 py-[3px] rounded-full text-[10px] font-semibold',
                       outstanding === 0 ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
@@ -217,7 +217,7 @@ export function InvoicingPage() {
                       {outstanding === 0 ? 'Paid' : 'Outstanding'}
                     </span>
                   </td>
-                  <td className="px-3 py-2.5 text-center">
+                  <td className="px-3 py-1.5 text-center">
                     <div className="flex items-center justify-center gap-1">
                       <button
                         onClick={() => setPaymentTarget(inv)}
