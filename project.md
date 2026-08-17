@@ -187,6 +187,14 @@ Website Konveksi/
 
 ## Latest Progress
 
+### 2026-08-17 — RAW DATA jadi tabel master production monitoring
+
+- Tab RAW DATA kini menjadi tabel master: 21 kolom mencakup seluruh identitas master (Product Note, Product ID, Variation ID, Information Variation, Warna, Size) + progress produksi (Cutting, Jahit, Finishing, **Kancing** — agregat baru dari `kancing_records`) + finance/audit (Invoice Status badge, Source PO, Created At, Created By). Urutan: identitas master di kiri, progress produksi di tengah, finance/audit di kanan (commit `eac0d1c`).
+- Tidak ada perubahan skema database — semua kolom sudah ada di `work_orders` (diverifikasi via Supabase MCP); perubahan murni frontend di `ProductionMonitoring.tsx`: dekorasi `kancingTotal`, state `productionOrders` lengkap + map Source PO (`source_order_id` → work code PO, mencakup PO berstatus FINISHED/PULLED), pencarian diperluas mencakup product note/product id/variation id/information variation/size, dan null-safe rendering (`—`).
+- Keputusan user: perluas tab RAW yang ada (bukan tab/halaman baru), tampilkan semua kolom yang ada, pendekatan A (markup langsung, tanpa DB view / tanpa migrasi DataTable generik).
+- Lint: +2 temuan dibanding baseline HEAD (warning `react-hooks/exhaustive-deps` menyebut `getKancingTotalLocal`, dan error `react-hooks/preserve-manual-memoization` pada memo `decoratedWO` yang memanjang) — keduanya pola rule yang sama dengan 8 temuan pre-existing di file ini; tidak ada temuan jenis baru.
+- Spec `docs/superpowers/specs/2026-08-17-raw-data-master-table-design.md`, plan `docs/superpowers/plans/2026-08-17-raw-data-master-table.md`.
+
 ### 2026-08-15 — Planning Produksi: kolom Size
 
 - Tabel `planning_produksi` mendapat kolom `size` (diterapkan via Supabase MCP; migration record `2026-08-15-planning-produksi-size.sql`). Form tambah/edit punya field Size, tabel menampilkan kolom Size antara Warna dan Qty, dan pencarian ikut mencakupnya (commit `62fe329`).
