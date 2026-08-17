@@ -187,6 +187,14 @@ Website Konveksi/
 
 ## Latest Progress
 
+### 2026-08-17 — Paritas tabel RAW ke Complain/Register PO/Target Jahit + hapus semua kolom Action + klik-baris-untuk-edit
+
+- **Paritas RAW DATA** diterapkan ke 3 modul (commit `bbecaac`): **Complain & Penalti** (checkbox multi-select + toolbar Filter/Sort/Export CSV/Import/Delete bulk; tombol **Solve** pindah ke dalam sel Status), **Register PO** (toolbar + multi-select penuh), dan **Target Jahit** (ditulis ulang dari DataTable generik ke design system — 22 kolom, aturan visibilitas per role dipertahankan, tab Utang Staf ikut di-token; baris read-only karena data hasil generate, keputusan user).
+- **Semua kolom Action dihapus** dari seluruh tabel modul: Complain, Register PO, Target Jahit (memang tidak ada), Planning Produksi, dan Register Karyawan (untuk konsistensi aturan global).
+- **Klik baris = edit**: membuka modal edit di Planning Produksi, Register PO, Complain, Register Karyawan (checkbox di sel pertama tidak memicu edit — `stopPropagation`). Target Jahit tetap read-only tanpa klik.
+- Export CSV nyata di semua modul (BOM Excel); Import = mock alert (perilaku sama dengan Import di RAW DATA); Delete bulk dengan konfirmasi benar-benar menghapus dari database (termasuk file storage complain).
+- `npm run build` hijau; lint identik dengan baseline HEAD (3 temuan pre-existing `set-state-in-effect`, hanya beda nomor baris).
+
 ### 2026-08-17 — Planning Produksi: tabel disamakan penuh dengan RAW DATA Production Monitoring
 
 - Halaman Planning Produksi ditulis ulang dari DataTable generik ke **design system tabel** + **fitur toolbar RAW DATA lengkap**: checkbox multi-select per baris + select-all di header, tombol **Filter, Sort, Export (CSV download nyata dengan BOM Excel), Import (mock alert, perilaku sama dengan Import di RAW DATA), dan Delete bulk** yang muncul saat ada baris terpilih, plus counter jumlah data di kanan (commit `2505daa`).
