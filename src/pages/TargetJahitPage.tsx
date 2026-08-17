@@ -1,7 +1,9 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { RefreshCw, Search, Trash2, Filter, ArrowUpDown, Download } from 'lucide-react';
+import { RefreshCw, Search, Trash2, Download } from 'lucide-react';
 import { cn, formatCurrency } from '@/lib/utils';
 import { T_WRAP, T_TABLE, T_HEAD_ROW, T_TH, T_TD, rowClass } from '@/lib/tableStyles';
+import { FilterButton, SortButton } from '@/components/Table/TableTools';
+import { applyFilters, applySorts, type FieldOption, type FilterRule, type SortRule } from '@/lib/tableQuery';
 import { fetchAll as fetchAllTarget, remove as removeTarget, type TargetJahitRow } from '@/services/targetJahit';
 import { fetchAll as fetchAllRegister, type RegisterPenjahitRow } from '@/services/registerPenjahit';
 import { computeDebt, type DebtSummary } from '@/services/staffDebt';
@@ -104,6 +106,8 @@ export function TargetJahitPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
+  const [filters, setFilters] = useState<FilterRule[]>([]);
+  const [sorts, setSorts] = useState<SortRule[]>([]);
   const [message, setMessage] = useState<string | null>(null);
 
   // Utang Staf state.
@@ -170,7 +174,10 @@ export function TargetJahitPage() {
     );
   }, [items, search]);
 
-  const normalized = useMemo(() => filtered.map(normalizeTargetRow), [filtered]);
+  const normalized = useMemo(
+    () => applySorts(applyFilters(filtered.map(normalizeTargetRow), filters), sorts),
+    [filtered, filters, sorts],
+  );
 
   // Access matrix (spec): inventory may see production data but NOT salary,
   // target/cost, or akumulasi columns. Owner/finance see everything.
@@ -289,8 +296,8 @@ export function TargetJahitPage() {
                   className="w-full h-8 pl-8 pr-3 text-[12px] border border-gray-200 rounded-lg outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
                 />
               </div>
-              <button className="h-8 px-2.5 text-[11px] border border-gray-200 rounded-lg flex items-center gap-1.5 text-slate-600 hover:bg-gray-50"><Filter className="w-3 h-3" /> Filter</button>
-              <button className="h-8 px-2.5 text-[11px] border border-gray-200 rounded-lg flex items-center gap-1.5 text-slate-600 hover:bg-gray-50"><ArrowUpDown className="w-3 h-3" /> Sort</button>
+              <FilterButton fields={visibleColumns.map((c) => ({ key: c.key, label: c.label })) as FieldOption[]} value={filters} onChange={setFilters} />
+              <SortButton fields={visibleColumns.map((c) => ({ key: c.key, label: c.label })) as FieldOption[]} value={sorts} onChange={setSorts} />
               <button onClick={handleExport} className="h-8 px-2.5 text-[11px] border border-gray-200 rounded-lg flex items-center gap-1.5 text-slate-600 hover:bg-gray-50"><Download className="w-3 h-3" /> Export</button>
               <button onClick={handleImport} className={cn('h-8 px-2.5 text-[11px] rounded-lg flex items-center gap-1.5 font-medium transition-colors', selectedRows.size > 0 ? 'bg-blue-500 text-white hover:bg-blue-600' : 'border border-gray-200 text-slate-400')}>📥 Import ({selectedRows.size})</button>
               {selectedRows.size > 0 && (
@@ -298,7 +305,7 @@ export function TargetJahitPage() {
                   <Trash2 className="w-3 h-3" /> Delete ({selectedRows.size})
                 </button>
               )}
-              <span className="text-[11px] text-slate-400 ml-auto">{filtered.length} target jahit</span>
+              <span className="text-[11px] text-slate-400 ml-auto">{normalized.length} target jahit</span>
             </div>
 
             <div className={T_WRAP}>
@@ -310,7 +317,7 @@ export function TargetJahitPage() {
                   ))}
                 </tr></thead>
                 <tbody>
-                  {normalized.length === 0 && <tr><td colSpan={visibleColumns.length + 1} className="py-10 text-center text-[13px] text-gray-400">Belum ada target jahit</td></tr>}
+                  {normalized.length === 0 && <tr><td colSpan={visibleColumns.length + 1} className="py-10 text-center text-[13px] text-gray-400">{filtered.length === 0 ? 'Belum ada target jahit' : 'Tidak ada hasil yang cocok dengan filter'}</td></tr>}
                   {normalized.map((row, i) => {
                     const selected = selectedRows.has(Number(row.id));
                     return (
@@ -318,7 +325,7 @@ export function TargetJahitPage() {
                         <td className={cn(T_TD, 'text-center')}><input type="checkbox" checked={selected} onChange={() => handleToggleRow(Number(row.id))} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 align-middle" /></td>
                         {visibleColumns.map((c) => (
                           <td key={c.key} className={cn(T_TD, c.align === 'right' ? 'text-right tabular-nums text-gray-700' : 'text-gray-700')}>
-                            {c.key === 'nama' ? <span className="font-medium text-gray-900">{renderCell(c, row)}</span> : renderCell(c, row)}
+                            {renderCell(c, row)}
                           </td>
                         ))}
                       </tr>

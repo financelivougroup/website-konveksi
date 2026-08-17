@@ -1,8 +1,6 @@
 import { useState, useMemo, useEffect, type ComponentType } from 'react';
 import {
   Search,
-  Filter,
-  ArrowUpDown,
   ArrowRight,
   Download,
   Image,
@@ -41,6 +39,8 @@ import type { WorkOrder, SewingRecord, CuttingRecord, FinishingRecord, KancingRe
 import { productionStatusLabel, productionStatusColor } from '@/types/pipeline';
 import { STATUS_ORDER, deriveStatus, validateStatusTransition } from '@/lib/productionStatus';
 import { T_WRAP, T_TABLE, T_HEAD_ROW, T_TH, T_TD, rowClass } from '@/lib/tableStyles';
+import { FilterButton, SortButton } from '@/components/Table/TableTools';
+import { applyFilters, applySorts, type FieldOption, type FilterRule, type SortRule } from '@/lib/tableQuery';
 
 type TabType = 'raw' | 'cutting' | 'sewing' | 'finishing' | 'kancing' | 'kanban';
 
@@ -268,6 +268,8 @@ export default function ProductionMonitoring({ onOpenSewingEntry, onOpenFinishin
   const [cuttingInputs, setCuttingInputs] = useState<Record<string, string>>({});
   const [cuttingMessage, setCuttingMessage] = useState<string | null>(null);
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
+  const [rawFilters, setRawFilters] = useState<FilterRule[]>([]);
+  const [rawSorts, setRawSorts] = useState<SortRule[]>([]);
   const [showPullModal, setShowPullModal] = useState(false);
   const [pullMessage, setPullMessage] = useState<string | null>(null);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
@@ -407,7 +409,36 @@ export default function ProductionMonitoring({ onOpenSewingEntry, onOpenFinishin
 
   // ===== SELECTION =====
   const handleToggleRow = (woId: string) => setSelectedRows(prev => { const n = new Set(prev); n.has(woId) ? n.delete(woId) : n.add(woId); return n; });
-  const handleToggleAll = () => { if (selectedRows.size === filteredWO.length) setSelectedRows(new Set()); else setSelectedRows(new Set(filteredWO.map(w => w.id))); };
+  const handleToggleAll = () => { if (selectedRows.size === decoratedWO.length) setSelectedRows(new Set()); else setSelectedRows(new Set(decoratedWO.map(w => w.id))); };
+
+  // ===== Filter & Sort (RAW master table) =====
+  const RAW_FIELDS: FieldOption[] = [
+    { key: 'productNote', label: 'Product Note' },
+    { key: 'product', label: 'Product' },
+    { key: 'productId', label: 'Product ID' },
+    { key: 'variationId', label: 'Variation ID' },
+    { key: 'informationVariation', label: 'Information Variation' },
+    { key: 'warna', label: 'Warna' },
+    { key: 'size', label: 'Size' },
+    { key: 'workCode', label: 'Work Code' },
+    { key: 'brand', label: 'Brand' },
+    { key: 'quantity', label: 'Qty' },
+    { key: 'cuttingTotal', label: 'Cutting' },
+    { key: 'sewingTotal', label: 'Jahit' },
+    { key: 'finishingTotal', label: 'Finishing' },
+    { key: 'kancingTotal', label: 'Kancing' },
+    { key: 'derivedStatus', label: 'Status' },
+    { key: 'createdAt', label: 'Created At' },
+    { key: 'createdBy', label: 'Created By' },
+  ];
+  // Rows shaped for Filter/Sort: flat display values, uniform styling in cells.
+  const flatRows = useMemo(() => decoratedWO.map((wo) => ({
+    ...wo,
+    sisa: Math.max(0, wo.cuttingTotal - wo.sewingTotal),
+    statusLabel: productionStatusLabel[wo.derivedStatus as ProductionStatus] ?? String(wo.derivedStatus),
+    createdAtLabel: formatDate(wo.createdAt),
+  })), [decoratedWO]);
+  const rawRows = useMemo(() => applySorts(applyFilters(flatRows, rawFilters), rawSorts), [flatRows, rawFilters, rawSorts]);
   const handleImport = () => { if (selectedRows.size === 0) { alert('Pilih minimal 1!'); return; } alert(`✅ ${selectedRows.size} WO di-import`); setSelectedRows(new Set()); };
 
   // ===== PULL =====
@@ -521,8 +552,8 @@ export default function ProductionMonitoring({ onOpenSewingEntry, onOpenFinishin
           <div>
             <div className="flex items-center gap-2 mb-3">
               <div className="relative flex-1 max-w-xs"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" /><input type="text" placeholder="Cari work order..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full h-8 pl-8 pr-3 text-[12px] border border-gray-200 rounded-lg outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100" /></div>
-              <button className="h-8 px-2.5 text-[11px] border border-gray-200 rounded-lg flex items-center gap-1.5 text-slate-600 hover:bg-gray-50"><Filter className="w-3 h-3" /> Filter</button>
-              <button className="h-8 px-2.5 text-[11px] border border-gray-200 rounded-lg flex items-center gap-1.5 text-slate-600 hover:bg-gray-50"><ArrowUpDown className="w-3 h-3" /> Sort</button>
+              <FilterButton fields={RAW_FIELDS} value={rawFilters} onChange={setRawFilters} />
+              <SortButton fields={RAW_FIELDS} value={rawSorts} onChange={setRawSorts} />
               <button className="h-8 px-2.5 text-[11px] border border-gray-200 rounded-lg flex items-center gap-1.5 text-slate-600 hover:bg-gray-50"><Download className="w-3 h-3" /> Export</button>
               <button onClick={handleImport} className={cn('h-8 px-2.5 text-[11px] rounded-lg flex items-center gap-1.5 font-medium transition-colors', selectedRows.size > 0 ? 'bg-blue-500 text-white hover:bg-blue-600' : 'border border-gray-200 text-slate-400')}>📥 Import ({selectedRows.size})</button>
               {selectedRows.size > 0 && (
@@ -547,7 +578,7 @@ export default function ProductionMonitoring({ onOpenSewingEntry, onOpenFinishin
                   <Trash2 className="w-3 h-3" /> Delete ({selectedRows.size})
                 </button>
               )}
-              <span className="text-[11px] text-slate-400 ml-auto">{filteredWO.length} work orders</span>
+              <span className="text-[11px] text-slate-400 ml-auto">{rawRows.length} work orders</span>
             </div>
             <div className={T_WRAP}>
               <table className={cn(T_TABLE, 'w-auto min-w-full whitespace-nowrap')}>
@@ -573,30 +604,29 @@ export default function ProductionMonitoring({ onOpenSewingEntry, onOpenFinishin
                   <th className={cn(T_TH, 'text-left')}>Created By</th>
                 </tr></thead>
                 <tbody>
-                  {decoratedWO.length === 0 && <tr><td colSpan={19} className="py-10 text-center text-[13px] text-gray-400">Tidak ada data work order</td></tr>}
-                  {decoratedWO.map((wo, i) => {
-                    const sisa = Math.max(0, wo.cuttingTotal - wo.sewingTotal);
+                  {rawRows.length === 0 && <tr><td colSpan={19} className="py-10 text-center text-[13px] text-gray-400">{decoratedWO.length === 0 ? 'Tidak ada data work order' : 'Tidak ada hasil yang cocok dengan filter'}</td></tr>}
+                  {rawRows.map((wo, i) => {
                     const selected = selectedRows.has(wo.id);
                     const TD = T_TD; // unified compact row height (design-system token)
                     return <tr key={wo.id} className={rowClass(i, selected)}>
                       <td className={cn(TD, 'text-center')}><input type="checkbox" checked={selected} onChange={() => handleToggleRow(wo.id)} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 align-middle" /></td>
-                      <td className={cn(TD, 'font-mono text-[11px] text-gray-600')} title={wo.productNote ?? undefined}>{wo.productNote || <span className="text-gray-300">—</span>}</td>
-                      <td className={cn(TD, 'font-medium text-gray-900')} title={wo.product}>{wo.product}</td>
-                      <td className={cn(TD, 'font-mono text-[11px] text-gray-600')} title={wo.productId ?? undefined}>{wo.productId || <span className="text-gray-300">—</span>}</td>
-                      <td className={cn(TD, 'font-mono text-[11px] text-gray-600')} title={wo.variationId ?? undefined}>{wo.variationId || <span className="text-gray-300">—</span>}</td>
-                      <td className={cn(TD, 'text-gray-500')} title={wo.informationVariation ?? undefined}>{wo.informationVariation || <span className="text-gray-300">—</span>}</td>
+                      <td className={cn(TD, 'text-gray-700')} title={wo.productNote ?? undefined}>{wo.productNote || <span className="text-gray-300">—</span>}</td>
+                      <td className={cn(TD, 'text-gray-700')} title={wo.product}>{wo.product}</td>
+                      <td className={cn(TD, 'text-gray-700')} title={wo.productId ?? undefined}>{wo.productId || <span className="text-gray-300">—</span>}</td>
+                      <td className={cn(TD, 'text-gray-700')} title={wo.variationId ?? undefined}>{wo.variationId || <span className="text-gray-300">—</span>}</td>
+                      <td className={cn(TD, 'text-gray-700')} title={wo.informationVariation ?? undefined}>{wo.informationVariation || <span className="text-gray-300">—</span>}</td>
                       <td className={cn(TD, 'text-gray-700')}>{wo.warna || <span className="text-gray-300">—</span>}</td>
                       <td className={cn(TD, 'text-gray-700')}>{wo.size || <span className="text-gray-300">—</span>}</td>
-                      <td className={cn(TD, 'text-gray-500')} title={wo.workCode}>{wo.workCode}</td>
+                      <td className={cn(TD, 'text-gray-700')} title={wo.workCode}>{wo.workCode}</td>
                       <td className={cn(TD, 'text-gray-700')}>{wo.brand}</td>
-                      <td className={cn(TD, 'text-right font-medium tabular-nums text-gray-900')}>{wo.quantity}</td>
-                      <td className={cn(TD, 'text-right tabular-nums')}>{wo.cuttingTotal > 0 ? <span className="text-emerald-600 font-medium">{wo.cuttingTotal}</span> : <span className="text-gray-300">—</span>}</td>
-                      <td className={cn(TD, 'text-right tabular-nums')}>{wo.sewingTotal > 0 ? <span className={cn('font-medium', wo.sewingTotal >= wo.quantity ? 'text-emerald-600' : 'text-amber-600')}>{wo.sewingTotal}</span> : <span className="text-gray-300">—</span>}</td>
-                      <td className={cn(TD, 'text-right tabular-nums')}>{wo.finishingTotal > 0 ? <span className={cn('font-medium', wo.finishingTotal >= wo.quantity ? 'text-emerald-600' : 'text-amber-600')}>{wo.finishingTotal}</span> : <span className="text-gray-300">—</span>}</td>
-                      <td className={cn(TD, 'text-right tabular-nums')}>{wo.kancingTotal > 0 ? <span className={cn('font-medium', wo.kancingTotal >= wo.quantity ? 'text-emerald-600' : 'text-amber-600')}>{wo.kancingTotal}</span> : <span className="text-gray-300">—</span>}</td>
-                      <td className={cn(TD, 'text-right tabular-nums')}>{wo.cuttingTotal > 0 ? <span className={cn('font-medium', sisa === 0 ? 'text-emerald-600' : 'text-amber-600')}>{sisa}</span> : <span className="text-gray-300">—</span>}</td>
+                      <td className={cn(TD, 'text-right tabular-nums text-gray-700')}>{wo.quantity}</td>
+                      <td className={cn(TD, 'text-right tabular-nums')}>{wo.cuttingTotal > 0 ? <span className="text-emerald-600">{wo.cuttingTotal}</span> : <span className="text-gray-300">—</span>}</td>
+                      <td className={cn(TD, 'text-right tabular-nums')}>{wo.sewingTotal > 0 ? <span className={wo.sewingTotal >= wo.quantity ? 'text-emerald-600' : 'text-amber-600'}>{wo.sewingTotal}</span> : <span className="text-gray-300">—</span>}</td>
+                      <td className={cn(TD, 'text-right tabular-nums')}>{wo.finishingTotal > 0 ? <span className={wo.finishingTotal >= wo.quantity ? 'text-emerald-600' : 'text-amber-600'}>{wo.finishingTotal}</span> : <span className="text-gray-300">—</span>}</td>
+                      <td className={cn(TD, 'text-right tabular-nums')}>{wo.kancingTotal > 0 ? <span className={wo.kancingTotal >= wo.quantity ? 'text-emerald-600' : 'text-amber-600'}>{wo.kancingTotal}</span> : <span className="text-gray-300">—</span>}</td>
+                      <td className={cn(TD, 'text-right tabular-nums')}>{wo.cuttingTotal > 0 ? <span className={wo.sisa === 0 ? 'text-emerald-600' : 'text-amber-600'}>{wo.sisa}</span> : <span className="text-gray-300">—</span>}</td>
                       <td className={cn(TD, 'text-center')}><StatusBadge status={wo.derivedStatus} /></td>
-                      <td className={cn(TD, 'text-gray-500')}>{formatDate(wo.createdAt)}</td>
+                      <td className={cn(TD, 'text-gray-700')}>{wo.createdAtLabel}</td>
                       <td className={cn(TD, 'text-gray-700')}>{wo.createdBy || <span className="text-gray-300">—</span>}</td>
                     </tr>;
                   })}

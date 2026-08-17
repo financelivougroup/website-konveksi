@@ -1,8 +1,10 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Plus, RefreshCw, Search, Trash2, Filter, ArrowUpDown, Download } from 'lucide-react';
+import { Plus, RefreshCw, Search, Trash2, Download } from 'lucide-react';
 import { cn, formatCurrency } from '@/lib/utils';
 import { formatDate } from '@/data/pipelineData';
 import { T_WRAP, T_TABLE, T_HEAD_ROW, T_TH, T_TD, rowClass } from '@/lib/tableStyles';
+import { FilterButton, SortButton } from '@/components/Table/TableTools';
+import { applyFilters, applySorts, type FieldOption, type FilterRule, type SortRule } from '@/lib/tableQuery';
 import {
   fetchAllRegisterPo,
   createRegisterPo,
@@ -39,6 +41,8 @@ export function RegisterPoPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
+  const [filters, setFilters] = useState<FilterRule[]>([]);
+  const [sorts, setSorts] = useState<SortRule[]>([]);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<RegisterPoListItem | null>(null);
@@ -139,6 +143,9 @@ export function RegisterPoPage() {
     return items.map((item) => ({
       id: item.po.id,
       productionOrderId: `${item.productionOrder.workCode} (${item.productionOrder.brand} · ${item.productionOrder.product})`,
+      workCode: item.productionOrder.workCode,
+      brand: item.productionOrder.brand,
+      product: item.productionOrder.product,
       totalPerPcs: item.components.reduce((sum, c) => sum + c.value, 0) || item.po.totalPerPcs,
       createdAt: item.po.createdAt?.split('T')[0] ?? '-',
       _raw: item,
@@ -151,9 +158,19 @@ export function RegisterPoPage() {
     return displayData.filter((d) => String(d.productionOrderId).toLowerCase().includes(q));
   }, [displayData, search]);
 
+  const PO_FIELDS: FieldOption[] = [
+    { key: 'productionOrderId', label: 'PO ID' },
+    { key: 'workCode', label: 'Work Code' },
+    { key: 'brand', label: 'Brand' },
+    { key: 'product', label: 'Product' },
+    { key: 'totalPerPcs', label: 'Total/PCS' },
+    { key: 'createdAt', label: 'Created' },
+  ];
+  const rows = useMemo(() => applySorts(applyFilters(filtered.map((d) => ({ ...d } as unknown as Record<string, unknown>)), filters), sorts) as unknown as typeof displayData, [filtered, filters, sorts]);
+
   // Multi-select + toolbar (same pattern as Production Monitoring RAW DATA).
   const handleToggleRow = (id: string) => setSelectedRows(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
-  const handleToggleAll = () => { if (selectedRows.size === filtered.length) setSelectedRows(new Set()); else setSelectedRows(new Set(filtered.map(r => String(r.id)))); };
+  const handleToggleAll = () => { if (selectedRows.size === rows.length) setSelectedRows(new Set()); else setSelectedRows(new Set(rows.map(r => String(r.id)))); };
   const handleImport = () => { if (selectedRows.size === 0) { alert('Pilih minimal 1!'); return; } alert(`✅ ${selectedRows.size} Register PO di-import`); setSelectedRows(new Set()); };
   const handleExport = () => {
     const esc = (v: string | number | null | undefined) => `"${String(v ?? '').replace(/"/g, '""')}"`;
@@ -216,8 +233,8 @@ export function RegisterPoPage() {
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
             <input type="text" placeholder="Cari Register PO..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-full h-8 pl-8 pr-3 text-[12px] border border-gray-200 rounded-lg outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100" />
           </div>
-          <button className="h-8 px-2.5 text-[11px] border border-gray-200 rounded-lg flex items-center gap-1.5 text-slate-600 hover:bg-gray-50"><Filter className="w-3 h-3" /> Filter</button>
-          <button className="h-8 px-2.5 text-[11px] border border-gray-200 rounded-lg flex items-center gap-1.5 text-slate-600 hover:bg-gray-50"><ArrowUpDown className="w-3 h-3" /> Sort</button>
+          <FilterButton fields={PO_FIELDS} value={filters} onChange={setFilters} />
+          <SortButton fields={PO_FIELDS} value={sorts} onChange={setSorts} />
           <button onClick={handleExport} className="h-8 px-2.5 text-[11px] border border-gray-200 rounded-lg flex items-center gap-1.5 text-slate-600 hover:bg-gray-50"><Download className="w-3 h-3" /> Export</button>
           <button onClick={handleImport} className={cn('h-8 px-2.5 text-[11px] rounded-lg flex items-center gap-1.5 font-medium transition-colors', selectedRows.size > 0 ? 'bg-blue-500 text-white hover:bg-blue-600' : 'border border-gray-200 text-slate-400')}>📥 Import ({selectedRows.size})</button>
           {selectedRows.size > 0 && (
@@ -225,29 +242,29 @@ export function RegisterPoPage() {
               <Trash2 className="w-3 h-3" /> Delete ({selectedRows.size})
             </button>
           )}
-          <span className="text-[11px] text-slate-400 ml-auto">{filtered.length} register PO</span>
+          <span className="text-[11px] text-slate-400 ml-auto">{rows.length} register PO</span>
         </div>
 
         <div className={T_WRAP}>
           <table className={cn(T_TABLE, 'w-auto min-w-full whitespace-nowrap')}>
             <thead><tr className={T_HEAD_ROW}>
-              <th className={cn(T_TH, 'w-12 text-center')}><input type="checkbox" checked={selectedRows.size === filtered.length && filtered.length > 0} onChange={handleToggleAll} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 align-middle" /></th>
+              <th className={cn(T_TH, 'w-12 text-center')}><input type="checkbox" checked={selectedRows.size === rows.length && rows.length > 0} onChange={handleToggleAll} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 align-middle" /></th>
               <th className={cn(T_TH, 'text-left')}>PO ID</th>
               <th className={cn(T_TH, 'text-right')}>Total/PCS</th>
               <th className={cn(T_TH, 'text-left')}>Created</th>
             </tr></thead>
             <tbody>
-              {filtered.length === 0 && <tr><td colSpan={4} className="py-10 text-center text-[13px] text-gray-400">Belum ada Register PO</td></tr>}
-              {filtered.map((row, i) => {
+              {rows.length === 0 && <tr><td colSpan={4} className="py-10 text-center text-[13px] text-gray-400">{filtered.length === 0 ? 'Belum ada Register PO' : 'Tidak ada hasil yang cocok dengan filter'}</td></tr>}
+              {rows.map((row, i) => {
                 const item = items.find((it) => it.po.id === row.id);
                 if (!item) return null;
                 const selected = selectedRows.has(String(row.id));
                 return (
                   <tr key={row.id} className={cn(rowClass(i, selected), 'cursor-pointer')} onClick={() => openEdit(item)} title="Klik untuk edit">
                     <td className={cn(T_TD, 'text-center')} onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={selected} onChange={() => handleToggleRow(String(row.id))} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 align-middle" /></td>
-                    <td className={cn(T_TD, 'font-medium text-gray-900')} title={String(row.productionOrderId)}>{String(row.productionOrderId)}</td>
-                    <td className={cn(T_TD, 'text-right tabular-nums font-medium text-gray-900')}>{formatCurrency(row.totalPerPcs)}</td>
-                    <td className={cn(T_TD, 'text-gray-500 whitespace-nowrap')}>{formatDate(String(row.createdAt))}</td>
+                    <td className={cn(T_TD, 'text-gray-700')} title={String(row.productionOrderId)}>{String(row.productionOrderId)}</td>
+                    <td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>{formatCurrency(row.totalPerPcs)}</td>
+                    <td className={cn(T_TD, 'text-gray-700 whitespace-nowrap')}>{formatDate(String(row.createdAt))}</td>
                   </tr>
                 );
               })}

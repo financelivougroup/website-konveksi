@@ -1,7 +1,9 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Plus, RefreshCw, Search, Trash2, X, Filter, ArrowUpDown, Download } from 'lucide-react';
+import { Plus, RefreshCw, Search, Trash2, X, Download } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { T_WRAP, T_TABLE, T_HEAD_ROW, T_TH, T_TD, rowClass } from '@/lib/tableStyles';
+import { FilterButton, SortButton } from '@/components/Table/TableTools';
+import { applyFilters, applySorts, type FieldOption, type FilterRule, type SortRule } from '@/lib/tableQuery';
 import {
   fetchAll as fetchAllKaryawan,
   create as createKaryawan,
@@ -35,6 +37,8 @@ export function RegisterKaryawanPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
+  const [filters, setFilters] = useState<FilterRule[]>([]);
+  const [sorts, setSorts] = useState<SortRule[]>([]);
   const [filterPosisi, setFilterPosisi] = useState<string>('all');
 
   const [modalOpen, setModalOpen] = useState(false);
@@ -114,9 +118,16 @@ export function RegisterKaryawanPage() {
     });
   }, [items, search, filterPosisi]);
 
+  const KARYAWAN_FIELDS: FieldOption[] = [
+    { key: 'picPenjahit', label: 'Nama Karyawan' },
+    { key: 'posisi', label: 'Posisi' },
+    { key: 'status', label: 'Status' },
+  ];
+  const rows = useMemo(() => applySorts(applyFilters(filtered.map((r) => ({ ...r } as unknown as Record<string, unknown>)), filters), sorts) as unknown as RegisterPenjahitRow[], [filtered, filters, sorts]);
+
   // Multi-select + toolbar (same pattern as Production Monitoring RAW DATA).
   const handleToggleRow = (id: number) => setSelectedRows(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
-  const handleToggleAll = () => { if (selectedRows.size === filtered.length) setSelectedRows(new Set()); else setSelectedRows(new Set(filtered.map(r => r.id))); };
+  const handleToggleAll = () => { if (selectedRows.size === rows.length) setSelectedRows(new Set()); else setSelectedRows(new Set(rows.map(r => r.id))); };
   const handleImport = () => { if (selectedRows.size === 0) { alert('Pilih minimal 1!'); return; } alert(`✅ ${selectedRows.size} karyawan di-import`); setSelectedRows(new Set()); };
   const handleExport = () => {
     const esc = (v: string | number | null | undefined) => `"${String(v ?? '').replace(/"/g, '""')}"`;
@@ -183,8 +194,8 @@ export function RegisterKaryawanPage() {
             <option value="all">Semua Posisi</option>
             {POSISI_OPTIONS.map((p) => <option key={p} value={p}>{p}</option>)}
           </select>
-          <button className="h-8 px-2.5 text-[11px] border border-gray-200 rounded-lg flex items-center gap-1.5 text-slate-600 hover:bg-gray-50"><Filter className="w-3 h-3" /> Filter</button>
-          <button className="h-8 px-2.5 text-[11px] border border-gray-200 rounded-lg flex items-center gap-1.5 text-slate-600 hover:bg-gray-50"><ArrowUpDown className="w-3 h-3" /> Sort</button>
+          <FilterButton fields={KARYAWAN_FIELDS} value={filters} onChange={setFilters} />
+          <SortButton fields={KARYAWAN_FIELDS} value={sorts} onChange={setSorts} />
           <button onClick={handleExport} className="h-8 px-2.5 text-[11px] border border-gray-200 rounded-lg flex items-center gap-1.5 text-slate-600 hover:bg-gray-50"><Download className="w-3 h-3" /> Export</button>
           <button onClick={handleImport} className={cn('h-8 px-2.5 text-[11px] rounded-lg flex items-center gap-1.5 font-medium transition-colors', selectedRows.size > 0 ? 'bg-blue-500 text-white hover:bg-blue-600' : 'border border-gray-200 text-slate-400')}>📥 Import ({selectedRows.size})</button>
           {selectedRows.size > 0 && (
@@ -192,25 +203,25 @@ export function RegisterKaryawanPage() {
               <Trash2 className="w-3 h-3" /> Delete ({selectedRows.size})
             </button>
           )}
-          <span className="text-[11px] text-slate-400 ml-auto">{filtered.length} karyawan</span>
+          <span className="text-[11px] text-slate-400 ml-auto">{rows.length} karyawan</span>
         </div>
 
         <div className={T_WRAP}>
           <table className={cn(T_TABLE, 'w-auto min-w-full whitespace-nowrap')}>
             <thead><tr className={T_HEAD_ROW}>
-              <th className={cn(T_TH, 'w-12 text-center')}><input type="checkbox" checked={selectedRows.size === filtered.length && filtered.length > 0} onChange={handleToggleAll} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 align-middle" /></th>
+              <th className={cn(T_TH, 'w-12 text-center')}><input type="checkbox" checked={selectedRows.size === rows.length && rows.length > 0} onChange={handleToggleAll} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 align-middle" /></th>
               <th className={cn(T_TH, 'text-left')}>Nama Karyawan</th>
               <th className={cn(T_TH, 'text-left')}>Posisi</th>
               <th className={cn(T_TH, 'text-left')}>Status</th>
             </tr></thead>
             <tbody>
-              {filtered.length === 0 && <tr><td colSpan={4} className="py-10 text-center text-[13px] text-gray-400">Belum ada karyawan terdaftar</td></tr>}
-              {filtered.map((item, i) => {
+              {rows.length === 0 && <tr><td colSpan={4} className="py-10 text-center text-[13px] text-gray-400">{filtered.length === 0 ? 'Belum ada karyawan terdaftar' : 'Tidak ada hasil yang cocok dengan filter'}</td></tr>}
+              {rows.map((item, i) => {
                 const selected = selectedRows.has(item.id);
                 return (
                   <tr key={item.id} className={cn(rowClass(i, selected), 'cursor-pointer')} onClick={() => openEdit(item)} title="Klik untuk edit">
                     <td className={cn(T_TD, 'text-center')} onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={selected} onChange={() => handleToggleRow(item.id)} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 align-middle" /></td>
-                    <td className={cn(T_TD, 'font-medium text-gray-900')}>{item.picPenjahit}</td>
+                    <td className={cn(T_TD, 'text-gray-700')}>{item.picPenjahit}</td>
                     <td className={T_TD}>
                       {item.posisi ? (
                         <span className={cn('inline-block px-2.5 py-1 rounded-md text-[11px] font-medium text-white whitespace-nowrap', POSISI_BADGE[item.posisi] || 'bg-gray-500')}>{item.posisi}</span>
