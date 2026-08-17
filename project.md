@@ -187,6 +187,14 @@ Website Konveksi/
 
 ## Latest Progress
 
+### 2026-08-17 — View `master_raw_data` di Supabase (master table plek ketiplek RAW DATA)
+
+- Dibuat view `public.master_raw_data` via Supabase MCP (migration record `master_raw_data_view`): satu baris per work order dengan **persis** isi tab RAW DATA (19 kolom) — identitas master (product note, product, product id, variation id, information variation, warna, size, work code, brand, qty) + agregat progress (cutting, jahit, finishing, kancing, sisa, status).
+- Semantik agregat sengaja disamakan dengan komputasi client app: `cutting` = record `cutting_records` **terbaru** per WO (order `input_at desc, id desc`, mirror `find()` di app), `jahit/finishing/kancing` = SUM record masing-masing, `sisa` = `greatest(cutting-jahit,0)`, `status` = replika SQL dari `deriveStatus()` (`src/lib/productionStatus.ts`).
+- View, bukan tabel fisik (keputusan user): selalu sinkron real-time dengan `work_orders` + 4 tabel records, tidak bisa basi, tanpa trigger/maintenance; muncul di bagian **Views** di Supabase dashboard, bukan Tables. `grant select` ke anon/authenticated/service_role; RLS tidak di-enable (baca-saja, sumbernya sudah dilindungi RLS).
+- Diverifikasi via Supabase MCP: keempat WO mengembalikan angka + status identik dengan perhitungan app (semua FINISHED).
+- Catatan: view ini adalah objek baca untuk reporting/integrasi; tab RAW DATA di app tetap menghitung dari tabel sumber (deriveStatus client) dan tidak diubah.
+
 ### 2026-08-17 — RAW DATA jadi tabel master production monitoring
 
 - Tab RAW DATA kini menjadi tabel master: 19 kolom mencakup seluruh identitas master (Product Note, Product ID, Variation ID, Information Variation, Warna, Size) + progress produksi (Cutting, Jahit, Finishing, **Kancing** — agregat baru dari `kancing_records`) + audit (Created At, Created By).
