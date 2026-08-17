@@ -187,6 +187,13 @@ Website Konveksi/
 
 ## Latest Progress
 
+### 2026-08-17 — Register PO: tampilan disamakan dengan Production Monitoring
+
+- Tabel Register PO diganti dari DataTable generik ke **design system tabel** (`T_WRAP`/`T_TABLE`/`T_HEAD_ROW`/`T_TH`/`T_TD`/`rowClass`) — zebra rows, sticky header, border horizontal saja, tinggi baris compact seragam dengan RAW DATA & Register Karyawan. Kolom: PO ID | Total/PCS (Rp) | Created (formatDate) | Action (ikon Edit/Hapus seperti Register Karyawan) (commit `430eb5e`).
+- Header halaman & tombol disamakan dengan pola Register Karyawan (judul 17px semibold, tombol Refresh putih + New Register PO `blue-600` — sebelumnya `sky-500`); aksen modal sky → blue; search focus biru; pagination DataTable dihapus (data sedikit, tidak perlu).
+- Dependensi `DataTable`, `Pagination`, `viewConfig['register-po']` dilepas dari halaman ini. Fungsionalitas CRUD & modal komponen biaya tidak berubah.
+- Lint: 1 temuan pre-existing `react-hooks/set-state-in-effect` (terkonfirmasi ada di HEAD); tidak ada temuan baru. `npm run build` hijau.
+
 ### 2026-08-17 — Hapus caption modul + tinggi baris tabel seragam (compact)
 
 - **7 caption dihapus** atas permintaan user: Sewing Log ("Database hasil jahitan LULUS QC"), Finishing Log, Pasang Kancing Log (ProductionMonitoring — tombol Entry dipindah ke kanan), Order Entry ("Buat order manual... sync Pancake"), Register PO, Target Jahit, Planning Produksi (subtitle `<p>` di header masing-masing halaman).
