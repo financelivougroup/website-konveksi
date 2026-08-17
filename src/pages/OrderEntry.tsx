@@ -239,7 +239,6 @@ export default function OrderEntry() {
         {/* Table */}
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-[13px] font-bold text-slate-700">📥 Daftar Order</h3>
-          <span className="text-[10px] text-slate-400 italic">Order dari website otomatis muncul disini · Quantity sync dari Pancake</span>
         </div>
 
         <div className="flex items-center gap-3 mb-3">
