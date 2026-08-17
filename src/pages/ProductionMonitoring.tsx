@@ -37,8 +37,8 @@ import * as sewingRecordSvc from '@/services/sewingRecords';
 import * as finishingRecordSvc from '@/services/finishingRecords';
 import * as kancingRecordSvc from '@/services/kancingRecords';
 import * as productionOrderSvc from '@/services/productionOrders';
-import type { WorkOrder, SewingRecord, CuttingRecord, FinishingRecord, KancingRecord, ProductionStatus, ProductionOrder } from '@/types/pipeline';
-import { productionStatusLabel, productionStatusColor, invoiceStatusLabel, invoiceStatusColor } from '@/types/pipeline';
+import type { WorkOrder, SewingRecord, CuttingRecord, FinishingRecord, KancingRecord, ProductionStatus } from '@/types/pipeline';
+import { productionStatusLabel, productionStatusColor } from '@/types/pipeline';
 import { STATUS_ORDER, deriveStatus, validateStatusTransition } from '@/lib/productionStatus';
 import { T_WRAP, T_TABLE, T_HEAD_ROW, T_TH, T_TD, rowClass } from '@/lib/tableStyles';
 
@@ -279,7 +279,6 @@ export default function ProductionMonitoring({ onOpenSewingEntry, onOpenFinishin
   const [finishingRecords, setFinishingRecords] = useState<import('@/types/pipeline').FinishingRecord[]>([]);
   const [kancingRecords, setKancingRecords] = useState<KancingRecord[]>([]);
   const [planningOrders, setPlanningOrders] = useState<import('@/types/pipeline').ProductionOrder[]>([]);
-  const [productionOrders, setProductionOrders] = useState<ProductionOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedGroup, setSelectedGroup] = useState<KanbanGroup | null>(null);
 
@@ -299,10 +298,7 @@ export default function ProductionMonitoring({ onOpenSewingEntry, onOpenFinishin
       if (sr.data) setSewingRecords(sr.data);
       if (fr.data) setFinishingRecords(fr.data);
       if (kr.data) setKancingRecords(kr.data);
-      if (po.data) {
-        setProductionOrders(po.data);
-        setPlanningOrders(po.data.filter(p => p.status === 'PLANNING'));
-      }
+      if (po.data) setPlanningOrders(po.data.filter(p => p.status === 'PLANNING'));
       setLoading(false);
     })();
   }, []);
@@ -348,12 +344,6 @@ export default function ProductionMonitoring({ onOpenSewingEntry, onOpenFinishin
         return da.localeCompare(db); // oldest first → newest at bottom
       });
   }, [filteredWO, cuttingRecords, sewingRecords, finishingRecords, kancingRecords]);
-
-  // Source PO column: work_orders.source_order_id → production_orders.work_code
-  const poWorkCodeById = useMemo(
-    () => new Map(productionOrders.map(p => [p.id, p.workCode] as const)),
-    [productionOrders],
-  );
 
   // Group decorated WOs by product note for the Kanban. Card status = highest
   // among the group's WOs; totalQty = sum of all quantities (incl. FINISHED/INVOICED).
@@ -560,7 +550,7 @@ export default function ProductionMonitoring({ onOpenSewingEntry, onOpenFinishin
               <span className="text-[11px] text-slate-400 ml-auto">{filteredWO.length} work orders</span>
             </div>
             <div className={T_WRAP}>
-              <table className={T_TABLE}>
+              <table className={cn(T_TABLE, 'w-auto min-w-full whitespace-nowrap')}>
                 <thead><tr className={T_HEAD_ROW}>
                   <th className={cn(T_TH, 'w-12 text-center')}><input type="checkbox" checked={selectedRows.size === decoratedWO.length && decoratedWO.length > 0} onChange={handleToggleAll} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 align-middle" /></th>
                   <th className={cn(T_TH, 'text-left')}>Product Note</th>
@@ -579,38 +569,35 @@ export default function ProductionMonitoring({ onOpenSewingEntry, onOpenFinishin
                   <th className={cn(T_TH, 'text-right')}>Kancing</th>
                   <th className={cn(T_TH, 'text-right')}>Sisa</th>
                   <th className={cn(T_TH, 'text-center')}>Status</th>
-                  <th className={cn(T_TH, 'text-center')}>Invoice Status</th>
-                  <th className={cn(T_TH, 'text-left')}>Source PO</th>
                   <th className={cn(T_TH, 'text-left')}>Created At</th>
                   <th className={cn(T_TH, 'text-left')}>Created By</th>
                 </tr></thead>
                 <tbody>
-                  {decoratedWO.length === 0 && <tr><td colSpan={21} className="py-10 text-center text-[13px] text-gray-400">Tidak ada data work order</td></tr>}
+                  {decoratedWO.length === 0 && <tr><td colSpan={19} className="py-10 text-center text-[13px] text-gray-400">Tidak ada data work order</td></tr>}
                   {decoratedWO.map((wo, i) => {
                     const sisa = Math.max(0, wo.cuttingTotal - wo.sewingTotal);
                     const selected = selectedRows.has(wo.id);
+                    const TD = 'py-1.5 px-3 align-middle'; // compact padding — columns fit content, table scrolls horizontally
                     return <tr key={wo.id} className={rowClass(i, selected)}>
-                      <td className={cn(T_TD, 'text-center')}><input type="checkbox" checked={selected} onChange={() => handleToggleRow(wo.id)} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 align-middle" /></td>
-                      <td className={cn(T_TD, 'font-mono text-[11px] text-gray-600 max-w-[220px] truncate')} title={wo.productNote ?? undefined}>{wo.productNote || <span className="text-gray-300">—</span>}</td>
-                      <td className={cn(T_TD, 'font-medium text-gray-900 max-w-[220px] truncate')} title={wo.product}>{wo.product}</td>
-                      <td className={cn(T_TD, 'font-mono text-[11px] text-gray-600 max-w-[160px] truncate')} title={wo.productId ?? undefined}>{wo.productId || <span className="text-gray-300">—</span>}</td>
-                      <td className={cn(T_TD, 'font-mono text-[11px] text-gray-600 max-w-[180px] truncate')} title={wo.variationId ?? undefined}>{wo.variationId || <span className="text-gray-300">—</span>}</td>
-                      <td className={cn(T_TD, 'text-gray-500 max-w-[200px] truncate')} title={wo.informationVariation ?? undefined}>{wo.informationVariation || <span className="text-gray-300">—</span>}</td>
-                      <td className={cn(T_TD, 'text-gray-700')}>{wo.warna || <span className="text-gray-300">—</span>}</td>
-                      <td className={cn(T_TD, 'text-gray-700')}>{wo.size || <span className="text-gray-300">—</span>}</td>
-                      <td className={cn(T_TD, 'text-gray-500 max-w-[200px] truncate')} title={wo.workCode}>{wo.workCode}</td>
-                      <td className={cn(T_TD, 'text-gray-700')}>{wo.brand}</td>
-                      <td className={cn(T_TD, 'text-right font-medium tabular-nums text-gray-900')}>{wo.quantity}</td>
-                      <td className={cn(T_TD, 'text-right tabular-nums')}>{wo.cuttingTotal > 0 ? <span className="text-emerald-600 font-medium">{wo.cuttingTotal}</span> : <span className="text-gray-300">—</span>}</td>
-                      <td className={cn(T_TD, 'text-right tabular-nums')}>{wo.sewingTotal > 0 ? <span className={cn('font-medium', wo.sewingTotal >= wo.quantity ? 'text-emerald-600' : 'text-amber-600')}>{wo.sewingTotal}</span> : <span className="text-gray-300">—</span>}</td>
-                      <td className={cn(T_TD, 'text-right tabular-nums')}>{wo.finishingTotal > 0 ? <span className={cn('font-medium', wo.finishingTotal >= wo.quantity ? 'text-emerald-600' : 'text-amber-600')}>{wo.finishingTotal}</span> : <span className="text-gray-300">—</span>}</td>
-                      <td className={cn(T_TD, 'text-right tabular-nums')}>{wo.kancingTotal > 0 ? <span className={cn('font-medium', wo.kancingTotal >= wo.quantity ? 'text-emerald-600' : 'text-amber-600')}>{wo.kancingTotal}</span> : <span className="text-gray-300">—</span>}</td>
-                      <td className={cn(T_TD, 'text-right tabular-nums')}>{wo.cuttingTotal > 0 ? <span className={cn('font-medium', sisa === 0 ? 'text-emerald-600' : 'text-amber-600')}>{sisa}</span> : <span className="text-gray-300">—</span>}</td>
-                      <td className={cn(T_TD, 'text-center')}><StatusBadge status={wo.derivedStatus} /></td>
-                      <td className={cn(T_TD, 'text-center')}>{wo.invoiceStatus === 'NONE' ? <span className="text-gray-300">—</span> : <span className={cn('inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap', invoiceStatusColor[wo.invoiceStatus])}>{invoiceStatusLabel[wo.invoiceStatus]}</span>}</td>
-                      <td className={cn(T_TD, 'text-gray-500 max-w-[200px] truncate')} title={wo.sourceOrderId ? (poWorkCodeById.get(wo.sourceOrderId) ?? undefined) : undefined}>{wo.sourceOrderId ? (poWorkCodeById.get(wo.sourceOrderId) ?? <span className="text-gray-300">—</span>) : <span className="text-gray-300">—</span>}</td>
-                      <td className={cn(T_TD, 'text-gray-500 whitespace-nowrap')}>{formatDate(wo.createdAt)}</td>
-                      <td className={cn(T_TD, 'text-gray-700')}>{wo.createdBy || <span className="text-gray-300">—</span>}</td>
+                      <td className={cn(TD, 'text-center')}><input type="checkbox" checked={selected} onChange={() => handleToggleRow(wo.id)} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 align-middle" /></td>
+                      <td className={cn(TD, 'font-mono text-[11px] text-gray-600')} title={wo.productNote ?? undefined}>{wo.productNote || <span className="text-gray-300">—</span>}</td>
+                      <td className={cn(TD, 'font-medium text-gray-900')} title={wo.product}>{wo.product}</td>
+                      <td className={cn(TD, 'font-mono text-[11px] text-gray-600')} title={wo.productId ?? undefined}>{wo.productId || <span className="text-gray-300">—</span>}</td>
+                      <td className={cn(TD, 'font-mono text-[11px] text-gray-600')} title={wo.variationId ?? undefined}>{wo.variationId || <span className="text-gray-300">—</span>}</td>
+                      <td className={cn(TD, 'text-gray-500')} title={wo.informationVariation ?? undefined}>{wo.informationVariation || <span className="text-gray-300">—</span>}</td>
+                      <td className={cn(TD, 'text-gray-700')}>{wo.warna || <span className="text-gray-300">—</span>}</td>
+                      <td className={cn(TD, 'text-gray-700')}>{wo.size || <span className="text-gray-300">—</span>}</td>
+                      <td className={cn(TD, 'text-gray-500')} title={wo.workCode}>{wo.workCode}</td>
+                      <td className={cn(TD, 'text-gray-700')}>{wo.brand}</td>
+                      <td className={cn(TD, 'text-right font-medium tabular-nums text-gray-900')}>{wo.quantity}</td>
+                      <td className={cn(TD, 'text-right tabular-nums')}>{wo.cuttingTotal > 0 ? <span className="text-emerald-600 font-medium">{wo.cuttingTotal}</span> : <span className="text-gray-300">—</span>}</td>
+                      <td className={cn(TD, 'text-right tabular-nums')}>{wo.sewingTotal > 0 ? <span className={cn('font-medium', wo.sewingTotal >= wo.quantity ? 'text-emerald-600' : 'text-amber-600')}>{wo.sewingTotal}</span> : <span className="text-gray-300">—</span>}</td>
+                      <td className={cn(TD, 'text-right tabular-nums')}>{wo.finishingTotal > 0 ? <span className={cn('font-medium', wo.finishingTotal >= wo.quantity ? 'text-emerald-600' : 'text-amber-600')}>{wo.finishingTotal}</span> : <span className="text-gray-300">—</span>}</td>
+                      <td className={cn(TD, 'text-right tabular-nums')}>{wo.kancingTotal > 0 ? <span className={cn('font-medium', wo.kancingTotal >= wo.quantity ? 'text-emerald-600' : 'text-amber-600')}>{wo.kancingTotal}</span> : <span className="text-gray-300">—</span>}</td>
+                      <td className={cn(TD, 'text-right tabular-nums')}>{wo.cuttingTotal > 0 ? <span className={cn('font-medium', sisa === 0 ? 'text-emerald-600' : 'text-amber-600')}>{sisa}</span> : <span className="text-gray-300">—</span>}</td>
+                      <td className={cn(TD, 'text-center')}><StatusBadge status={wo.derivedStatus} /></td>
+                      <td className={cn(TD, 'text-gray-500')}>{formatDate(wo.createdAt)}</td>
+                      <td className={cn(TD, 'text-gray-700')}>{wo.createdBy || <span className="text-gray-300">—</span>}</td>
                     </tr>;
                   })}
                 </tbody>
