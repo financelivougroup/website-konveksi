@@ -39,7 +39,6 @@ export function RegisterKaryawanPage() {
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
   const [filters, setFilters] = useState<FilterRule[]>([]);
   const [sorts, setSorts] = useState<SortRule[]>([]);
-  const [filterPosisi, setFilterPosisi] = useState<string>('all');
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<RegisterPenjahitRow | null>(null);
@@ -111,12 +110,11 @@ export function RegisterKaryawanPage() {
 
   const filtered = useMemo(() => {
     return items.filter((d) => {
-      if (filterPosisi !== 'all' && (d.posisi ?? '') !== filterPosisi) return false;
       if (!search) return true;
       const q = search.toLowerCase();
       return [d.picPenjahit, d.posisi ?? '', d.status].some((v) => String(v).toLowerCase().includes(q));
     });
-  }, [items, search, filterPosisi]);
+  }, [items, search]);
 
   const KARYAWAN_FIELDS: FieldOption[] = [
     { key: 'picPenjahit', label: 'Nama Karyawan' },
@@ -190,10 +188,6 @@ export function RegisterKaryawanPage() {
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
             <input type="text" placeholder="Cari nama karyawan..." value={search} onChange={e => setSearch(e.target.value)} className="w-full h-8 pl-8 pr-3 text-[12px] border border-gray-200 rounded-lg outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100" />
           </div>
-          <select value={filterPosisi} onChange={e => setFilterPosisi(e.target.value)} className="h-8 px-3 text-[12px] border border-gray-200 rounded-lg outline-none bg-white focus:border-blue-300">
-            <option value="all">Semua Posisi</option>
-            {POSISI_OPTIONS.map((p) => <option key={p} value={p}>{p}</option>)}
-          </select>
           <FilterButton fields={KARYAWAN_FIELDS} value={filters} onChange={setFilters} />
           <SortButton fields={KARYAWAN_FIELDS} value={sorts} onChange={setSorts} />
           <button onClick={handleExport} className="h-8 px-2.5 text-[11px] border border-gray-200 rounded-lg flex items-center gap-1.5 text-slate-600 hover:bg-gray-50"><Download className="w-3 h-3" /> Export</button>
