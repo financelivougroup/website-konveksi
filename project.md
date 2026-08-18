@@ -187,6 +187,14 @@ Website Konveksi/
 
 ## Latest Progress
 
+### 2026-08-18 — Target Jahit: semua 22 kolom hidup (turunan live) + baris expandable per desain
+
+- **Seluruh kolom tabel Target Jahit kini terisi otomatis** (komputasi live di app, tanpa migration & tanpa write-back ke DB — pola `deriveStatus`): hari kerja efektif (**Senin–Sabtu** minus `daftar_libur`), target_daily (`target_monthly ÷ total_hari_kerja`, 1 desimal), Target Ngebut harian (`ceil(sisa_target ÷ sisa_hari)`), realisasi bulanan (Σ `sewing_records` orang itu di bulan tsb.), sisa target, progress %, cost realisasi (harga jahit+obras per desain dari `target_jahit_detail`, fallback price map Register PO), akumulasi antar-bulan per orang (target/realisasi/selisih/progress/ngebut akumulasi), dan **Status Final** Berjalan (biru) / Tercapai (hijau) / Tidak Tercapai (merah) — berlaku untuk monthly & akumulasi (commits `9883b20`, `ce7b79c`, `97a0b89`).
+- **Baris expandable**: klik ▸ di baris → sub-tabel realisasi per desain dari `target_jahit_detail` (Product | Warna | Qty Target | Qty Realisasi | Harga Jahit+Obras | Nilai Realisasi); qty_realisasi dihitung live dari sewing_records (match via work_order→product, split proporsional bila satu produk multi-warna); kolom harga/nilai disembunyikan untuk role inventory.
+- Struktur baru: `src/lib/targetCompute.ts` (fungsi murni, tanpa fetch) + `fetchAll` di service `targetJahitDetail`. Spec `docs/superpowers/specs/2026-08-18-target-jahit-derived-columns-design.md`, plan `docs/superpowers/plans/2026-08-18-target-jahit-derived-columns.md`.
+- Fix ikut-ikutan: badge status yang tadinya selalu hijau untuk string apa pun yang mengandung "tercapai" (termasuk "Tidak Tercapai") dan tampilan persen yang masih mentah (0.5 → 50.0%).
+- `npm run build` hijau; lint tanpa temuan jenis baru. Eksekusi via subagent-driven-development (T1/T2 oleh subagent, T3 inline setelah reviewer agent terkendala infrastruktur; semua diverifikasi build + data MCP).
+
 ### 2026-08-18 — Target Jahit derived columns: Task 1 — pure computation lib
 
 - Plan Task 1 (spec/plan `2026-08-18-target-jahit-derived-columns`) selesai: file baru **`src/lib/targetCompute.ts`** berisi fungsi komputasi murni untuk kolom turunan Target Jahit — workdays Sen–Sab minus daftar_libur (`parseYm`, `countWorkdays`, `elapsedWorkdays`, `monthIsCurrent/Past`), `finalStatus` (Berjalan/Tercapai/Tidak Tercapai), `enrichDetails` (realisasi per-design, split proporsional qtyTarget untuk multi-warna), dan `enrichTargetRows` (akumulasi antar-bulan per orang, target daily/ngebut, realisasi cost posisi dengan fallback price map). Interface `EnrichedTargetRow` = `TargetJahitRow` + 16 kolom turunan.
