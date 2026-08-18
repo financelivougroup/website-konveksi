@@ -187,6 +187,11 @@ Website Konveksi/
 
 ## Latest Progress
 
+### 2026-08-18 — Efek hover tombol toolbar (Filter/Sort/Kolom/Export) seperti tab bar
+
+- Tombol **Filter, Sort, Kolom, Export** di semua tabel kini punya efek hover **angkat + shadow biru** persis tab bar Production Monitoring (RAW DATA, Cutting Log, dll.) — token baru `T_TOOLBAR_BTN`/`T_TOOLBAR_BTN_IDLE`/`T_TOOLBAR_BTN_ACTIVE` di `tableStyles.ts`, dipakai `FilterButton`, `SortButton`, `ColumnSettingsButton`, dan komponen baru `ExportButton` (commit `976d9d2`).
+- Bonus: tombol Export di tab **RAW DATA** (sebelumnya placeholder) sekarang **berfungsi** — download CSV seluruh kolom master + progress (mengikuti filter/sort aktif).
+
 ### 2026-08-18 — Format tanggal/bulan-tahun diseragamkan
 
 - **Tanggal → DD-MM-YYYY** di semua tempat: log Cutting/Sewing/Finishing/Kancing (Tanggal), Created At di RAW DATA & Register PO, kolom Tanggal di Complain, dan label DateRangeModal. Implementasi: `formatDate` di `src/data/pipelineData.ts` — string `YYYY-MM-DD` murni di-split (aman dari pergeseran zona waktu), timestamp ISO dikonversi ke waktu lokal (commit `6bff2ba`).
