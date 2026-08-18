@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
-import { RefreshCw, Search, Trash2 } from 'lucide-react';
+import { useState, useEffect, useMemo, useCallback, Fragment } from 'react';
+import { RefreshCw, Search, Trash2, ChevronDown, ChevronRight } from 'lucide-react';
 import { cn, formatCurrency } from '@/lib/utils';
 import { formatMonthYearFromYm } from '@/lib/monthYear';
 import { T_WRAP, T_TABLE, T_HEAD_ROW, T_TH, T_TD, rowClass } from '@/lib/tableStyles';
@@ -9,7 +9,13 @@ import { useColumnSettings } from '@/lib/columnSettings';
 import { applyFilters, applySorts, type FieldOption, type FilterRule, type SortRule } from '@/lib/tableQuery';
 import { fetchAll as fetchAllTarget, update as updateTarget, remove as removeTarget, type TargetJahitRow } from '@/services/targetJahit';
 import { fetchAll as fetchAllRegister, type RegisterPenjahitRow } from '@/services/registerPenjahit';
-import { computeDebt, type DebtSummary } from '@/services/staffDebt';
+import { computeDebt, buildPriceMap, type DebtSummary } from '@/services/staffDebt';
+import * as daftarLiburSvc from '@/services/daftarLibur';
+import * as sewingRecordSvc from '@/services/sewingRecords';
+import * as workOrderSvc from '@/services/workOrders';
+import * as targetJahitDetailSvc from '@/services/targetJahitDetail';
+import { enrichTargetRows, enrichDetails } from '@/lib/targetCompute';
+import type { SewingRecord } from '@/types/pipeline';
 import { useAuth } from '@/contexts/AuthContext';
 
 // Map live snake_case target_jahit columns to camelCase render keys.
@@ -88,13 +94,23 @@ function renderCell(col: ColDef, row: Record<string, unknown>) {
     return s ? formatMonthYearFromYm(s) : <span className="text-gray-300">—</span>;
   }
   if (col.format === 'currency') return v == null || v === '' ? <span className="text-gray-300">—</span> : formatCurrency(Number(v));
-  if (col.format === 'percent') return v == null || v === '' ? <span className="text-gray-300">—</span> : `${v}%`;
+  if (col.format === 'percent') return v == null || v === '' ? <span className="text-gray-300">—</span> : `${(Number(v) * 100).toFixed(1)}%`;
+  if (col.key === 'targetDaily') {
+    if (v == null || v === '') return <span className="text-gray-300">—</span>;
+    const n = Number(v);
+    return n % 1 === 0 ? String(n) : n.toFixed(1);
+  }
   if (col.badge) {
     const s = String(v ?? '').trim();
     if (!s) return <span className="text-gray-300">—</span>;
-    const good = /tercapai/i.test(s);
+    let cls = 'bg-slate-100 text-slate-600';
+    if (col.key === 'statusFinal' || col.key === 'statusFinalAkumulasi') {
+      if (s === 'Tercapai') cls = 'bg-emerald-100 text-emerald-700';
+      else if (s === 'Tidak Tercapai') cls = 'bg-rose-100 text-rose-700';
+      else cls = 'bg-blue-100 text-blue-700'; // 'Berjalan' (atau nilai lain)
+    }
     return (
-      <span className={cn('inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap', good ? 'bg-emerald-100 text-emerald-700' : col.key === 'posisi' ? 'bg-slate-100 text-slate-600' : 'bg-amber-100 text-amber-700')}>
+      <span className={cn('inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap', cls)}>
         {s}
       </span>
     );
@@ -119,14 +135,30 @@ export function TargetJahitPage() {
   const [salaryDraft, setSalaryDraft] = useState('');
   const [message, setMessage] = useState<string | null>(null);
 
+  // Derived-columns source data (live compute — never written back to DB).
+  const [libur, setLibur] = useState<string[]>([]);
+  const [sewing, setSewing] = useState<SewingRecord[]>([]);
+  const [details, setDetails] = useState<import('@/services/targetJahitDetail').TargetJahitDetailRow[]>([]);
+  const [woProduct, setWoProduct] = useState<Map<string, string>>(new Map());
+  const [prices, setPrices] = useState<Record<string, { jahit: number; obras: number }>>({});
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+
   // Utang Staf state.
   const [debtRows, setDebtRows] = useState<DebtRow[]>([]);
   const [debtLoading, setDebtLoading] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
-    const { data } = await fetchAllTarget();
-    setItems(data ?? []);
+    const [t, l, s, d, wo, pm] = await Promise.all([
+      fetchAllTarget(), daftarLiburSvc.fetchAll(), sewingRecordSvc.fetchAll(),
+      targetJahitDetailSvc.fetchAll(), workOrderSvc.fetchAll(), buildPriceMap(),
+    ]);
+    setItems(t.data ?? []);
+    setLibur((l.data ?? []).map((r) => r.tanggal));
+    setSewing(s.data ?? []);
+    setDetails(d.data ?? []);
+    setWoProduct(new Map((wo.data ?? []).map((w) => [w.id, w.product] as const)));
+    setPrices(pm);
     setLoading(false);
   }, []);
 
@@ -168,24 +200,27 @@ export function TargetJahitPage() {
     }
   }, [tab, canSeeDebt, loadDebt]);
 
-  const filtered = useMemo(() => {
-    if (!search) return items;
+  // Live enrichment: all 22 columns computed from source data at render time
+  // (workdays, realization from sewing_records, accumulation, status).
+  const enriched = useMemo(() => {
+    const all = enrichTargetRows(items, sewing, woProduct, prices, details, libur, new Date());
+    if (!search) return all;
     const q = search.toLowerCase();
-    return items.filter((d) =>
+    return all.filter((d) =>
       [
         d.bulan_tahun,
         d.nama,
         d.posisi ?? '',
         String(d.salary),
-        d.status_final ?? '',
-        d.status_final_akumulasi ?? '',
+        d.statusFinal,
+        d.statusFinalAkumulasi,
       ].some((v) => String(v).toLowerCase().includes(q)),
     );
-  }, [items, search]);
+  }, [items, sewing, woProduct, prices, details, libur, search]);
 
   const normalized = useMemo(
-    () => applySorts(applyFilters(filtered.map(normalizeTargetRow), filters), sorts),
-    [filtered, filters, sorts],
+    () => applySorts(applyFilters(enriched.map((r) => normalizeTargetRow(r)), filters), sorts),
+    [enriched, filters, sorts],
   );
 
   // Access matrix (spec): inventory may see production data but NOT salary,
@@ -347,17 +382,25 @@ export function TargetJahitPage() {
             <div className={T_WRAP}>
               <table className={cn(T_TABLE, 'w-auto min-w-full whitespace-nowrap')}>
                 <thead><tr className={T_HEAD_ROW}>
+                  <th className={cn(T_TH, 'w-8')} />
                   <th className={cn(T_TH, 'w-12 text-center')}><input type="checkbox" checked={selectedRows.size === normalized.length && normalized.length > 0} onChange={handleToggleAll} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 align-middle" /></th>
                   {visibleColumns.map((c) => (
                     <th key={c.key} className={cn(T_TH, c.align === 'right' ? 'text-right' : 'text-left')}>{c.label}</th>
                   ))}
                 </tr></thead>
                 <tbody>
-                  {normalized.length === 0 && <tr><td colSpan={visibleColumns.length + 1} className="py-10 text-center text-[13px] text-gray-400">{filtered.length === 0 ? 'Belum ada target jahit' : 'Tidak ada hasil yang cocok dengan filter'}</td></tr>}
+                  {normalized.length === 0 && <tr><td colSpan={visibleColumns.length + 2} className="py-10 text-center text-[13px] text-gray-400">{enriched.length === 0 ? 'Belum ada target jahit' : 'Tidak ada hasil yang cocok dengan filter'}</td></tr>}
                   {normalized.map((row, i) => {
                     const selected = selectedRows.has(Number(row.id));
+                    const isExpanded = expandedId === Number(row.id);
                     return (
-                      <tr key={String(row.id)} className={rowClass(i, selected)}>
+                      <Fragment key={String(row.id)}>
+                      <tr className={rowClass(i, selected)}>
+                        <td className={cn(T_TD, 'text-center')}>
+                          <button onClick={(e) => { e.stopPropagation(); setExpandedId(isExpanded ? null : Number(row.id)); }} className="w-6 h-6 rounded flex items-center justify-center text-slate-400 hover:bg-blue-50 hover:text-blue-600" title="Lihat realisasi per desain">
+                            {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                          </button>
+                        </td>
                         <td className={cn(T_TD, 'text-center')}><input type="checkbox" checked={selected} onChange={() => handleToggleRow(Number(row.id))} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 align-middle" /></td>
                         {visibleColumns.map((c) => (
                           <td key={c.key} className={cn(T_TD, c.align === 'right' ? 'text-right tabular-nums text-gray-700' : 'text-gray-700')}>
@@ -379,6 +422,44 @@ export function TargetJahitPage() {
                           </td>
                         ))}
                       </tr>
+                      {isExpanded && (
+                        <tr>
+                          <td colSpan={visibleColumns.length + 2} className="bg-slate-50 px-6 py-3 border-b border-[#E5E7EB]">
+                            {(() => {
+                              const src = enriched.find((r) => r.id === Number(row.id));
+                              if (!src) return null;
+                              const myDetails = details.filter((d) => d.targetJahitId === Number(row.id));
+                              const enrichedD = enrichDetails(myDetails, sewing, src.nama, src.bulan_tahun, woProduct);
+                              if (myDetails.length === 0) return <p className="text-[12px] text-slate-400">Tidak ada rincian desain untuk bulan ini.</p>;
+                              return (
+                                <table className={cn(T_TABLE, 'w-auto')}>
+                                  <thead><tr className={T_HEAD_ROW}>
+                                    <th className={cn(T_TH, 'text-left')}>Product</th>
+                                    <th className={cn(T_TH, 'text-left')}>Warna</th>
+                                    <th className={cn(T_TH, 'text-right')}>Qty Target</th>
+                                    <th className={cn(T_TH, 'text-right')}>Qty Realisasi</th>
+                                    {canSeeDebt && <th className={cn(T_TH, 'text-right')}>Harga Jahit+Obras</th>}
+                                    {canSeeDebt && <th className={cn(T_TH, 'text-right')}>Nilai Realisasi</th>}
+                                  </tr></thead>
+                                  <tbody>
+                                    {myDetails.map((d, di) => (
+                                      <tr key={d.id} className={rowClass(di)}>
+                                        <td className={cn(T_TD, 'text-gray-700')}>{d.product}</td>
+                                        <td className={cn(T_TD, 'text-gray-700')}>{d.warna || <span className="text-gray-300">—</span>}</td>
+                                        <td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>{d.qtyTarget}</td>
+                                        <td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>{enrichedD[di]?.qtyRealisasi ?? 0}</td>
+                                        {canSeeDebt && <td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>{formatCurrency(d.hargaJahit + d.hargaObras)}</td>}
+                                        {canSeeDebt && <td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>{formatCurrency(enrichedD[di]?.nilai ?? 0)}</td>}
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              );
+                            })()}
+                          </td>
+                        </tr>
+                      )}
+                      </Fragment>
                     );
                   })}
                 </tbody>
