@@ -187,6 +187,12 @@ Website Konveksi/
 
 ## Latest Progress
 
+### 2026-08-18 — Target Jahit derived columns: Task 1 — pure computation lib
+
+- Plan Task 1 (spec/plan `2026-08-18-target-jahit-derived-columns`) selesai: file baru **`src/lib/targetCompute.ts`** berisi fungsi komputasi murni untuk kolom turunan Target Jahit — workdays Sen–Sab minus daftar_libur (`parseYm`, `countWorkdays`, `elapsedWorkdays`, `monthIsCurrent/Past`), `finalStatus` (Berjalan/Tercapai/Tidak Tercapai), `enrichDetails` (realisasi per-design, split proporsional qtyTarget untuk multi-warna), dan `enrichTargetRows` (akumulasi antar-bulan per orang, target daily/ngebut, realisasi cost posisi dengan fallback price map). Interface `EnrichedTargetRow` = `TargetJahitRow` + 16 kolom turunan.
+- Satu deviasi minimal dari brief: field tanggal sewing dibaca sebagai **`tanggalLaporan`** (nama field aktual di `SewingRecord` / `src/types/pipeline.ts`), bukan `tglLaporan` seperti tertulis di brief — `tglLaporan` bukan anggota tipe dan gagal `tsc`. Semantik identik (`tgl_laporan` DB, format `YYYY-MM-DD`).
+- `npm run build` hijau (tsc -b && vite build). Commit `{see hash}`. Task 2+ (service/UI wiring) masih pending sesuai plan.
+
 ### 2026-08-18 — Efek hover tombol toolbar (Filter/Sort/Kolom/Export) seperti tab bar
 
 - Tombol **Filter, Sort, Kolom, Export** di semua tabel kini punya efek hover **angkat + shadow biru** persis tab bar Production Monitoring (RAW DATA, Cutting Log, dll.) — token baru `T_TOOLBAR_BTN`/`T_TOOLBAR_BTN_IDLE`/`T_TOOLBAR_BTN_ACTIVE` di `tableStyles.ts`, dipakai `FilterButton`, `SortButton`, `ColumnSettingsButton`, dan komponen baru `ExportButton` (commit `976d9d2`).
