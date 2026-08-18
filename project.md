@@ -187,6 +187,14 @@ Website Konveksi/
 
 ## Latest Progress
 
+### 2026-08-18 — Target Jahit: fix posisi kosong + edit salary + hide/show kolom semua tabel
+
+- **Kolom Posisi di Target Jahit kini terisi**: `generateTargetsFromPlanning` melookup posisi dari `register_penjahit` saat membuat baris target; 1 baris yang sudah ada di-backfill langsung via Supabase MCP (`Sidik Faisal` → Penjahit).
+- **Salary bisa diedit inline** (owner/finance saja): klik angka salary di sel → muncul input + tombol Simpan/Batal; hanya kolom salary yang bisa diedit, lainnya tetap read-only.
+- **Pengaturan hide/show kolom di SELURUH tabel**: tombol **"Kolom"** baru di toolbar setiap tabel (RAW DATA, Planning Produksi, Register PO, Complain & Penalti, Register Karyawan, Target Jahit) — centang/uncheck kolom mana yang tampil; tersimpan di localStorage per tabel (persist antar sesi). Implementasi: `useColumnSettings` (`src/lib/columnSettings.ts`) + `ColumnSettingsButton` & `HiddenColgroup` (`src/components/Table/ColumnSettings.tsx`); tabel tangan pakai `<colgroup>` per kolom. Di Target Jahit daftar kolom mengikuti aturan role (inventory tidak melihat kolom salary/cost bahkan di pengaturan).
+- Field **Sisa** ditambahkan ke daftar field filter/sort/hide di RAW DATA (sebelumnya hanya bisa difilter dari kolom lain).
+- `npm run build` hijau; lint: tidak ada temuan jenis baru (file baru `columnSettings.ts`/`ColumnSettings.tsx` bersih). Commit `9b15896`.
+
 ### 2026-08-18 — Fix: Generate Target hasil 0 tanpa penjelasan
 
 - **Root cause** (diverifikasi via Supabase MCP, bukan tebak-tebakan): picker bulan Generate default ke bulan berjalan (**2026-08**), sedangkan satu-satunya planning approved di DB untuk **2026-09** → query `.eq('bulan_target', genMonth).eq('status','approved')` tidak menemukan apa-apa → pesan "0 target jahit dibuat" tanpa penjelasan. INSERT `target_jahit` diuji via probe BEGIN/ROLLBACK — jalur insert berfungsi; RLS SELECT/INSERT policy `public` juga ada.
