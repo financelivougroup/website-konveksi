@@ -166,14 +166,18 @@ export function PlanningProduksiPage() {
 
   async function handleGenerate() {
     setGenerating(true);
-    const { created, error } = await generateTargetsFromPlanning(genMonth);
+    const { created, error, approvedFound } = await generateTargetsFromPlanning(genMonth);
     setGenerating(false);
     if (error) {
       setMessage(`❌ Error saat generate: ${error.message}`);
+    } else if (created === 0 && approvedFound === 0) {
+      setMessage(`ℹ️ Tidak ada planning berstatus "approved" untuk bulan ${genMonth}. Ubah dulu status planning jadi approved (atau cek bulan yang dipilih), lalu generate lagi.`);
+    } else if (created === 0) {
+      setMessage(`ℹ️ Ditemukan ${approvedFound} planning approved untuk ${genMonth}, tapi semua target staf di bulan itu sudah pernah digenerate.`);
     } else {
-      setMessage(`✅ Generate selesai! ${created} target jahit dibuat untuk ${genMonth}.`);
+      setMessage(`✅ Generate selesai! ${created} target jahit dibuat dari ${approvedFound} planning approved untuk ${genMonth}.`);
     }
-    setTimeout(() => setMessage(null), 4000);
+    setTimeout(() => setMessage(null), 6000);
   }
 
   const filtered = useMemo(() => {
@@ -271,6 +275,11 @@ export function PlanningProduksiPage() {
             </button>
           )}
           <div className="flex items-center gap-1.5 ml-auto">
+            {Array.from(new Set(items.filter((r) => r.status === 'approved').map((r) => r.bulanTarget))).sort().map((m) => (
+              <button key={m} onClick={() => setGenMonth(m)} className={cn('h-8 px-2 text-[11px] font-medium rounded-lg border transition-colors', genMonth === m ? 'bg-violet-500 text-white border-violet-500' : 'bg-white text-slate-600 border-gray-200 hover:bg-violet-50')} title={`Ada planning approved di ${m}`}>
+                {m} ✓
+              </button>
+            ))}
             <label className="text-[11px] text-slate-500">Generate untuk bulan</label>
             <input type="month" value={genMonth} onChange={(e) => setGenMonth(e.target.value)} className="h-8 px-2 text-[12px] border border-gray-200 rounded-lg outline-none focus:border-violet-300" />
           </div>

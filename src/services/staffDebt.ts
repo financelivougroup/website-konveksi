@@ -165,6 +165,8 @@ export async function computeDebt(staffName: string): Promise<DebtSummary> {
 export interface GenerateTargetsResult {
   created: number
   error: Error | null
+  /** Jumlah planning berstatus approved yang ditemukan untuk bulan target. */
+  approvedFound: number
 }
 
 /**
@@ -182,7 +184,7 @@ export async function generateTargetsFromPlanning(
     .select('*')
     .eq('bulan_target', bulanTarget)
     .eq('status', 'approved')
-  if (planErr) return { created: 0, error: planErr }
+  if (planErr) return { created: 0, error: planErr, approvedFound: 0 }
 
   // Group planning rows by staff.
   const byStaff = new Map<string, {
@@ -257,5 +259,5 @@ export async function generateTargetsFromPlanning(
     created++
   }
 
-  return { created, error: null }
+  return { created, error: null, approvedFound: (planRows ?? []).length }
 }
