@@ -49,6 +49,14 @@ export async function listByTargetId(
   return { data: (data as Record<string, unknown>[] | null)?.map(mapRow) ?? null, error }
 }
 
+export async function fetchAll(): Promise<{ data: TargetJahitDetailRow[] | null; error: Error | null }> {
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select('*')
+    .order('id', { ascending: true })
+  return { data: (data as Record<string, unknown>[] | null)?.map(mapRow) ?? null, error }
+}
+
 export async function upsertBatch(
   rows: Array<Omit<TargetJahitDetailRow, 'id'>>,
 ): Promise<{ error: Error | null }> {
