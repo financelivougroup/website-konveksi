@@ -2,7 +2,6 @@ import { useState, useMemo, useEffect, type ComponentType } from 'react';
 import {
   Search,
   ArrowRight,
-  Download,
   Image,
   Trash2,
   Scissors,
@@ -39,7 +38,7 @@ import type { WorkOrder, SewingRecord, CuttingRecord, FinishingRecord, KancingRe
 import { productionStatusLabel, productionStatusColor } from '@/types/pipeline';
 import { STATUS_ORDER, deriveStatus, validateStatusTransition } from '@/lib/productionStatus';
 import { T_WRAP, T_TABLE, T_HEAD_ROW, T_TH, T_TD, rowClass } from '@/lib/tableStyles';
-import { FilterButton, SortButton } from '@/components/Table/TableTools';
+import { FilterButton, SortButton, ExportButton } from '@/components/Table/TableTools';
 import { ColumnSettingsButton, HiddenColgroup } from '@/components/Table/ColumnSettings';
 import { useColumnSettings } from '@/lib/columnSettings';
 import { applyFilters, applySorts, type FieldOption, type FilterRule, type SortRule } from '@/lib/tableQuery';
@@ -444,6 +443,18 @@ export default function ProductionMonitoring({ onOpenSewingEntry, onOpenFinishin
   })), [decoratedWO]);
   const rawRows = useMemo(() => applySorts(applyFilters(flatRows, rawFilters), rawSorts), [flatRows, rawFilters, rawSorts]);
   const handleImport = () => { if (selectedRows.size === 0) { alert('Pilih minimal 1!'); return; } alert(`✅ ${selectedRows.size} WO di-import`); setSelectedRows(new Set()); };
+  const handleExportRaw = () => {
+    const esc = (v: string | number | null | undefined) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const header = ['Product Note', 'Product', 'Product ID', 'Variation ID', 'Information Variation', 'Warna', 'Size', 'Work Code', 'Brand', 'Qty', 'Cutting', 'Jahit', 'Finishing', 'Kancing', 'Sisa', 'Status', 'Created At', 'Created By'];
+    const lines = rawRows.map((r) => [r.productNote, r.product, r.productId, r.variationId, r.informationVariation, r.warna, r.size, r.workCode, r.brand, r.quantity, r.cuttingTotal, r.sewingTotal, r.finishingTotal, r.kancingTotal, r.sisa, r.statusLabel, r.createdAtLabel, r.createdBy].map(esc).join(','));
+    const csv = '﻿' + [header.map(esc).join(','), ...lines].join('\r\n'); // BOM for Excel UTF-8
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `raw-data-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   // ===== PULL =====
   const handlePullOrder = async (poId: string) => {
@@ -559,7 +570,7 @@ export default function ProductionMonitoring({ onOpenSewingEntry, onOpenFinishin
               <FilterButton fields={RAW_FIELDS} value={rawFilters} onChange={setRawFilters} />
               <SortButton fields={RAW_FIELDS} value={rawSorts} onChange={setRawSorts} />
               <ColumnSettingsButton fields={RAW_FIELDS} hidden={hiddenCols} onToggle={toggleCol} />
-              <button className="h-8 px-2.5 text-[11px] border border-gray-200 rounded-lg flex items-center gap-1.5 text-slate-600 hover:bg-gray-50"><Download className="w-3 h-3" /> Export</button>
+              <ExportButton onClick={handleExportRaw} />
               <button onClick={handleImport} className={cn('h-8 px-2.5 text-[11px] rounded-lg flex items-center gap-1.5 font-medium transition-colors', selectedRows.size > 0 ? 'bg-blue-500 text-white hover:bg-blue-600' : 'border border-gray-200 text-slate-400')}>📥 Import ({selectedRows.size})</button>
               {selectedRows.size > 0 && (
                 <button

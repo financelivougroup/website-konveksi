@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Columns3 } from 'lucide-react';
+import { T_TOOLBAR_BTN, T_TOOLBAR_BTN_IDLE, T_TOOLBAR_BTN_ACTIVE } from '@/lib/tableStyles';
 
 // ===== Pengaturan kolom: hide/show kolom, berlaku untuk semua tabel =====
 // Hook `useColumnSettings` ada di '@/lib/columnSettings'; file ini hanya
@@ -36,7 +37,7 @@ export function ColumnSettingsButton({ fields, hidden, onToggle }: { fields: Col
   const hiddenCount = fields.filter((f) => hidden.has(f.key)).length;
   return (
     <div className="relative" ref={wrapRef}>
-      <button onClick={() => setOpen(o => !o)} className={`h-8 px-2.5 text-[11px] rounded-lg flex items-center gap-1.5 transition-colors ${hiddenCount > 0 ? 'bg-blue-500 text-white hover:bg-blue-600 font-medium' : 'border border-gray-200 text-slate-600 hover:bg-gray-50'}`} title="Atur kolom yang tampil">
+      <button onClick={() => setOpen(o => !o)} className={`${T_TOOLBAR_BTN} ${hiddenCount > 0 ? T_TOOLBAR_BTN_ACTIVE : T_TOOLBAR_BTN_IDLE}`} title="Atur kolom yang tampil">
         <Columns3 className="w-3 h-3" /> Kolom{hiddenCount > 0 ? ` (${fields.length - hiddenCount}/${fields.length})` : ''}
       </button>
       {open && (

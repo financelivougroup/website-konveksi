@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Filter, ArrowUpDown, X, Plus } from 'lucide-react';
+import { Filter, ArrowUpDown, X, Plus, Download } from 'lucide-react';
 import { FILTER_OPERATORS, type FieldOption, type FilterRule, type SortRule } from '@/lib/tableQuery';
+import { T_TOOLBAR_BTN, T_TOOLBAR_BTN_IDLE, T_TOOLBAR_BTN_ACTIVE } from '@/lib/tableStyles';
 
 // ===== Shared Filter & Sort controls for design-system tables =====
 // Each page owns its filter/sort state and applies the helpers from
@@ -27,13 +28,21 @@ function PanelShell({ title, count, onReset, onClose, children }: { title: strin
   );
 }
 
+export function ExportButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button onClick={onClick} className={`${T_TOOLBAR_BTN} ${T_TOOLBAR_BTN_IDLE}`}>
+      <Download className="w-3 h-3" /> Export
+    </button>
+  );
+}
+
 export function FilterButton({ fields, value, onChange }: { fields: FieldOption[]; value: FilterRule[]; onChange: (v: FilterRule[]) => void }) {
   const [open, setOpen] = useState(false);
   const active = value.length;
   const set = (i: number, patch: Partial<FilterRule>) => onChange(value.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
   return (
     <div className="relative">
-      <button onClick={() => setOpen(o => !o)} className={`h-8 px-2.5 text-[11px] rounded-lg flex items-center gap-1.5 transition-colors ${active > 0 ? 'bg-blue-500 text-white hover:bg-blue-600 font-medium' : 'border border-gray-200 text-slate-600 hover:bg-gray-50'}`}>
+      <button onClick={() => setOpen(o => !o)} className={`${T_TOOLBAR_BTN} ${active > 0 ? T_TOOLBAR_BTN_ACTIVE : T_TOOLBAR_BTN_IDLE}`}>
         <Filter className="w-3 h-3" /> Filter{active > 0 ? ` (${active})` : ''}
       </button>
       {open && (
@@ -71,7 +80,7 @@ export function SortButton({ fields, value, onChange }: { fields: FieldOption[];
   const set = (i: number, patch: Partial<SortRule>) => onChange(value.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
   return (
     <div className="relative">
-      <button onClick={() => setOpen(o => !o)} className={`h-8 px-2.5 text-[11px] rounded-lg flex items-center gap-1.5 transition-colors ${active > 0 ? 'bg-blue-500 text-white hover:bg-blue-600 font-medium' : 'border border-gray-200 text-slate-600 hover:bg-gray-50'}`}>
+      <button onClick={() => setOpen(o => !o)} className={`${T_TOOLBAR_BTN} ${active > 0 ? T_TOOLBAR_BTN_ACTIVE : T_TOOLBAR_BTN_IDLE}`}>
         <ArrowUpDown className="w-3 h-3" /> Sort{active > 0 ? ` (${active})` : ''}
       </button>
       {open && (

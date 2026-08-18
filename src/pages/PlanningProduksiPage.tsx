@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Plus, RefreshCw, Search, Sparkles, Download, Trash2 } from 'lucide-react';
+import { Plus, RefreshCw, Search, Sparkles, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatMonthYearFromYm } from '@/lib/monthYear';
 import { T_WRAP, T_TABLE, T_HEAD_ROW, T_TH, T_TD, rowClass } from '@/lib/tableStyles';
-import { FilterButton, SortButton } from '@/components/Table/TableTools';
+import { FilterButton, SortButton, ExportButton } from '@/components/Table/TableTools';
 import { ColumnSettingsButton, HiddenColgroup } from '@/components/Table/ColumnSettings';
 import { useColumnSettings } from '@/lib/columnSettings';
 import { applyFilters, applySorts, type FieldOption, type FilterRule, type SortRule } from '@/lib/tableQuery';
@@ -271,7 +271,7 @@ export function PlanningProduksiPage() {
           <FilterButton fields={PLAN_FIELDS} value={filters} onChange={setFilters} />
           <SortButton fields={PLAN_FIELDS} value={sorts} onChange={setSorts} />
           <ColumnSettingsButton fields={PLAN_FIELDS} hidden={hiddenCols} onToggle={toggleCol} />
-          <button onClick={handleExport} className="h-8 px-2.5 text-[11px] border border-gray-200 rounded-lg flex items-center gap-1.5 text-slate-600 hover:bg-gray-50"><Download className="w-3 h-3" /> Export</button>
+          <ExportButton onClick={handleExport} />
           <button onClick={handleImport} className={cn('h-8 px-2.5 text-[11px] rounded-lg flex items-center gap-1.5 font-medium transition-colors', selectedRows.size > 0 ? 'bg-blue-500 text-white hover:bg-blue-600' : 'border border-gray-200 text-slate-400')}>📥 Import ({selectedRows.size})</button>
           {selectedRows.size > 0 && (
             <button onClick={handleBulkDelete} className="h-8 px-2.5 text-[11px] rounded-lg flex items-center gap-1.5 font-medium bg-red-500 text-white hover:bg-red-600 transition-colors">
