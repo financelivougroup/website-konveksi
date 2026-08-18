@@ -187,6 +187,12 @@ Website Konveksi/
 
 ## Latest Progress
 
+### 2026-08-18 — Format tanggal/bulan-tahun diseragamkan
+
+- **Tanggal → DD-MM-YYYY** di semua tempat: log Cutting/Sewing/Finishing/Kancing (Tanggal), Created At di RAW DATA & Register PO, kolom Tanggal di Complain, dan label DateRangeModal. Implementasi: `formatDate` di `src/data/pipelineData.ts` — string `YYYY-MM-DD` murni di-split (aman dari pergeseran zona waktu), timestamp ISO dikonversi ke waktu lokal (commit `6bff2ba`).
+- **Bulan Tahun → "September 2026"** di kolom Bulan Target (Planning Produksi) dan Bulan Tahun (Target Jahit), chip bulan & pesan generate; helper baru `formatMonthYearFromYm('YYYY-MM')` di `src/lib/monthYear.ts`. Kolom "Bulan Tahun" di Invoice sudah memakai format ini (tidak diubah).
+- `npm run build` hijau; lint bersih untuk semua file yang diubah.
+
 ### 2026-08-18 — Target Jahit: fix posisi kosong + edit salary + hide/show kolom semua tabel
 
 - **Kolom Posisi di Target Jahit kini terisi**: `generateTargetsFromPlanning` melookup posisi dari `register_penjahit` saat membuat baris target; 1 baris yang sudah ada di-backfill langsung via Supabase MCP (`Sidik Faisal` → Penjahit).
