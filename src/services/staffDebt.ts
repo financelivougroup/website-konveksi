@@ -186,6 +186,15 @@ export async function generateTargetsFromPlanning(
     .eq('status', 'approved')
   if (planErr) return { created: 0, error: planErr, approvedFound: 0 }
 
+  // Look up each staff's posisi from the employee register so the generated
+  // target_jahit rows carry it (the column is nullable; keep it filled).
+  const { data: staffRows } = await supabase
+    .from('register_penjahit')
+    .select('pic_penjahit, posisi')
+  const posisiByName = new Map<string, string | null>(
+    ((staffRows ?? []) as Record<string, unknown>[]).map((r) => [r.pic_penjahit as string, (r.posisi as string | null) ?? null]),
+  )
+
   // Group planning rows by staff.
   const byStaff = new Map<string, {
     rows: Record<string, unknown>[],
@@ -230,6 +239,7 @@ export async function generateTargetsFromPlanning(
       .insert({
         nama,
         bulanTahun: bulanTarget,
+        posisi: posisiByName.get(nama) ?? null,
         target_monthly: staff.totalQty,
         target_cost_posisi: round0(staff.targetCost),
       })

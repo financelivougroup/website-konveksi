@@ -3,8 +3,10 @@ import { RefreshCw, Search, Trash2, Download } from 'lucide-react';
 import { cn, formatCurrency } from '@/lib/utils';
 import { T_WRAP, T_TABLE, T_HEAD_ROW, T_TH, T_TD, rowClass } from '@/lib/tableStyles';
 import { FilterButton, SortButton } from '@/components/Table/TableTools';
+import { ColumnSettingsButton } from '@/components/Table/ColumnSettings';
+import { useColumnSettings } from '@/lib/columnSettings';
 import { applyFilters, applySorts, type FieldOption, type FilterRule, type SortRule } from '@/lib/tableQuery';
-import { fetchAll as fetchAllTarget, remove as removeTarget, type TargetJahitRow } from '@/services/targetJahit';
+import { fetchAll as fetchAllTarget, update as updateTarget, remove as removeTarget, type TargetJahitRow } from '@/services/targetJahit';
 import { fetchAll as fetchAllRegister, type RegisterPenjahitRow } from '@/services/registerPenjahit';
 import { computeDebt, type DebtSummary } from '@/services/staffDebt';
 import { useAuth } from '@/contexts/AuthContext';
@@ -108,6 +110,8 @@ export function TargetJahitPage() {
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
   const [filters, setFilters] = useState<FilterRule[]>([]);
   const [sorts, setSorts] = useState<SortRule[]>([]);
+  const [editingSalaryId, setEditingSalaryId] = useState<number | null>(null);
+  const [salaryDraft, setSalaryDraft] = useState('');
   const [message, setMessage] = useState<string | null>(null);
 
   // Utang Staf state.
@@ -181,10 +185,36 @@ export function TargetJahitPage() {
 
   // Access matrix (spec): inventory may see production data but NOT salary,
   // target/cost, or akumulasi columns. Owner/finance see everything.
-  const visibleColumns = useMemo(
+  const roleColumns = useMemo(
     () => (canSeeDebt ? TARGET_COLUMNS : TARGET_COLUMNS.filter((c) => c.inv)),
     [canSeeDebt],
   );
+
+  // Hide/show kolom (persist per tabel).
+  const { hidden: hiddenCols, toggle: toggleCol } = useColumnSettings('target-jahit');
+  const visibleColumns = useMemo(
+    () => roleColumns.filter((c) => !hiddenCols.has(c.key)),
+    [roleColumns, hiddenCols],
+  );
+
+  // Edit salary inline (owner/finance only) — satu-satunya kolom yang bisa diedit.
+  async function handleSaveSalary(id: number) {
+    const value = Number(salaryDraft);
+    if (Number.isNaN(value) || value < 0 || salaryDraft.trim() === '') {
+      setMessage('❌ Salary harus angka ≥ 0.');
+      setTimeout(() => setMessage(null), 3000);
+      return;
+    }
+    const { error } = await updateTarget(id, { salary: value });
+    if (error) {
+      setMessage(`❌ Error: ${error.message}`);
+    } else {
+      setItems(prev => prev.map(r => (r.id === id ? { ...r, salary: value } : r)));
+      setMessage('✅ Salary disimpan.');
+      setEditingSalaryId(null);
+    }
+    setTimeout(() => setMessage(null), 3000);
+  }
 
   // Multi-select + toolbar (same pattern as Production Monitoring RAW DATA).
   const handleToggleRow = (id: number) => setSelectedRows(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
@@ -298,6 +328,7 @@ export function TargetJahitPage() {
               </div>
               <FilterButton fields={visibleColumns.map((c) => ({ key: c.key, label: c.label })) as FieldOption[]} value={filters} onChange={setFilters} />
               <SortButton fields={visibleColumns.map((c) => ({ key: c.key, label: c.label })) as FieldOption[]} value={sorts} onChange={setSorts} />
+              <ColumnSettingsButton fields={roleColumns.map((c) => ({ key: c.key, label: c.label }))} hidden={hiddenCols} onToggle={toggleCol} />
               <button onClick={handleExport} className="h-8 px-2.5 text-[11px] border border-gray-200 rounded-lg flex items-center gap-1.5 text-slate-600 hover:bg-gray-50"><Download className="w-3 h-3" /> Export</button>
               <button onClick={handleImport} className={cn('h-8 px-2.5 text-[11px] rounded-lg flex items-center gap-1.5 font-medium transition-colors', selectedRows.size > 0 ? 'bg-blue-500 text-white hover:bg-blue-600' : 'border border-gray-200 text-slate-400')}>📥 Import ({selectedRows.size})</button>
               {selectedRows.size > 0 && (
@@ -325,7 +356,21 @@ export function TargetJahitPage() {
                         <td className={cn(T_TD, 'text-center')}><input type="checkbox" checked={selected} onChange={() => handleToggleRow(Number(row.id))} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 align-middle" /></td>
                         {visibleColumns.map((c) => (
                           <td key={c.key} className={cn(T_TD, c.align === 'right' ? 'text-right tabular-nums text-gray-700' : 'text-gray-700')}>
-                            {renderCell(c, row)}
+                            {c.key === 'salary' && canSeeDebt ? (
+                              editingSalaryId === Number(row.id) ? (
+                                <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+                                  <input type="number" min={0} value={salaryDraft} onChange={(e) => setSalaryDraft(e.target.value)} autoFocus
+                                    onKeyDown={(e) => { if (e.key === 'Enter') void handleSaveSalary(Number(row.id)); if (e.key === 'Escape') setEditingSalaryId(null); }}
+                                    className="h-7 w-24 px-2 text-[11px] text-right border border-blue-300 rounded-md outline-none focus:ring-2 focus:ring-blue-100" />
+                                  <button onClick={() => void handleSaveSalary(Number(row.id))} className="h-7 px-2 text-[10px] font-semibold bg-blue-600 text-white rounded-md hover:bg-blue-700">Simpan</button>
+                                  <button onClick={() => setEditingSalaryId(null)} className="h-7 px-2 text-[10px] text-slate-500 border border-gray-200 rounded-md hover:bg-gray-50">✕</button>
+                                </div>
+                              ) : (
+                                <button onClick={() => { setEditingSalaryId(Number(row.id)); setSalaryDraft(String(row.salary ?? 0)); }} className="underline decoration-dotted decoration-slate-300 underline-offset-2 hover:text-blue-600 cursor-text" title="Klik untuk edit salary">
+                                  {formatCurrency(row.salary as number)}
+                                </button>
+                              )
+                            ) : renderCell(c, row)}
                           </td>
                         ))}
                       </tr>

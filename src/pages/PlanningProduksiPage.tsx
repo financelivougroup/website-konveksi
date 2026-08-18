@@ -4,6 +4,8 @@ import { cn } from '@/lib/utils';
 import { formatDate } from '@/data/pipelineData';
 import { T_WRAP, T_TABLE, T_HEAD_ROW, T_TH, T_TD, rowClass } from '@/lib/tableStyles';
 import { FilterButton, SortButton } from '@/components/Table/TableTools';
+import { ColumnSettingsButton, HiddenColgroup } from '@/components/Table/ColumnSettings';
+import { useColumnSettings } from '@/lib/columnSettings';
 import { applyFilters, applySorts, type FieldOption, type FilterRule, type SortRule } from '@/lib/tableQuery';
 import {
   list as listPlanning,
@@ -51,6 +53,7 @@ export function PlanningProduksiPage() {
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
   const [filters, setFilters] = useState<FilterRule[]>([]);
   const [sorts, setSorts] = useState<SortRule[]>([]);
+  const { hidden: hiddenCols, toggle: toggleCol } = useColumnSettings('planning-produksi');
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<PlanningProduksiRow | null>(null);
@@ -267,6 +270,7 @@ export function PlanningProduksiPage() {
           <div className="relative flex-1 max-w-xs"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" /><input type="text" placeholder="Cari planning..." value={search} onChange={e => setSearch(e.target.value)} className="w-full h-8 pl-8 pr-3 text-[12px] border border-gray-200 rounded-lg outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100" /></div>
           <FilterButton fields={PLAN_FIELDS} value={filters} onChange={setFilters} />
           <SortButton fields={PLAN_FIELDS} value={sorts} onChange={setSorts} />
+          <ColumnSettingsButton fields={PLAN_FIELDS} hidden={hiddenCols} onToggle={toggleCol} />
           <button onClick={handleExport} className="h-8 px-2.5 text-[11px] border border-gray-200 rounded-lg flex items-center gap-1.5 text-slate-600 hover:bg-gray-50"><Download className="w-3 h-3" /> Export</button>
           <button onClick={handleImport} className={cn('h-8 px-2.5 text-[11px] rounded-lg flex items-center gap-1.5 font-medium transition-colors', selectedRows.size > 0 ? 'bg-blue-500 text-white hover:bg-blue-600' : 'border border-gray-200 text-slate-400')}>📥 Import ({selectedRows.size})</button>
           {selectedRows.size > 0 && (
@@ -288,6 +292,7 @@ export function PlanningProduksiPage() {
 
         <div className={T_WRAP}>
           <table className={cn(T_TABLE, 'w-auto min-w-full whitespace-nowrap')}>
+            <HiddenColgroup hidden={hiddenCols} cols={['__sel', 'namaPenjahit', 'product', 'warna', 'size', 'qty', 'bulanTarget', 'status']} />
             <thead><tr className={T_HEAD_ROW}>
               <th className={cn(T_TH, 'w-12 text-center')}><input type="checkbox" checked={selectedRows.size === rows.length && rows.length > 0} onChange={handleToggleAll} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 align-middle" /></th>
               <th className={cn(T_TH, 'text-left')}>Nama Penjahit</th>

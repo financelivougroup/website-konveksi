@@ -40,6 +40,8 @@ import { productionStatusLabel, productionStatusColor } from '@/types/pipeline';
 import { STATUS_ORDER, deriveStatus, validateStatusTransition } from '@/lib/productionStatus';
 import { T_WRAP, T_TABLE, T_HEAD_ROW, T_TH, T_TD, rowClass } from '@/lib/tableStyles';
 import { FilterButton, SortButton } from '@/components/Table/TableTools';
+import { ColumnSettingsButton, HiddenColgroup } from '@/components/Table/ColumnSettings';
+import { useColumnSettings } from '@/lib/columnSettings';
 import { applyFilters, applySorts, type FieldOption, type FilterRule, type SortRule } from '@/lib/tableQuery';
 
 type TabType = 'raw' | 'cutting' | 'sewing' | 'finishing' | 'kancing' | 'kanban';
@@ -270,6 +272,7 @@ export default function ProductionMonitoring({ onOpenSewingEntry, onOpenFinishin
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
   const [rawFilters, setRawFilters] = useState<FilterRule[]>([]);
   const [rawSorts, setRawSorts] = useState<SortRule[]>([]);
+  const { hidden: hiddenCols, toggle: toggleCol } = useColumnSettings('raw-data');
   const [showPullModal, setShowPullModal] = useState(false);
   const [pullMessage, setPullMessage] = useState<string | null>(null);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
@@ -427,6 +430,7 @@ export default function ProductionMonitoring({ onOpenSewingEntry, onOpenFinishin
     { key: 'sewingTotal', label: 'Jahit' },
     { key: 'finishingTotal', label: 'Finishing' },
     { key: 'kancingTotal', label: 'Kancing' },
+    { key: 'sisa', label: 'Sisa' },
     { key: 'derivedStatus', label: 'Status' },
     { key: 'createdAt', label: 'Created At' },
     { key: 'createdBy', label: 'Created By' },
@@ -554,6 +558,7 @@ export default function ProductionMonitoring({ onOpenSewingEntry, onOpenFinishin
               <div className="relative flex-1 max-w-xs"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" /><input type="text" placeholder="Cari work order..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full h-8 pl-8 pr-3 text-[12px] border border-gray-200 rounded-lg outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100" /></div>
               <FilterButton fields={RAW_FIELDS} value={rawFilters} onChange={setRawFilters} />
               <SortButton fields={RAW_FIELDS} value={rawSorts} onChange={setRawSorts} />
+              <ColumnSettingsButton fields={RAW_FIELDS} hidden={hiddenCols} onToggle={toggleCol} />
               <button className="h-8 px-2.5 text-[11px] border border-gray-200 rounded-lg flex items-center gap-1.5 text-slate-600 hover:bg-gray-50"><Download className="w-3 h-3" /> Export</button>
               <button onClick={handleImport} className={cn('h-8 px-2.5 text-[11px] rounded-lg flex items-center gap-1.5 font-medium transition-colors', selectedRows.size > 0 ? 'bg-blue-500 text-white hover:bg-blue-600' : 'border border-gray-200 text-slate-400')}>📥 Import ({selectedRows.size})</button>
               {selectedRows.size > 0 && (
@@ -582,6 +587,7 @@ export default function ProductionMonitoring({ onOpenSewingEntry, onOpenFinishin
             </div>
             <div className={T_WRAP}>
               <table className={cn(T_TABLE, 'w-auto min-w-full whitespace-nowrap')}>
+                <HiddenColgroup hidden={hiddenCols} cols={['__sel', 'productNote', 'product', 'productId', 'variationId', 'informationVariation', 'warna', 'size', 'workCode', 'brand', 'quantity', 'cuttingTotal', 'sewingTotal', 'finishingTotal', 'kancingTotal', 'sisa', 'derivedStatus', 'createdAt', 'createdBy']} />
                 <thead><tr className={T_HEAD_ROW}>
                   <th className={cn(T_TH, 'w-12 text-center')}><input type="checkbox" checked={selectedRows.size === decoratedWO.length && decoratedWO.length > 0} onChange={handleToggleAll} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 align-middle" /></th>
                   <th className={cn(T_TH, 'text-left')}>Product Note</th>

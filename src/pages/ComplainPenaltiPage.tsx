@@ -4,6 +4,8 @@ import { Plus, RefreshCw, Search, Camera, X, CheckCircle, Trash2, Download } fro
 import { cn, formatCurrency } from '@/lib/utils';
 import { T_WRAP, T_TABLE, T_HEAD_ROW, T_TH, T_TD, rowClass } from '@/lib/tableStyles';
 import { FilterButton, SortButton } from '@/components/Table/TableTools';
+import { ColumnSettingsButton, HiddenColgroup } from '@/components/Table/ColumnSettings';
+import { useColumnSettings } from '@/lib/columnSettings';
 import { applyFilters, applySorts, type FieldOption, type FilterRule, type SortRule } from '@/lib/tableQuery';
 import {
   list as listComplain,
@@ -196,6 +198,7 @@ export function ComplainPenaltiPage() {
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
   const [filters, setFilters] = useState<FilterRule[]>([]);
   const [sorts, setSorts] = useState<SortRule[]>([]);
+  const { hidden: hiddenCols, toggle: toggleCol } = useColumnSettings('complain-penalti');
   const [message, setMessage] = useState<string | null>(null);
 
   // ===== Opsi form (dari data produksi) =====
@@ -654,6 +657,7 @@ export function ComplainPenaltiPage() {
           </div>
           <FilterButton fields={COMPLAIN_FIELDS} value={filters} onChange={setFilters} />
           <SortButton fields={COMPLAIN_FIELDS} value={sorts} onChange={setSorts} />
+          <ColumnSettingsButton fields={[{ key: 'tanggal', label: 'Tanggal' }, { key: 'workCode', label: 'Work Code' }, { key: 'product', label: 'Produk' }, { key: 'posisi', label: 'Posisi' }, { key: 'pic', label: 'PIC' }, { key: 'poin', label: 'Poin' }, { key: 'potonganPerPcs', label: 'Potongan/PCS' }, { key: 'tingkat', label: 'Tingkat' }, { key: 'status', label: 'Status' }, { key: 'bukti', label: 'Bukti' }]} hidden={hiddenCols} onToggle={toggleCol} />
           <button onClick={handleExport} className="h-8 px-2.5 text-[11px] border border-gray-200 rounded-lg flex items-center gap-1.5 text-slate-600 hover:bg-gray-50"><Download className="w-3 h-3" /> Export</button>
           <button onClick={handleImport} className={cn('h-8 px-2.5 text-[11px] rounded-lg flex items-center gap-1.5 font-medium transition-colors', selectedRows.size > 0 ? 'bg-blue-500 text-white hover:bg-blue-600' : 'border border-gray-200 text-slate-400')}>📥 Import ({selectedRows.size})</button>
           {selectedRows.size > 0 && (
@@ -667,6 +671,7 @@ export function ComplainPenaltiPage() {
         {/* Tabel manual — design system tableStyles (sama dengan Production Monitoring) */}
         <div className={T_WRAP}>
           <table className={cn(T_TABLE, 'w-auto min-w-full whitespace-nowrap')}>
+            <HiddenColgroup hidden={hiddenCols} cols={['__sel', 'tanggal', 'workCode', 'product', 'posisi', 'pic', 'poin', 'potonganPerPcs', 'tingkat', 'status', 'bukti']} />
             <thead>
               <tr className={T_HEAD_ROW}>
                 <th className={cn(T_TH, 'w-12 text-center')}><input type="checkbox" checked={selectedRows.size === rows.length && rows.length > 0} onChange={handleToggleAll} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 align-middle" /></th>
