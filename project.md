@@ -187,6 +187,12 @@ Website Konveksi/
 
 ## Latest Progress
 
+### 2026-08-18 — Fix: Generate Target hasil 0 tanpa penjelasan
+
+- **Root cause** (diverifikasi via Supabase MCP, bukan tebak-tebakan): picker bulan Generate default ke bulan berjalan (**2026-08**), sedangkan satu-satunya planning approved di DB untuk **2026-09** → query `.eq('bulan_target', genMonth).eq('status','approved')` tidak menemukan apa-apa → pesan "0 target jahit dibuat" tanpa penjelasan. INSERT `target_jahit` diuji via probe BEGIN/ROLLBACK — jalur insert berfungsi; RLS SELECT/INSERT policy `public` juga ada.
+- **Fix** (commit `b942abe`): `generateTargetsFromPlanning` kini mengembalikan `approvedFound`; UI membedakan 3 hasil — (a) tidak ada planning approved di bulan itu (pesan menyuruh approve/pilih bulan), (b) ada tapi semua staf sudah pernah digenerate, (c) sukses ("N target dibuat dari M planning approved"). Ditambah **chip bulan** di samping picker: bulan-bulan yang punya planning approved (klik = pilih bulan itu).
+- Tidak ada perubahan skema/logika status; data target_jahit tetap kosong (belum ada generate sukses oleh user).
+
 ### 2026-08-17 — Planning Produksi: kolom Status bisa diedit + gate generate target
 
 - Kolom **Status** di tabel Planning Produksi kini **dropdown yang bisa diedit langsung** dari tabel: `draft` → `approved` / `rejected` (tersimpan ke `planning_produksi.status` via `updatePlanning`; klik dropdown tidak memicu modal edit — stopPropagation). Badge berwarna: hijau approved, merah rejected, abu-abu draft (commit `1960f8f`).
