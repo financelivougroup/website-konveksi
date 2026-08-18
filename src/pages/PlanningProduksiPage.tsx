@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Plus, RefreshCw, Search, Sparkles, Download, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { formatDate } from '@/data/pipelineData';
+import { formatMonthYearFromYm } from '@/lib/monthYear';
 import { T_WRAP, T_TABLE, T_HEAD_ROW, T_TH, T_TD, rowClass } from '@/lib/tableStyles';
 import { FilterButton, SortButton } from '@/components/Table/TableTools';
 import { ColumnSettingsButton, HiddenColgroup } from '@/components/Table/ColumnSettings';
@@ -174,11 +174,11 @@ export function PlanningProduksiPage() {
     if (error) {
       setMessage(`❌ Error saat generate: ${error.message}`);
     } else if (created === 0 && approvedFound === 0) {
-      setMessage(`ℹ️ Tidak ada planning berstatus "approved" untuk bulan ${genMonth}. Ubah dulu status planning jadi approved (atau cek bulan yang dipilih), lalu generate lagi.`);
+      setMessage(`ℹ️ Tidak ada planning berstatus "approved" untuk bulan ${formatMonthYearFromYm(genMonth)}. Ubah dulu status planning jadi approved (atau cek bulan yang dipilih), lalu generate lagi.`);
     } else if (created === 0) {
-      setMessage(`ℹ️ Ditemukan ${approvedFound} planning approved untuk ${genMonth}, tapi semua target staf di bulan itu sudah pernah digenerate.`);
+      setMessage(`ℹ️ Ditemukan ${approvedFound} planning approved untuk ${formatMonthYearFromYm(genMonth)}, tapi semua target staf di bulan itu sudah pernah digenerate.`);
     } else {
-      setMessage(`✅ Generate selesai! ${created} target jahit dibuat dari ${approvedFound} planning approved untuk ${genMonth}.`);
+      setMessage(`✅ Generate selesai! ${created} target jahit dibuat dari ${approvedFound} planning approved untuk ${formatMonthYearFromYm(genMonth)}.`);
     }
     setTimeout(() => setMessage(null), 6000);
   }
@@ -280,8 +280,8 @@ export function PlanningProduksiPage() {
           )}
           <div className="flex items-center gap-1.5 ml-auto">
             {Array.from(new Set(items.filter((r) => r.status === 'approved').map((r) => r.bulanTarget))).sort().map((m) => (
-              <button key={m} onClick={() => setGenMonth(m)} className={cn('h-8 px-2 text-[11px] font-medium rounded-lg border transition-colors', genMonth === m ? 'bg-violet-500 text-white border-violet-500' : 'bg-white text-slate-600 border-gray-200 hover:bg-violet-50')} title={`Ada planning approved di ${m}`}>
-                {m} ✓
+              <button key={m} onClick={() => setGenMonth(m)} className={cn('h-8 px-2 text-[11px] font-medium rounded-lg border transition-colors', genMonth === m ? 'bg-violet-500 text-white border-violet-500' : 'bg-white text-slate-600 border-gray-200 hover:bg-violet-50')} title={`Ada planning approved di ${formatMonthYearFromYm(m)}`}>
+                {formatMonthYearFromYm(m)} ✓
               </button>
             ))}
             <label className="text-[11px] text-slate-500">Generate untuk bulan</label>
@@ -315,7 +315,7 @@ export function PlanningProduksiPage() {
                     <td className={cn(T_TD, 'text-gray-700')}>{r.warna || <span className="text-gray-300">—</span>}</td>
                     <td className={cn(T_TD, 'text-gray-700')}>{r.size || <span className="text-gray-300">—</span>}</td>
                     <td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>{r.qty}</td>
-                    <td className={cn(T_TD, 'text-gray-500')}>{formatDate(r.bulanTarget + '-01')}</td>
+                    <td className={cn(T_TD, 'text-gray-500')}>{formatMonthYearFromYm(r.bulanTarget)}</td>
                     <td className={cn(T_TD, 'text-center')} onClick={(e) => e.stopPropagation()}>
                       <select
                         value={r.status || 'draft'}

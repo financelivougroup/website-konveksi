@@ -3,6 +3,7 @@ import type { ChangeEvent } from 'react';
 import { Plus, RefreshCw, Search, Camera, X, CheckCircle, Trash2, Download } from 'lucide-react';
 import { cn, formatCurrency } from '@/lib/utils';
 import { T_WRAP, T_TABLE, T_HEAD_ROW, T_TH, T_TD, rowClass } from '@/lib/tableStyles';
+import { formatDate } from '@/data/pipelineData';
 import { FilterButton, SortButton } from '@/components/Table/TableTools';
 import { ColumnSettingsButton, HiddenColgroup } from '@/components/Table/ColumnSettings';
 import { useColumnSettings } from '@/lib/columnSettings';
@@ -702,7 +703,7 @@ export function ComplainPenaltiPage() {
                 return (
                   <tr key={String(item.id)} className={cn(rowClass(i, selected), 'cursor-pointer')} onClick={() => void openEdit(item)} title="Klik untuk edit">
                     <td className={cn(T_TD, 'text-center')} onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={selected} onChange={() => handleToggleRow(String(item.id))} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 align-middle" /></td>
-                    <td className={cn(T_TD, 'text-gray-700 whitespace-nowrap')}>{item.tanggal}</td>
+                    <td className={cn(T_TD, 'text-gray-700 whitespace-nowrap')}>{formatDate(item.tanggal)}</td>
                     <td className={cn(T_TD, 'text-gray-700')} title={item.workCode ?? ''}>
                       {item.workCode ?? '—'}
                     </td>

@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { RefreshCw, Search, Trash2, Download } from 'lucide-react';
 import { cn, formatCurrency } from '@/lib/utils';
+import { formatMonthYearFromYm } from '@/lib/monthYear';
 import { T_WRAP, T_TABLE, T_HEAD_ROW, T_TH, T_TD, rowClass } from '@/lib/tableStyles';
 import { FilterButton, SortButton } from '@/components/Table/TableTools';
 import { ColumnSettingsButton } from '@/components/Table/ColumnSettings';
@@ -82,6 +83,10 @@ interface DebtRow {
 
 function renderCell(col: ColDef, row: Record<string, unknown>) {
   const v = row[col.key];
+  if (col.key === 'bulanTahun') {
+    const s = String(v ?? '').trim();
+    return s ? formatMonthYearFromYm(s) : <span className="text-gray-300">—</span>;
+  }
   if (col.format === 'currency') return v == null || v === '' ? <span className="text-gray-300">—</span> : formatCurrency(Number(v));
   if (col.format === 'percent') return v == null || v === '' ? <span className="text-gray-300">—</span> : `${v}%`;
   if (col.badge) {

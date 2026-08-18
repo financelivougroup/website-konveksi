@@ -40,13 +40,19 @@ export function generateWorkCode(productNote: string, product: string, warna: st
 }
 
 /** Format date for display */
+// Format tanggal seragam: DD-MM-YYYY (mis. 05-09-2026).
 export function formatDate(dateStr: string): string {
   if (!dateStr) return '—';
-  const d = new Date(dateStr);
-  if (Number.isNaN(d.getTime())) {
-    const fallback = new Date(dateStr + 'T00:00:00');
-    if (Number.isNaN(fallback.getTime())) return '—';
-    return fallback.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+  // 'YYYY-MM-DD' murni (input type="date" / kolom date DB) — split string,
+  // aman dari pergeseran zona waktu.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    const [y, m, d] = dateStr.split('-');
+    return `${d}-${m}-${y}`;
   }
-  return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+  // Timestamp ISO (dengan waktu/zona) — konversi ke waktu lokal browser.
+  const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return '—';
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  return `${dd}-${mm}-${d.getFullYear()}`;
 }

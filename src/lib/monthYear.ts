@@ -10,3 +10,12 @@ export function formatMonthYear(dateStr: string): string {
   const month = MONTHS_ID[d.getMonth()];
   return `${month} ${d.getFullYear()}`;
 }
+
+// 'YYYY-MM' (format input type="month" / kolom bulan_target) → 'September 2026'.
+export function formatMonthYearFromYm(ym: string): string {
+  if (!ym) return '';
+  const m = ym.match(/^(\d{4})-(\d{2})/);
+  if (!m) return ym;
+  const month = MONTHS_ID[Number(m[2]) - 1];
+  return month ? `${month} ${m[1]}` : ym;
+}

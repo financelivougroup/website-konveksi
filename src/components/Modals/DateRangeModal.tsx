@@ -152,6 +152,7 @@ export function DateRangeModal({ open, onClose, columns, dateField, dateFrom, da
 
 function formatDate(dateStr: string): string {
   if (!dateStr) return '';
-  const d = new Date(dateStr + 'T00:00:00');
-  return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+  const m = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return dateStr;
+  return `${m[3]}-${m[2]}-${m[1]}`; // DD-MM-YYYY
 }
