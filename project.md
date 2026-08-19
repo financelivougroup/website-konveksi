@@ -187,6 +187,12 @@ Website Konveksi/
 
 ## Latest Progress
 
+### 2026-08-19 — Fix: Target Jahit layar putih (kolom `bulanTahun` camelCase)
+
+- **Root cause** (diverifikasi via Supabase MCP): kolom bulan di tabel live `target_jahit` bernama **`bulanTahun`** (camelCase — satu-satunya kolom non-snake_case, sudah dicatat di spec 2026-08-06 tapi type service tetap `bulan_tahun`). Lib enrichment baru membaca `row.bulan_tahun` → `undefined` → `parseYm(undefined)` → TypeError → render crash → layar putih saat membuka menu Target Jahit.
+- **Fix** (commit `d83ba44`): `targetJahit.fetchAll` menormalisasi `bulanTahun` → `bulan_tahun` untuk semua pemakai (satu titik perbaikan); `targetCompute` diperkeras — `parseYm` menolak input non-string, sort & loop sewing toleran terhadap ym kosong (defense-in-depth, tidak bisa crash lagi karena data aneh).
+- `npm run build` hijau.
+
 ### 2026-08-18 — Target Jahit: semua 22 kolom hidup (turunan live) + baris expandable per desain
 
 - **Seluruh kolom tabel Target Jahit kini terisi otomatis** (komputasi live di app, tanpa migration & tanpa write-back ke DB — pola `deriveStatus`): hari kerja efektif (**Senin–Sabtu** minus `daftar_libur`), target_daily (`target_monthly ÷ total_hari_kerja`, 1 desimal), Target Ngebut harian (`ceil(sisa_target ÷ sisa_hari)`), realisasi bulanan (Σ `sewing_records` orang itu di bulan tsb.), sisa target, progress %, cost realisasi (harga jahit+obras per desain dari `target_jahit_detail`, fallback price map Register PO), akumulasi antar-bulan per orang (target/realisasi/selisih/progress/ngebut akumulasi), dan **Status Final** Berjalan (biru) / Tercapai (hijau) / Tidak Tercapai (merah) — berlaku untuk monthly & akumulasi (commits `9883b20`, `ce7b79c`, `97a0b89`).
