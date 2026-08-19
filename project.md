@@ -187,6 +187,13 @@ Website Konveksi/
 
 ## Latest Progress
 
+### 2026-08-19 — Target Jahit: detail per desain pindah ke overlay full-screen (pola Kanban card)
+
+- Rincian per desain **tidak lagi nge-drop ke bawah baris** — kini **klik baris** membuka **overlay full-screen** persis pola detail card Kanban: header nama penjahit + bulan + badge posisi, tombol tutup ✕, klik backdrop untuk menutup (commit `a0d814d`).
+- UI overlay dirapikan ala app sungguhan: **4 stat cards** (Target Bulanan, Realisasi, Sisa Target, Status dengan badge warna), **progress bar bulanan animasi** (biru, hijau kalau ≥100%), lalu tabel **Rincian Realisasi per Desain** dengan kolom baru **Progress per desain** (badge persen), kolom Harga/Nilai tetap hanya untuk owner/finance.
+- Kolom affordance chevron `›` di ujung setiap baris sebagai penanda baris bisa diklik; edit salary tetap jalan (klik sel salary tidak membuka overlay — stopPropagation). Expandable inline lama dihapus total.
+- `npm run build` hijau; lint bersih.
+
 ### 2026-08-19 — Fix: Target Jahit layar putih (kolom `bulanTahun` camelCase)
 
 - **Root cause** (diverifikasi via Supabase MCP): kolom bulan di tabel live `target_jahit` bernama **`bulanTahun`** (camelCase — satu-satunya kolom non-snake_case, sudah dicatat di spec 2026-08-06 tapi type service tetap `bulan_tahun`). Lib enrichment baru membaca `row.bulan_tahun` → `undefined` → `parseYm(undefined)` → TypeError → render crash → layar putih saat membuka menu Target Jahit.
