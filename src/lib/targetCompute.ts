@@ -5,8 +5,9 @@ import type { PriceMap } from '@/services/staffDebt';
 
 // ===== Workdays: Mon–Sat minus daftar_libur =====
 
-/** 'YYYY-MM' -> { year, month (1-12) } or null. */
+/** 'YYYY-MM' -> { year, month (1-12) } or null. Defensive against non-string input. */
 export function parseYm(ym: string): { year: number; month: number } | null {
+  if (typeof ym !== 'string') return null;
   const m = ym.match(/^(\d{4})-(\d{2})/);
   if (!m) return null;
   return { year: Number(m[1]), month: Number(m[2]) };
@@ -94,6 +95,7 @@ export interface EnrichedTargetRow extends TargetJahitRow {
 /** Map sewing records -> WO product via workOrderProduct (wo.id -> product). */
 function sewingQtyByProduct(sewing: SewingRecord[], person: string, ym: string, workOrderProduct: Map<string, string>): Map<string, number> {
   const out = new Map<string, number>();
+  if (!ym) return out;
   for (const s of sewing) {
     if (s.picPenjahit !== person) continue;
     if (!String(s.tanggalLaporan ?? '').startsWith(ym)) continue;
@@ -106,6 +108,7 @@ function sewingQtyByProduct(sewing: SewingRecord[], person: string, ym: string, 
 
 function monthlyRealisasi(sewing: SewingRecord[], person: string, ym: string): number {
   let n = 0;
+  if (!ym) return n;
   for (const s of sewing) {
     if (s.picPenjahit !== person) continue;
     if (!String(s.tanggalLaporan ?? '').startsWith(ym)) continue;
@@ -146,11 +149,11 @@ export function enrichTargetRows(
   holidays: string[],
   today: Date,
 ): EnrichedTargetRow[] {
-  const sorted = [...rows].sort((a, b) => a.bulan_tahun.localeCompare(b.bulan_tahun));
+  const sorted = [...rows].sort((a, b) => String(a.bulan_tahun ?? '').localeCompare(String(b.bulan_tahun ?? '')));
   const accumByPerson = new Map<string, { target: number; realisasi: number }>();
 
   return sorted.map((row) => {
-    const ym = row.bulan_tahun;
+    const ym = String(row.bulan_tahun ?? '');
     const person = row.nama;
     const totalHariKerja = countWorkdays(ym, holidays);
     const hariKerjaHariIni = elapsedWorkdays(ym, holidays, today);

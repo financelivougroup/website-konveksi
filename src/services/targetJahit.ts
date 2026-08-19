@@ -28,12 +28,23 @@ export interface TargetJahitRow {
   status_final_akumulasi: string | null
 }
 
+// Live schema quirk: kolom bulan di DB bernama 'bulanTahun' (camelCase),
+// satu-satunya kolom yang tidak snake_case di tabel ini. Normalisasi ke
+// 'bulan_tahun' di sini supaya semua pemakai (page, enrichment lib) konsisten.
+function normalizeRow(row: Record<string, unknown>): TargetJahitRow {
+  const out = { ...row } as Record<string, unknown>
+  if (out.bulan_tahun == null && out.bulanTahun != null) {
+    out.bulan_tahun = out.bulanTahun
+  }
+  return out as unknown as TargetJahitRow
+}
+
 export async function fetchAll(): Promise<{ data: TargetJahitRow[] | null; error: Error | null }> {
   const { data, error } = await supabase
     .from(TABLE)
     .select('*')
     .order('id', { ascending: true })
-  return { data: data as TargetJahitRow[] | null, error }
+  return { data: (data as Record<string, unknown>[] | null)?.map(normalizeRow) ?? null, error }
 }
 
 export async function update(id: number, updates: Partial<TargetJahitRow>): Promise<{ error: Error | null }> {
