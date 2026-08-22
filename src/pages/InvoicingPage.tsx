@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { RefreshCw, Zap } from 'lucide-react'
+import { RefreshCw, Search, Sparkles, Zap } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
 import { fetchAllInvoices } from '@/services/invoices'
@@ -7,10 +7,11 @@ import { fetchPaymentsByInvoiceId } from '@/services/invoicePayments'
 import { backfillMissingInvoices } from '@/services/autoInvoice'
 import { computeOutstanding } from '@/lib/invoiceCompute'
 import { useToast } from '@/hooks/useToast'
-import { ExportButton } from '@/components/Table/TableTools'
+import { FilterButton, SortButton, ExportButton } from '@/components/Table/TableTools'
 import { ColumnSettingsButton, HiddenColgroup } from '@/components/Table/ColumnSettings'
 import { useColumnSettings } from '@/lib/columnSettings'
-import type { FieldOption } from '@/lib/tableQuery'
+import { applyFilters, applySorts } from '@/lib/tableQuery'
+import type { FieldOption, FilterRule, SortRule } from '@/lib/tableQuery'
 import { T_WRAP, T_TABLE, T_HEAD_ROW, T_TH, T_TD, rowClass } from '@/lib/tableStyles'
 import type { InvoiceRow, InvoicePaymentRow } from '@/types/pipeline'
 
@@ -36,17 +37,24 @@ export function InvoicingPage() {
   const [backfilling, setBackfilling] = useState(false)
   const invoiceImageRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const [searchQuery, setSearchQuery] = useState('')
+  const [filters, setFilters] = useState<FilterRule[]>([])
+  const [sorts, setSorts] = useState<SortRule[]>([])
   const { showToast } = useToast()
 
   // Column settings for invoice table
   const { hidden: hiddenCols, toggle: toggleCol } = useColumnSettings('invoicing')
 
-  // Field options for filter/sort UI
+  // Field options for filter/sort/column UI
   const filterFields: FieldOption[] = [
     { key: 'monthYear', label: 'Bulan' },
     { key: 'clientName', label: 'Client' },
+    { key: 'workCode', label: 'Work Code' },
+    { key: 'pcsLinked', label: 'Total Qty' },
+    { key: 'unitPrice', label: 'Nominal/PCS' },
     { key: 'invoiceCode', label: 'Kode Invoice' },
+    { key: 'totalAmount', label: 'Total' },
     { key: 'financeValidation', label: 'Status' },
+    { key: 'createdAt', label: 'Created At' },
   ]
 
   const refresh = useCallback(async () => {
@@ -75,7 +83,7 @@ export function InvoicingPage() {
 
   // Apply column settings to headers
   const columns = [
-    { key: 'status', label: '', width: '32px' },
+    { key: '__sel', label: '', width: '32px' },
     { key: 'monthYear', label: 'Bulan', width: '100px' },
     { key: 'clientName', label: 'Client', width: '150px' },
     { key: 'workCode', label: 'Work Code', width: '120px' },
@@ -85,20 +93,24 @@ export function InvoicingPage() {
     { key: 'totalAmount', label: 'Total', align: 'right' as const, width: '120px' },
     { key: 'financeValidation', label: 'Status', width: '120px' },
     { key: 'createdAt', label: 'Created At', width: '130px' },
-    { key: 'actions', label: 'Action', width: '160px', align: 'center' as const },
+    { key: 'action', label: 'Action', width: '160px', align: 'center' as const },
   ]
 
-  // Filter invoices by search query
+  // Filter, sort, then search invoices (same pipeline as other design-system tables)
   const filteredInvoices = useMemo(() => {
-    if (!searchQuery) return invoices
-    const q = searchQuery.toLowerCase()
-    return invoices.filter(inv =>
-      inv.monthYear.toLowerCase().includes(q) ||
-      inv.clientName.toLowerCase().includes(q) ||
-      inv.workCode.toLowerCase().includes(q) ||
-      inv.invoiceCode.toLowerCase().includes(q),
-    )
-  }, [invoices, searchQuery])
+    let rows = applyFilters(invoices as unknown as Record<string, unknown>[], filters)
+    rows = applySorts(rows, sorts)
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase()
+      rows = rows.filter(inv =>
+        String(inv.monthYear ?? '').toLowerCase().includes(q) ||
+        String(inv.clientName ?? '').toLowerCase().includes(q) ||
+        String(inv.workCode ?? '').toLowerCase().includes(q) ||
+        String(inv.invoiceCode ?? '').toLowerCase().includes(q),
+      )
+    }
+    return rows as unknown as InvoiceRow[]
+  }, [invoices, filters, sorts, searchQuery])
 
   const paginatedInvoices = useMemo(() => {
     const start = (page - 1) * PAGE_SIZE
@@ -200,160 +212,175 @@ export function InvoicingPage() {
   }
 
   return (
-    <div className="flex-1 flex flex-col min-w-0 overflow-auto">
-      {/* Search Bar */}
-      <div className="relative max-w-xs mb-4">
-        <input
-          type="text"
-          placeholder="Search invoice..."
-          value={searchQuery}
-          onChange={e => setSearchQuery(e.target.value)}
-          className="w-full h-8 pl-8 pr-3 text-[12px] border border-gray-200 rounded-lg"
-        />
-      </div>
-
-      {/* Toolbar section */}
-      <div className="mb-4">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <ColumnSettingsButton fields={filterFields} hidden={hiddenCols} onToggle={toggleCol} />
-            <ExportButton onClick={() => showToast('Export feature coming soon!', 'info')} />
+    <main className="flex-1 flex flex-col min-w-0 overflow-auto">
+      <div className="px-8 pt-4 pb-0">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h1 className="text-[17px] font-semibold tracking-tight text-slate-900">Invoicing</h1>
           </div>
-          <button
-            onClick={handleBackfill}
-            disabled={backfilling}
-            className="h-8 px-3.5 text-[12px] font-medium bg-amber-500 text-white rounded-lg hover:bg-amber-600 hover:shadow-md hover:shadow-amber-200 transition-all flex items-center gap-2 disabled:opacity-50"
-          >
-            <Zap className="w-3.5 h-3.5" /> Generate Missing Invoices
-          </button>
+          <div className="flex items-center gap-2.5">
+            <button
+              onClick={refresh}
+              className="h-8 px-3.5 text-[12px] font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 hover:shadow-md hover:shadow-slate-200 transition-all flex items-center gap-2"
+            >
+              <RefreshCw className="w-3.5 h-3.5" /> Refresh
+            </button>
+            <button
+              onClick={handleBackfill}
+              disabled={backfilling}
+              className="h-8 px-3.5 text-[12px] font-medium bg-violet-500 text-white rounded-lg hover:bg-violet-600 hover:shadow-md hover:shadow-violet-200 transition-all flex items-center gap-2 disabled:opacity-50"
+            >
+              <Sparkles className="w-3.5 h-3.5" /> {backfilling ? 'Generating…' : 'Generate Missing Invoices'}
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* ===== TABLE MATCHING PRODUCTION MONITORING RAW DATA ===== */}
-      <div className={T_WRAP}>
-        <table className={T_TABLE}>
-          <HiddenColgroup
-            hidden={hiddenCols}
-            cols={['status', 'createdAt', 'clientName', 'action', 'pcsLinked', 'monthYear', 'invoiceCode', 'creditDueDate', 'totalAmount', 'workCode', 'unitPrice']}
-          />
-          <thead>
-            <tr className={T_HEAD_ROW}>
-              <th className={cn(T_TH, 'text-center w-[32px]')}>
-                <input
-                  type="checkbox"
-                  checked={paginatedInvoices.length > 0 && selectedRows.size === paginatedInvoices.length}
-                  onChange={handleSelectAll}
-                  className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                />
-              </th>
-              <th className={cn(T_TH, 'text-left min-w-[100px]')}>Bulan</th>
-              <th className={cn(T_TH, 'text-left min-w-[150px]')}>Client</th>
-              <th className={cn(T_TH, 'text-left min-w-[120px]')}>Work Code</th>
-              <th className={cn(T_TH, 'text-right min-w-[90px]')}>Total Qty</th>
-              <th className={cn(T_TH, 'text-right min-w-[110px]')}>Nominal/PCS</th>
-              <th className={cn(T_TH, 'text-left min-w-[140px]')}>Kode Invoice</th>
-              <th className={cn(T_TH, 'text-right min-w-[120px]')}>Total</th>
-              <th className={cn(T_TH, 'text-center min-w-[120px]')}>Status</th>
-              <th className={cn(T_TH, 'text-left min-w-[130px]')}>Created At</th>
-              <th className={cn(T_TH, 'text-center min-w-[160px]')}>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {paginatedInvoices.length === 0 && (
-              <tr>
-                <td colSpan={columns.length} className="py-10 text-center text-[13px] text-gray-400">
-                  Belum ada invoice
-                </td>
-              </tr>
-            )}
-            {paginatedInvoices.map((inv, i) => {
-              const bundle = paymentsByInvoice[inv.id]
-              const totPayment = bundle?.totalPayment ?? 0
-              const outstanding = computeOutstanding(inv.totalAmount, totPayment)
-              const isDownloading = downloadingId === inv.id
-              const status = outstanding === 0 ? 'Paid' : 'Outstanding'
-              const statusBadgeClass = STATUS_BADGE[status as keyof typeof STATUS_BADGE]
-              const isSelected = selectedRows.has(inv.id)
+      <div className="flex-1 px-8 pt-5 pb-6 overflow-auto">
+        {/* Toolbar — satu baris, pola Target Jahit / RAW DATA */}
+        <div className="flex items-center gap-2 mb-3">
+          <div className="relative flex-1 max-w-xs">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Cari invoice..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="w-full h-8 pl-8 pr-3 text-[12px] border border-gray-200 rounded-lg outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+            />
+          </div>
+          <FilterButton fields={filterFields} value={filters} onChange={setFilters} />
+          <SortButton fields={filterFields} value={sorts} onChange={setSorts} />
+          <ColumnSettingsButton fields={filterFields} hidden={hiddenCols} onToggle={toggleCol} />
+          <ExportButton onClick={() => showToast('Export feature coming soon!', 'info')} />
+          <span className="text-[11px] text-slate-400 ml-auto">{filteredInvoices.length} invoice</span>
+        </div>
 
-              return (
-                <tr key={inv.id} className={rowClass(i, isSelected)}>
-                  <td className={cn(T_TD, 'text-center')}>
-                    <input
-                      type="checkbox"
-                      checked={isSelected}
-                      onChange={() => handleSelectRow(inv.id)}
-                      className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                    />
-                  </td>
-                  <td className={cn(T_TD, 'whitespace-nowrap text-left text-gray-700')}>{inv.monthYear}</td>
-                  <td className={cn(T_TD, 'whitespace-nowrap text-left text-gray-700')}>{inv.clientName}</td>
-                  <td className={cn(T_TD, 'whitespace-nowrap text-left text-gray-700 font-mono text-sm')}>{inv.workCode}</td>
-                  <td className={cn(T_TD, 'whitespace-nowrap text-right tabular-nums text-gray-700')}>{inv.pcsLinked}</td>
-                  <td className={cn(T_TD, 'whitespace-nowrap text-right tabular-nums text-gray-700')}>{formatCurrency(inv.unitPrice)}</td>
-                  <td className={cn(T_TD, 'whitespace-nowrap text-left text-gray-700 font-mono text-sm')}>{inv.invoiceCode}</td>
-                  <td className={cn(T_TD, 'whitespace-nowrap text-right tabular-nums text-gray-700')}>{formatCurrency(inv.totalAmount)}</td>
-                  <td className={cn(T_TD, 'text-center whitespace-nowrap')}>
-                    <span className={cn('inline-block px-2.5 py-1 rounded-md text-[11px] font-medium text-white', statusBadgeClass)}>
-                      {status}
-                    </span>
-                  </td>
-                  <td className={cn(T_TD, 'whitespace-nowrap text-left text-gray-700')}>{formatDate(inv.createdAt || new Date().toISOString())}</td>
-                  <td className={cn(T_TD, 'text-center')}>
-                    <div className="flex items-center justify-center gap-1">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          showToast('Payment detail coming soon!', 'info')
-                        }}
-                        className="w-8 h-8 rounded-md flex items-center justify-center text-slate-400 hover:bg-blue-50 hover:text-blue-700 transition-colors"
-                        title="Payment"
-                      >
-                        <RefreshCw className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleDownload(inv)
-                        }}
-                        className="w-8 h-8 rounded-md flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors disabled:opacity-50"
-                        title="Download Invoice"
-                        disabled={isDownloading}
-                      >
-                        <Zap className="w-4 h-4" />
-                      </button>
-                    </div>
+        {/* ===== TABLE MATCHING PRODUCTION MONITORING RAW DATA ===== */}
+        <div className={T_WRAP}>
+          <table className={cn(T_TABLE, 'w-auto min-w-full whitespace-nowrap')}>
+            <HiddenColgroup
+              hidden={hiddenCols}
+              cols={['__sel', 'monthYear', 'clientName', 'workCode', 'pcsLinked', 'unitPrice', 'invoiceCode', 'totalAmount', 'financeValidation', 'createdAt', 'action']}
+            />
+            <thead>
+              <tr className={T_HEAD_ROW}>
+                <th className={cn(T_TH, 'text-center w-[32px]')}>
+                  <input
+                    type="checkbox"
+                    checked={paginatedInvoices.length > 0 && selectedRows.size === paginatedInvoices.length}
+                    onChange={handleSelectAll}
+                    className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 align-middle"
+                  />
+                </th>
+                <th className={cn(T_TH, 'text-left')}>Bulan</th>
+                <th className={cn(T_TH, 'text-left')}>Client</th>
+                <th className={cn(T_TH, 'text-left')}>Work Code</th>
+                <th className={cn(T_TH, 'text-right')}>Total Qty</th>
+                <th className={cn(T_TH, 'text-right')}>Nominal/PCS</th>
+                <th className={cn(T_TH, 'text-left')}>Kode Invoice</th>
+                <th className={cn(T_TH, 'text-right')}>Total</th>
+                <th className={cn(T_TH, 'text-center')}>Status</th>
+                <th className={cn(T_TH, 'text-left')}>Created At</th>
+                <th className={cn(T_TH, 'text-center')}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {paginatedInvoices.length === 0 && (
+                <tr>
+                  <td colSpan={columns.length} className="py-10 text-center text-[13px] text-gray-400">
+                    {invoices.length === 0 ? 'Belum ada invoice' : 'Tidak ada hasil yang cocok dengan filter'}
                   </td>
                 </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
+              )}
+              {paginatedInvoices.map((inv, i) => {
+                const bundle = paymentsByInvoice[inv.id]
+                const totPayment = bundle?.totalPayment ?? 0
+                const outstanding = computeOutstanding(inv.totalAmount, totPayment)
+                const isDownloading = downloadingId === inv.id
+                const status = outstanding === 0 ? 'Paid' : 'Outstanding'
+                const statusBadgeClass = STATUS_BADGE[status as keyof typeof STATUS_BADGE]
+                const isSelected = selectedRows.has(inv.id)
 
-      {/* Pagination footer */}
-      <div className="flex items-center justify-between mt-4 px-4">
-        <div className="text-sm text-gray-500">
-          Page {page} of {Math.ceil(filteredInvoices.length / PAGE_SIZE) || 1}
+                return (
+                  <tr key={inv.id} className={rowClass(i, isSelected)}>
+                    <td className={cn(T_TD, 'text-center')}>
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => handleSelectRow(inv.id)}
+                        className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 align-middle"
+                      />
+                    </td>
+                    <td className={cn(T_TD, 'text-left text-gray-700')}>{inv.monthYear}</td>
+                    <td className={cn(T_TD, 'text-left text-gray-700')}>{inv.clientName}</td>
+                    <td className={cn(T_TD, 'text-left text-gray-700')}>{inv.workCode}</td>
+                    <td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>{inv.pcsLinked}</td>
+                    <td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>{formatCurrency(inv.unitPrice)}</td>
+                    <td className={cn(T_TD, 'text-left text-gray-700')}>{inv.invoiceCode}</td>
+                    <td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>{formatCurrency(inv.totalAmount)}</td>
+                    <td className={cn(T_TD, 'text-center whitespace-nowrap')}>
+                      <span className={cn('inline-block px-2.5 py-1 rounded-md text-[11px] font-medium text-white', statusBadgeClass)}>
+                        {status}
+                      </span>
+                    </td>
+                    <td className={cn(T_TD, 'text-left text-gray-700')}>{formatDate(inv.createdAt || new Date().toISOString())}</td>
+                    <td className={cn(T_TD, 'text-center')}>
+                      <div className="flex items-center justify-center gap-1">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            showToast('Payment detail coming soon!', 'info')
+                          }}
+                          className="w-8 h-8 rounded-md flex items-center justify-center text-slate-400 hover:bg-blue-50 hover:text-blue-700 transition-colors"
+                          title="Payment"
+                        >
+                          <RefreshCw className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleDownload(inv)
+                          }}
+                          className="w-8 h-8 rounded-md flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors disabled:opacity-50"
+                          title="Download Invoice"
+                          disabled={isDownloading}
+                        >
+                          <Zap className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setPage(Math.max(1, page - 1))}
-            disabled={page <= 1}
-            className="h-8 px-3 text-[12px] font-medium border border-gray-200 rounded-lg hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200 transition-all disabled:opacity-50 disabled:hover:border-gray-200 disabled:hover:text-gray-500"
-          >
-            Previous
-          </button>
-          <button
-            onClick={() => setPage(page + 1)}
-            disabled={page >= Math.ceil(filteredInvoices.length / PAGE_SIZE)}
-            className="h-8 px-3 text-[12px] font-medium border border-gray-200 rounded-lg hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200 transition-all disabled:opacity-50 disabled:hover:border-gray-200 disabled:hover:text-gray-500"
-          >
-            Next
-          </button>
+
+        {/* Pagination footer */}
+        <div className="flex items-center justify-between mt-4">
+          <div className="text-sm text-gray-500">
+            Page {page} of {Math.ceil(filteredInvoices.length / PAGE_SIZE) || 1}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPage(Math.max(1, page - 1))}
+              disabled={page <= 1}
+              className="h-8 px-3 text-[12px] font-medium border border-gray-200 rounded-lg hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200 transition-all disabled:opacity-50 disabled:hover:border-gray-200 disabled:hover:text-gray-500"
+            >
+              Previous
+            </button>
+            <button
+              onClick={() => setPage(page + 1)}
+              disabled={page >= Math.ceil(filteredInvoices.length / PAGE_SIZE)}
+              className="h-8 px-3 text-[12px] font-medium border border-gray-200 rounded-lg hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200 transition-all disabled:opacity-50 disabled:hover:border-gray-200 disabled:hover:text-gray-500"
+            >
+              Next
+            </button>
+          </div>
         </div>
       </div>
-
-    </div>
+    </main>
   )
 }
 

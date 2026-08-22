@@ -199,6 +199,19 @@ Website Konveksi/
 
 ## Latest Progress
 
+### 2026-08-22 — InvoicingPage: font seragam + header layout standar shadcn
+
+**Font kolom data diseragamkan dengan tabel lain:**
+- Sel **Work Code** dan **Kode Invoice** menghapus override `font-mono text-sm` (14px monospace) → kini **13px sans reguler `text-gray-700`**, identik dengan semua sel data lain dan RAW DATA Production Monitoring (yang memang merender work code polos).
+- Kolom Bulan, Client, dll. tidak berubah; kolom numerik tetap `tabular-nums` rata kanan; badge Status tetap pill solid.
+
+**Layout header disamakan dengan Target Jahit / halaman lain:**
+- Tambah blok header standar (`px-8 pt-4 pb-0`): judul **"Invoicing"** 17px semibold tracking-tight + tombol kanan **Refresh** (putih border, pola Target Jahit) dan **Generate Missing Invoices** (violet-500, ikon Sparkles — pola Generate Target Planning Produksi; ikon lama Zap/amber diganti agar konsisten dengan tombol generate lainnya).
+- Konten pindah ke area `px-8 pt-5 pb-6`; toolbar kini **satu baris** seperti RAW DATA/Target Jahit: Search ("Cari invoice...") + **FilterButton + SortButton** (baru terpasang — fields sudah didefinisikan sebelumnya tapi belum dipakai; pipeline filter→sort→search via `applyFilters`/`applySorts`) + Kolom + Export + counter "N invoice" di ujung kanan.
+- Empty state dibedakan: "Belum ada invoice" vs "Tidak ada hasil yang cocok dengan filter". Checkbox header/baris diseragamkan `w-4 h-4 align-middle`. Pagination dipertahankan.
+- `HiddenColgroup` dirapikan: key checkbox `'status'`→`'__sel'` dan `'actions'`→`'action'` agar cocok dengan daftar field Kolom (key action tidak lagi ada di daftar hide ganda).
+- **Verifikasi**: `npm run build` hijau (2×); lint `InvoicingPage.tsx` = 5 error `no-explicit-any` pre-existing di `handleBackfill` (identik dengan baseline HEAD, diverifikasi via stash A/B) — **0 temuan baru**.
+
 ### 2026-08-21 — Target Jahit: Benefit Per Pcs & Automatic Holiday Calculator
 
 **Part A: Benefit Per Pcs Feature**
