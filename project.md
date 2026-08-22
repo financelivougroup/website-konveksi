@@ -199,6 +199,23 @@ Website Konveksi/
 
 ## Latest Progress
 
+### 2026-08-22 — Target Jahit: 3 Tampilan (Target · Utang Staf · Benefit)
+
+**Tab bar Target Jahit kini 3 tampilan** (semua keputusan produk disepakati via brainstorming):
+
+1. **Target** — tidak berubah, tetap tampilan induk & default.
+2. **Utang Staf** (perilaku diubah): kini **hanya menampilkan staf dengan utang > 0** — yang Lunas tidak muncul sama sekali. Kolom badge Status (Utang/Lunas) dihapus karena redundan (semua baris pasti berutang). Empty state baru: "🎉 Semua staf sudah lunas" saat semua bernilai 0.
+3. **Benefit** (tab baru): daftar baris target dengan **realisasi bulanan > target bulanan** (`extraProduction > 0`, syarat persis dapat bonus) — siapa yang layak dibayar bonus bulan ini. Kolom: Nama | Bulan | Target | Realisasi | Extra Production (+N, emerald) | Benefit Rate /Pcs | Benefit Amount. Ditampilkan apa adanya sesuai permintaan user: rate yang belum diisi tetap masuk daftar dengan amount Rp 0 (tampil "-"). Urutan: bulan terbaru dulu, lalu nama.
+
+**Detail implementasi:**
+- Data tab Benefit 100% turunan dari enrichment yang sudah ada (`enrichTargetRows` di `targetCompute.ts`) — **tanpa perubahan database/schema sama sekali**.
+- Klik baris di tab Benefit membuka overlay detail full-screen yang sama dengan tab Target (konsistensi interaksi, affordance chevron ›).
+- Tab Benefit gated owner/finance seperti Utang Staf (isinya nominal uang); inventory melihat tombol disabled 🔒.
+- Field `status` dibuang dari interface `DebtRow` internal karena kolomnya sudah tidak ada.
+- Verifikasi: `npm run build` hijau (~35s); lint file = identik baseline HEAD (3 temuan pre-existing, 0 temuan baru).
+
+---
+
 ### 2026-08-22 — InvoicingPage: font seragam + header layout standar shadcn
 
 **Font kolom data diseragamkan dengan tabel lain:**

@@ -166,14 +166,24 @@ const TARGET_COLUMNS: ColDef[] = [
   { key: 'benefitAmount', label: 'Benefit Amount', align: 'right', format: 'currency' },
 ];
 
-type TabKey = 'target' | 'utang-staf';
+type TabKey = 'target' | 'utang-staf' | 'benefit';
 
 interface DebtRow {
   nama: string;
   totalGaji: number;
   totalNilai: number;
   utang: number;
-  status: string;
+}
+
+interface BenefitRow {
+  id: number;
+  nama: string;
+  bulan: string;
+  targetMonthly: number;
+  realisasiMonthly: number;
+  extraProduction: number;
+  benefitRate: number | null;
+  benefitAmount: number;
 }
 
 function renderCell(col: ColDef, row: Record<string, unknown>) {
@@ -276,7 +286,6 @@ export function TargetJahitPage() {
           totalGaji: d.totalGaji,
           totalNilai: d.totalNilai,
           utang: d.utang,
-          status: d.status,
         };
       });
       setDebtRows(combined);
@@ -327,6 +336,26 @@ export function TargetJahitPage() {
     () => roleColumns.filter((c) => !hiddenCols.has(c.key)),
     [roleColumns, hiddenCols],
   );
+
+  // Benefit tab: rows whose monthly realization exceeds the target
+  // (extraProduction > 0 — same condition as earning a bonus). Shown as-is:
+  // rows with an unset benefit rate still appear with amount 0.
+  const benefitRows = useMemo<BenefitRow[]>(() => {
+    if (!canSeeDebt) return [];
+    return enriched
+      .filter((r) => r.extraProduction > 0)
+      .map((r) => ({
+        id: r.id,
+        nama: r.nama,
+        bulan: r.bulan_tahun,
+        targetMonthly: r.target_monthly,
+        realisasiMonthly: r.realisasiMonthly,
+        extraProduction: r.extraProduction,
+        benefitRate: r.benefitRate,
+        benefitAmount: r.benefitAmount,
+      }))
+      .sort((a, b) => (b.bulan || '').localeCompare(a.bulan || '') || a.nama.localeCompare(b.nama));
+  }, [enriched, canSeeDebt]);
 
   // Edit salary inline (owner/finance only) — satu-satunya kolom yang bisa diedit.
   async function handleSaveSalary(id: number) {
@@ -454,10 +483,24 @@ export function TargetJahitPage() {
               Utang Staf 🔒
             </button>
           )}
-          {!canSeeDebt && (
-            <span className="text-[11px] text-slate-400 ml-2">
-              Hanya owner/finance yang dapat melihat.
-            </span>
+          {canSeeDebt ? (
+            <button
+              onClick={() => setTab('benefit')}
+              className={cn(
+                'h-8 px-4 text-[12px] font-medium rounded-lg transition-colors',
+                tab === 'benefit' ? 'bg-blue-600 text-white shadow-md shadow-blue-200' : 'bg-white text-slate-600 border border-gray-200 hover:bg-blue-50 hover:text-blue-700',
+              )}
+            >
+              Benefit
+            </button>
+          ) : (
+            <button
+              disabled
+              title="Hanya owner/finance yang dapat melihat."
+              className="h-8 px-4 text-[12px] font-medium rounded-lg bg-slate-50 text-slate-400 border border-gray-200 cursor-not-allowed"
+            >
+              Benefit 🔒
+            </button>
           )}
         </div>
       </div>
@@ -557,8 +600,10 @@ export function TargetJahitPage() {
           <>
             {debtLoading ? (
               <p className="text-slate-400 text-sm">Menghitung utang staf...</p>
-            ) : debtRows.length === 0 ? (
-              <p className="text-slate-400 text-sm">Belum ada data utang staf.</p>
+            ) : debtRows.filter((r) => r.utang > 0).length === 0 ? (
+              <p className="text-slate-400 text-sm">
+                {debtRows.length === 0 ? 'Belum ada data utang staf.' : '🎉 Semua staf sudah lunas — tidak ada utang jahit.'}
+              </p>
             ) : (
               <div className={T_WRAP}>
                 <table className={cn(T_TABLE, 'w-auto min-w-full whitespace-nowrap')}>
@@ -567,19 +612,60 @@ export function TargetJahitPage() {
                     <th className={cn(T_TH, 'text-right')}>Total Gaji</th>
                     <th className={cn(T_TH, 'text-right')}>Total Nilai PCS</th>
                     <th className={cn(T_TH, 'text-right')}>Utang</th>
-                    <th className={cn(T_TH, 'text-center')}>Status</th>
                   </tr></thead>
                   <tbody>
-                    {debtRows.map((r, i) => (
+                    {debtRows.filter((r) => r.utang > 0).map((r, i) => (
                       <tr key={r.nama} className={rowClass(i)}>
                         <td className={cn(T_TD, 'font-medium text-gray-900')}>{r.nama}</td>
                         <td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>{formatCurrency(r.totalGaji)}</td>
                         <td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>{formatCurrency(r.totalNilai)}</td>
                         <td className={cn(T_TD, 'text-right tabular-nums font-semibold text-rose-600')}>{formatCurrency(r.utang)}</td>
-                        <td className={cn(T_TD, 'text-center')}>
-                          <span className={cn('inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap', r.status === 'Utang' ? 'bg-rose-100 text-rose-600' : 'bg-emerald-100 text-emerald-600')}>
-                            {r.status}
-                          </span>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <p className="text-[11px] text-slate-400 mt-3">
+              Utang = Total Gaji − Total Nilai PCS (hasil kerja berharga). Hanya staf yang masih memiliki utang yang ditampilkan.
+            </p>
+          </>
+        )}
+
+        {tab === 'benefit' && (
+          <>
+            {benefitRows.length === 0 ? (
+              <p className="text-slate-400 text-sm">Belum ada staf yang produksinya melebihi target.</p>
+            ) : (
+              <div className={T_WRAP}>
+                <table className={cn(T_TABLE, 'w-auto min-w-full whitespace-nowrap')}>
+                  <thead><tr className={T_HEAD_ROW}>
+                    <th className={cn(T_TH, 'text-left')}>Nama</th>
+                    <th className={cn(T_TH, 'text-left')}>Bulan</th>
+                    <th className={cn(T_TH, 'text-right')}>Target | Monthly</th>
+                    <th className={cn(T_TH, 'text-right')}>Realisasi | Monthly</th>
+                    <th className={cn(T_TH, 'text-right')}>Extra Production</th>
+                    <th className={cn(T_TH, 'text-right')}>Benefit Rate /Pcs</th>
+                    <th className={cn(T_TH, 'text-right')}>Benefit Amount</th>
+                    <th className={cn(T_TH, 'w-8')} />
+                  </tr></thead>
+                  <tbody>
+                    {benefitRows.map((r, i) => (
+                      <tr
+                        key={r.id}
+                        className={cn(rowClass(i), 'cursor-pointer')}
+                        onClick={() => setOverlayId(r.id)}
+                        title="Klik untuk lihat rincian per desain"
+                      >
+                        <td className={cn(T_TD, 'font-medium text-gray-900')}>{r.nama}</td>
+                        <td className={cn(T_TD, 'text-gray-700')}>{r.bulan ? formatMonthYearFromYm(r.bulan) : <span className="text-gray-300">—</span>}</td>
+                        <td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>{r.targetMonthly}</td>
+                        <td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>{r.realisasiMonthly}</td>
+                        <td className={cn(T_TD, 'text-right tabular-nums text-emerald-600 font-semibold')}>+{r.extraProduction}</td>
+                        <td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>{r.benefitRate != null && r.benefitRate > 0 ? formatCurrency(r.benefitRate) : '-'}</td>
+                        <td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>{formatCurrency(r.benefitAmount)}</td>
+                        <td className={cn(T_TD, 'text-center text-slate-300')}>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="inline-block"><path d="m9 18 6-6-6-6" /></svg>
                         </td>
                       </tr>
                     ))}
@@ -588,7 +674,7 @@ export function TargetJahitPage() {
               </div>
             )}
             <p className="text-[11px] text-slate-400 mt-3">
-              Utang = Total Gaji − Total Nilai PCS (hasil kerja berharga). Nilai dihitung dari data target & sewing.
+              Benefit = Extra Production × Benefit Rate /Pcs. Hanya staf dengan realisasi melebihi target bulanan yang ditampilkan.
             </p>
           </>
         )}
