@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
-import { ModalShell } from './ModalShell';
-import { Calendar } from 'lucide-react';
 import type { ColumnDef } from '@/types';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 
 interface DateRangeModalProps {
   open: boolean;
@@ -52,107 +51,100 @@ export function DateRangeModal({ open, onClose, columns, dateField, dateFrom, da
   };
 
   return (
-    <ModalShell
-      open={open}
-      title="Filter by Date Range"
-      onClose={onClose}
-      width="420px"
-      footer={
-        <>
-          {hasActiveRange && (
-            <button onClick={handleClear} className="px-4 py-2 text-[13px] font-medium text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors">
-              Clear
-            </button>
-          )}
-          <button onClick={onClose} className="px-4 py-2 text-[13px] font-medium text-slate-500 hover:text-slate-700 hover:bg-slate-50 rounded-lg transition-colors">
-            Cancel
-          </button>
-          <button onClick={handleApply} className="px-4 py-2 text-[13px] font-medium text-white bg-sky-400 hover:bg-sky-500 rounded-lg transition-colors shadow-sm shadow-sky-200">
-            Apply
-          </button>
-        </>
-      }
-    >
-      <div className="space-y-4">
-        {/* Date Field Selection */}
-        <div>
-          <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
-            Date Field
-          </label>
-          {dateColumns.length > 0 ? (
-            <select
-              value={localField}
-              onChange={(e) => setLocalField(e.target.value)}
-              className="w-full h-9 px-3 text-[13px] border border-gray-200 rounded-lg outline-none focus:border-sky-300 focus:ring-2 focus:ring-sky-100 bg-white"
-            >
-              {dateColumns.map((c) => (
-                <option key={c.key} value={c.key}>{c.label}</option>
-              ))}
-            </select>
-          ) : (
-            <div className="w-full h-9 px-3 flex items-center text-[13px] text-slate-400 bg-slate-50 border border-gray-200 rounded-lg">
-              No date fields available
-            </div>
-          )}
-        </div>
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-[420px]">
+        <DialogHeader>
+          <DialogTitle className="text-base font-semibold text-slate-800">Filter by Date Range</DialogTitle>
+        </DialogHeader>
 
-        {/* Date Range Inputs */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-4 py-4">
+          {/* Date Field Selection */}
           <div>
-            <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
-              From
+            <label className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1.5 block">
+              Date Field
             </label>
-            <div className="relative">
-              <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+            {dateColumns.length > 0 ? (
+              <select
+                value={localField}
+                onChange={(e) => setLocalField(e.target.value)}
+                className="w-full h-9 px-3 text-sm border border-gray-200 rounded-lg outline-none focus:border-sky-300 focus:ring-2 focus:ring-sky-100 bg-white"
+              >
+                {dateColumns.map((c) => (
+                  <option key={c.key} value={c.key}>{c.label}</option>
+                ))}
+              </select>
+            ) : (
+              <div className="w-full h-9 px-3 flex items-center text-sm text-slate-400 bg-slate-50 border border-gray-200 rounded-lg">
+                No date fields available
+              </div>
+            )}
+          </div>
+
+          {/* Date Range Inputs */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1.5 block">
+                From
+              </label>
               <input
                 type="date"
                 value={localFrom}
                 onChange={(e) => setLocalFrom(e.target.value)}
-                className="w-full h-9 pl-9 pr-3 text-[13px] border border-gray-200 rounded-lg outline-none focus:border-sky-300 focus:ring-2 focus:ring-sky-100"
+                className="w-full h-9 px-3 text-sm border border-gray-200 rounded-lg outline-none focus:border-sky-300 focus:ring-2 focus:ring-sky-100"
               />
             </div>
-          </div>
-          <div>
-            <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
-              To
-            </label>
-            <div className="relative">
-              <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+            <div>
+              <label className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1.5 block">
+                To
+              </label>
               <input
                 type="date"
                 value={localTo}
                 onChange={(e) => setLocalTo(e.target.value)}
-                className="w-full h-9 pl-9 pr-3 text-[13px] border border-gray-200 rounded-lg outline-none focus:border-sky-300 focus:ring-2 focus:ring-sky-100"
+                className="w-full h-9 px-3 text-sm border border-gray-200 rounded-lg outline-none focus:border-sky-300 focus:ring-2 focus:ring-sky-100"
               />
             </div>
           </div>
+
+          {/* Active Range Display */}
+          {hasActiveRange && (
+            <div className="p-3 bg-sky-50 rounded-lg border border-sky-100 flex items-center gap-2">
+              <span className="text-sm text-sky-700 font-medium">
+                {localFrom && localTo
+                  ? `${formatDate(localFrom)} — ${formatDate(localTo)}`
+                  : localFrom
+                  ? `From ${formatDate(localFrom)}`
+                  : `Until ${formatDate(localTo)}`}
+              </span>
+            </div>
+          )}
+
+          {!hasActiveRange && (
+            <p className="text-xs text-slate-400">Select a date range to filter the data.</p>
+          )}
         </div>
 
-        {/* Active Range Display */}
-        {hasActiveRange && (
-          <div className="p-3 bg-sky-50 rounded-xl border border-sky-100 flex items-center gap-2">
-            <Calendar className="w-4 h-4 text-sky-500 flex-shrink-0" />
-            <span className="text-[12px] text-sky-700 font-medium">
-              {localFrom && localTo
-                ? `${formatDate(localFrom)} \u2014 ${formatDate(localTo)}`
-                : localFrom
-                ? `From ${formatDate(localFrom)}`
-                : `Until ${formatDate(localTo)}`}
-            </span>
-          </div>
-        )}
-
-        {!hasActiveRange && (
-          <p className="text-[11px] text-slate-400">Select a date range to filter the data.</p>
-        )}
-      </div>
-    </ModalShell>
+        <DialogFooter>
+          {hasActiveRange && (
+            <button onClick={handleClear} className="px-4 py-2 text-sm font-medium text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors">
+              Clear
+            </button>
+          )}
+          <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-500 hover:text-slate-700 hover:bg-slate-50 rounded-lg transition-colors">
+            Cancel
+          </button>
+          <button onClick={handleApply} className="px-4 py-2 text-sm font-medium text-white bg-sky-400 hover:bg-sky-500 rounded-lg transition-colors shadow-sm shadow-sky-200">
+            Apply
+          </button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
 function formatDate(dateStr: string): string {
   if (!dateStr) return '';
-  const m = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  const m = dateStr.match(/(\d{4})-(\d{2})-(\d{2})/);
   if (!m) return dateStr;
   return `${m[3]}-${m[2]}-${m[1]}`; // DD-MM-YYYY
 }

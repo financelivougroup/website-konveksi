@@ -15,6 +15,7 @@ import {
   User,
 } from 'lucide-react';
 
+import { Button } from '@/components/ui/button';
 import {
   DndContext,
   DragOverlay,
@@ -527,10 +528,10 @@ export default function ProductionMonitoring({ onOpenSewingEntry, onOpenFinishin
             <h1 className="text-[17px] font-semibold tracking-tight text-slate-900">Production Monitoring</h1>
           </div>
           <div className="flex items-center gap-2.5">
-            <button onClick={() => setShowPullModal(true)} className="h-8 px-3.5 text-[12px] font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 hover:shadow-md hover:shadow-blue-200 transition-all flex items-center gap-2">
-              <DownloadCloud className="w-3.5 h-3.5" /> Pull Order Entry
-            </button>
-            <div className="h-8 px-3.5 text-[12px] text-slate-600 bg-white border border-slate-200 rounded-lg flex items-center gap-2">
+            <Button onClick={() => setShowPullModal(true)} size="sm" className="h-8 px-3.5 bg-blue-600 hover:bg-blue-700">
+              <DownloadCloud className="w-3.5 h-3.5 mr-2" /> Pull Order Entry
+            </Button>
+            <div className="h-8 px-3.5 text-[12px] flex items-center gap-2 bg-white border border-slate-200 rounded-lg text-slate-600">
               <User className="w-3.5 h-3.5 text-blue-500" /> {currentDisplayName}
             </div>
           </div>

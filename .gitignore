@@ -29,5 +29,11 @@ dist-ssr
 !.env.example
 public/test-supabase.html
 
+# Supermemory local instance (contains API key + local models)
+.supermemory/
+
+# Backup files
+*.backup
+
 # Claude Code worktrees
 .claude/worktrees/

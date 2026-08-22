@@ -26,6 +26,7 @@ export interface TargetJahitRow {
   target_ngebut_hari_akumulasi: number
   progress_accum: number
   status_final_akumulasi: string | null
+  benefit_per_pcs: number | null
 }
 
 // Live schema quirk: kolom bulan di DB bernama 'bulanTahun' (camelCase),

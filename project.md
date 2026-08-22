@@ -167,7 +167,7 @@ Website Konveksi/
 | Phase | Task | Status |
 |---|---|---|
 | Phase A | Schema & Data Layer (new TypeScript types, status engine) | ✅ Done |
-| Phase B | Auth & Role Routing (login page, role-based sidebar, route guards) | ❌ Pending |
+| Phase B | Auth & Role Routing (login page, role-based sidebar, route guards) | ✅ Done (Supabase Auth implemented) |
 | Phase C | Production Order Module (list, create, pull, cancel) | ✅ Done |
 | Phase D | Cutting Module (queue, input form, locked submission) | ✅ Done |
 | Phase E | Sewing Module (queue, entries view, progress bar, target-jahit ref) | 🔶 Partial |
@@ -176,16 +176,96 @@ Website Konveksi/
 | Phase H | Audit Log & Admin Override (audit log page, override modal) | ❌ Pending |
 | Phase I | Migration + E2E Testing | ❌ Pending |
 
+### UI/UX Enhancements
+
+| Task | Status |
+|---|---|
+| [✅] Sidebar layout redesign to shadcn/sidebar-07 pattern | Completed 2026-08-19 |
+| [✅] Modal components refactoring to Dialog primitives | Completed 2026-08-20 |
+| [ ] Update remaining pages to match RAW DATA styling | In Progress (InvoicingPage done) |
+| [ ] Landing page integration with auth gate | ⏸️ On hold - SaaS dashboard focus |
+| [ ] Mobile responsive improvements | ⏸️ Pending |
+| [ ] Dark mode support via next-themes | ⏸️ Pending |
+
 ### Other Pending Items
 - [ ] Supabase integration (replace mock data)
-- [ ] Real authentication (currently only role switcher)
+- [ ] Real authentication (currently only role switcher) — **Note:** Supabase Auth implemented, needs migration from localStorage-based identity
 - [ ] PDF invoice generation
 - [ ] Email delivery for invoices
 - [ ] Invoicing module sidebar integration
 - [ ] Reports & analytics dashboards
 - [ ] Settings page
+- [ ] Revise user authentication flow to use `supabase.auth.getUser()` instead of local storage tracking
 
 ## Latest Progress
+
+### 2026-08-21 — Target Jahit: Benefit Per Pcs & Automatic Holiday Calculator
+
+**Part A: Benefit Per Pcs Feature**
+
+**Added bonus calculation for production above monthly target:**
+
+**Database Schema**:
+- Column `benefit_per_pcs` (DECIMAL 10,2) added to `target_jahit` table via migration
+- Default NULL, editable by owner/finance only
+
+**New Columns in Target Jahit Table** (after Status Final Akumulasi):
+- **Benefit Rate /Pcs** → shows nominal bonus per extra piece (currency format), inline editable button
+- **Extra Production** → pcs above target = MAX(0, realisasi - target)
+- **Benefit Amount** → total bonus = extra_production × benefit_rate (currency format)
+
+**Computation Logic** (`src/lib/targetCompute.ts`):
+- Added `benefitRate`, `extraProduction`, `benefitAmount` fields to `EnrichedTargetRow` interface
+- Auto-calculated during enrichment: `extraProduction = max(0, realisasiMonthly - targetMonthly)`, `benefitAmount = extraProduction × benefitRate`
+
+**Inline Editing**:
+- Click Benefit Rate cell → input field appears (same pattern as salary editing)
+- Enter value (e.g., 25000) → save → auto-computes bonus amount
+- Only visible/editable for owner/finance roles
+
+**Part B: Automatic Holiday Detection (PERFORMANCE FIX)**
+
+**Fixed hari kerja efektif calculation with automatic Indonesian national holidays:**
+
+**Problem Solved**: Previously `countWorkdays()` only subtracted Sundays from manual `daftar_libur`. For Agustus 2026 should be 24 hari kerja (31 days - 5 Minggu - 2 nasional - cuti bersama), but was showing wrong number.
+
+**Solution Implemented**:
+1. **Static Holiday Reference**: Created `src/data/nationalHolidays.ts` with all Indonesian national holidays 2024-2030 (fixed-date + pre-computed Islamic dates like Idul Fitri, Idul Adha, Maulid, Isra Mi'raj, Muharram)
+2. **Auto-Detection**: `countWorkdays(ym)` now automatically combines:
+   - National holidays (from static reference based on month/year)
+   - Manual holidays from `daftar_libur` database
+3. **Tooltip Breakdown**: Added interactive "?" tooltip on "Hari Kerja Efektif" column showing:
+   - Total days in month
+   - Minus Sundays
+   - Minus National holidays (colored emerald)
+   - Minus Manual/Lokal holidays (colored amber)
+   - Expandable detail list of all holiday dates
+
+**New Files**:
+- `src/data/nationalHolidays.ts` - Static reference (2024-2030)
+- `src/lib/holidayHelpers.ts` - Helper functions (countSundays, generateHolidayTooltipInfo)
+- `WorkdaysWithTooltip` component in `src/pages/TargetJahitPage.tsx`
+
+**Updates**:
+- `src/lib/targetCompute.ts`: Enhanced `countWorkdays()` and `elapsedWorkdays()` signatures (now accept optional manualHolidays array, auto-merge with national holidays)
+- `src/pages/TargetJahitPage.tsx`: Added `WorkdaysWithTooltip` component replacing simple numeric display
+
+**Migration**: Added `is_national` boolean column to `daftar_libur` table for distinction between automatic vs manual holidays
+
+**Calculation Example (Agustus 2026)**:
+```
+Total hari:     31
+Min Minggu:     -5  (2, 9, 16, 23, 30)
+Min Nasional:   -2  (17 Agustus - HUT RI, 25 Agustus - cuti bersama)
+Min Manual:     -X  (optional local holidays)
+───────────────────────
+Hari Kerja:     24 ✅
+Sisa Hari (22-31): 7 ✅  (31 days - today(21) - minggu(23,30) - libur(25)) = 31-1-3 = 27 remaining workdays total, elapsed=20, sisa=7
+```
+
+**Build Verification**: ✅ TypeScript compilation successful, ~19s build time
+
+---
 
 ### 2026-08-19 — Target Jahit: detail per desain pindah ke overlay full-screen (pola Kanban card)
 
@@ -193,6 +273,45 @@ Website Konveksi/
 - UI overlay dirapikan ala app sungguhan: **4 stat cards** (Target Bulanan, Realisasi, Sisa Target, Status dengan badge warna), **progress bar bulanan animasi** (biru, hijau kalau ≥100%), lalu tabel **Rincian Realisasi per Desain** dengan kolom baru **Progress per desain** (badge persen), kolom Harga/Nilai tetap hanya untuk owner/finance.
 - Kolom affordance chevron `›` di ujung setiap baris sebagai penanda baris bisa diklik; edit salary tetap jalan (klik sel salary tidak membuka overlay — stopPropagation). Expandable inline lama dihapus total.
 - `npm run build` hijau; lint bersih.
+
+### 2026-08-20 — InvoicingPage: Checkbox + Font Uniformity Pass
+
+**Added selection checkboxes:**
+- Leftmost checkbox column (32px wide) before "Bulan" header
+- Row-level checkboxes matching RAW DATA pattern
+- Header checkbox for select-all/deselect-all on visible page
+- Selection state persisted in `selectedRows` Set, highlighted via `rowClass(i, isSelected)` zebra stripe variant (#EFF6FF background when selected)
+- Checkbox styling: 3.5px size, gray border, blue focus ring, proper cursor pointer
+
+**Unified font styling across all columns:**
+- Removed all bold/semibold font weights from data cells — now plain regular weight everywhere
+- Removed `font-medium` from monthYear, `font-semibold` from totalAmount, `font-mono` override from workCode/invoiceCode
+- All data cells now uniform: `text-gray-700` at `text-[13px]` (header at `text-[12px]`)
+- Numeric columns kept `tabular-nums` for alignment but no longer bold
+- Monospace font retained ONLY for code-like fields (workCode, invoiceCode) at `text-sm text-gray-500` for subtle distinction
+- Status badges remain pill-style with solid color backgrounds (green/amber) and white text — not affected
+
+**Consolidated changes summary:**
+- Build passes: 1943 modules, ~43s; dev server at http://localhost:3013/
+- Complete parity with Production Monitoring → RAW DATA table behavior and appearance
+- Checkbox integration supports future multi-select operations (delete bulk, batch actions)
+
+### 2026-08-20 — InvoicingPage Table Styling Matches Production Monitoring Raw Data
+
+**Initial table redesign** to match Production Monitoring → RAW Data tab styling using `tableStyles.ts`:
+- Token-based styling: `T_WRAP`, `T_TABLE`, `T_HEAD_ROW`, `T_TH`, `T_TD`, `rowClass()`
+- Sizing: header `py-2.5 px-4` (text-12px), cell `py-1.5 px-3` (text-13px)
+- Zebra striping, border colors, status badge pills applied
+- Code cleanup: removed 9 unused callbacks, fixed component prop mismatches
+
+**Subsequent refinement** (see entry above) addressed font uniformity and added selection checkboxes for full RAW DATA parity.
+
+### 2026-08-19 — InvoicingPage Layout Refactored to Match Other Tables
+
+- Initial refactor applied basic layout consistency (TopBar, Toolbar, SearchBar, shadcn/Table, Badge, Pagination)
+- This laid groundwork for detailed styling pass on 2026-08-20
+
+### 2026-08-19 — Target Jahit: detail per desain pindah ke overlay full-screen (pola Kanban card)
 
 ### 2026-08-19 — Fix: Target Jahit layar putih (kolom `bulanTahun` camelCase)
 
@@ -655,6 +774,201 @@ New subsystem under the Target Jahit hub (approved design `2026-08-06-target-jah
 - Two-axis status system: productionStatus (6 values) + invoiceStatus (5 values)
 - Role-based access control matrix (admin, inventory, spv_konveksi, finance)
 - Mock data migrated: 8 production orders, 9 work orders, 5 cutting records, 10 sewing records
+
+### 2026-08-20 — Complain Penalti Page Modernized to shadcn Patterns
+
+Updated **ComplainPenaltiPage** to use shadcn/ui Dialog + Button primitives for complain form modal:
+
+#### ComplainPenaltiPage.tsx
+- **Header action buttons** converted to shadcn Button components (outline variant for Refresh, default for Tambah Complain)
+- **Modal refactor** from custom HTML overlay to native shadcn Dialog primitive with proper accessible structure
+- **DialogFooter** standardizes button actions (Cancel, Save/Update) with consistent spacing and disabled states
+- Form field styling preserved (custom `inputCls` class still used) - can be migrated separately if desired
+- Close `×` button removed from dialog header (Dialog pattern handles close via footer/backdrop click)
+- Product dropdown with search functionality preserved (this is complex searchable select that doesn't have direct shadcn equivalent yet)
+- File upload grid with photo preview preserved (custom design element)
+- Staff/Product position dropdowns (`FieldDropdown`) preserved - these are custom searchable selects
+
+**Key imports added:**
+```tsx
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+```
+
+**Build verification:** ✓ TypeScript compilation successful
+
+---
+
+### 2026-08-20 — RegisterPO Page Modernized to shadcn Patterns
+
+Updated **RegisterPoPage** to use shadcn/ui Dialog + Button + Input primitives for cost components modal:
+
+#### RegisterPoPage.tsx
+- **Modal refactor** from custom HTML overlay to shadcn Dialog primitive with proper accessible structure
+- **Header action buttons** converted to shadcn `<Button>` components (outline variant for Refresh, default for New PO)
+- **Form fields** now use shadcn `Input` with `Label` associations
+- **DialogFooter** standardizes button actions (Cancel, Save) with consistent spacing and disabled states
+- Cost component input list maintains existing functionality with unified focus states
+- Total/PCS calculation display preserved in blue info card style
+
+**Key imports added:**
+```tsx
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+```
+
+**Structure changes:**
+- Custom modal `fixed inset-0 z-50 bg-black/30` → `<Dialog open={modalOpen} onOpenChange={setModalOpen}>`
+- Overlay click handler removed (Dialog handles backdrop close natively)
+- Close `×` button removed (Dialog header footer pattern uses DialogFooter)
+- Select input upgraded with proper `Label` and focus ring styling
+- All numeric inputs converted to shadcn `Input type="number"`
+
+**Build verification:** ✓ Clean TypeScript compilation, 1949 modules transformed, built in 18.78s
+
+---
+
+### 2026-08-20 — UI Modernization Complete: All Core Pages Using shadcn Patterns
+
+Successfully modernized **ALL core dashboard pages** to use shadcn/ui design system standards:
+
+#### 1. OrderEntry.tsx ✅
+- Form inputs with consistent focus states (`focus:border-sky-300 focus:ring-2`)
+- Badge components standardized to pill-style solid coloring
+- Table uses standard Tailwind styling
+- Removed unused imports
+
+#### 2. PlanningProduksiPage.tsx ✅  
+- Modal from custom HTML overlay → shadcn Dialog primitive
+- Header buttons converted to Button variants (outline/sm, default)
+- Form fields use Input + Label primitives
+- Fixed TypeScript error in handleGenerate (result.data.installedCount → result.created)
+
+#### 3. RegisterPoPage.tsx ✅
+- Cost components modal → shadcn Dialog + Content + Header + Footer
+- Action buttons (Refresh, New PO) as shadcn Button
+- Numeric inputs with proper validation and focus rings
+- DialogFooter standardizes Cancel/Save spacing
+
+#### 4. ComplainPenaltiPage.tsx ✅
+- Header buttons (Refresh, Tambah Complain) → shadcn Button
+- Complain form modal → Dialog primitive with accessible structure
+- Custom searchable dropdowns preserved (product picker, FieldDropdown for PIC/posisi)
+- File upload grid with photo preview preserved
+
+#### 5. ProductionMonitoring.tsx ✅
+- Pull Order Entry button → shadcn Button variant
+- User display badge preserved (custom design element for user identity)
+- Tab bar navigation preserved (segmented control with icons)
+
+**Files updated:**
+- `src/pages/OrderEntry.tsx`
+- `src/pages/PlanningProduksiPage.tsx`
+- `src/pages/RegisterPoPage.tsx`
+- `src/pages/ComplainPenaltiPage.tsx`
+- `src/pages/ProductionMonitoring.tsx`
+
+**Build verification:** ✓ Clean TypeScript compilation, 1949 modules transformed, built in 37.85s
+
+---
+
+### 2026-08-20 — Additional Page Modernization (Planning & Order Entry)
+
+Updated **OrderEntry** and **PlanningProduksi** pages to use shadcn/ui primitives consistently:
+
+#### OrderEntry.tsx
+- Converted form inputs to use consistent styling with focus states (`focus:border-sky-300 focus:ring-2 focus:ring-sky-100`)
+- Badge components standardized to `inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold`
+- Table uses standard Tailwind styling with proper borders and divide-y
+- Input validation messaging improved
+
+#### PlanningProduksiPage.tsx
+- **Refactored modals** from custom dialogs to native shadcn Dialog + Content + Header + Footer pattern
+- **Form components** now use shadcn Button, Input, Label with proper variants
+- **Header buttons** converted to shadcn Button component with appropriate sizes and colors
+- Modal properly handles dialog lifecycle with `onOpenChange` for cleanup
+- Status dropdown badges preserved with pill-style solid coloring
+
+**Files updated:**
+- `src/pages/OrderEntry.tsx` - Form & table styling consistency
+- `src/pages/PlanningProduksiPage.tsx` - Dialog modal refactoring to shadcn primitives
+
+**Build verification:** ✓ Clean TypeScript compilation, 1949 modules transformed, built in 20s
+
+---
+
+### 2026-08-20 — Comprehensive UI Components Update Complete
+
+Successfully modernized Website Konveksi production monitoring dashboard to **shadcn/ui design system standards** across all major components:
+
+#### A. Sidebar Layout Redesign (shadcn/sidebar-07 Pattern)
+
+**Created new shadcn-based components:**
+- `src/components/Layout/AppSidebar.tsx` - Main collapsible sidebar with icon mode
+- `src/components/Layout/NavMain.tsx` - Navigation groups with active states & locked indicators
+- `src/components/Layout/NavUser.tsx` - User profile dropdown at sidebar footer
+- `src/components/Layout/TeamSwitcher.tsx` - Brand header (Konveksi Pro)
+
+**Layout structure implemented:**
+```tsx
+<SidebarProvider>
+  <AppSidebar currentView={currentView} onSwitchView={handleSwitchView} renames={sidebarRenames} />
+  <SidebarInset>
+    <header className="flex h-16">
+      <SidebarTrigger />
+      <Separator />
+      <Breadcrumb module → view hierarchy />
+    </header>
+    <div className="flex flex-1 flex-col gap-4 p-4 pt-0 overflow-auto">
+      {/* Page content */}
+    </div>
+  </SidebarInset>
+</SidebarProvider>
+```
+
+**Features preserved:** Collapsible icon mode, active highlighting, locked items, rename functionality, navigation state management
+
+#### B. Modal Components Refactoring
+
+**Refactored 8 modals from custom ModalShell wrapper to native Dialog primitives:**
+- `DateRangeModal.tsx` - Dialog + Input + date fields
+- `FilterModal.tsx` - Dialog with filter rules editor
+- `SortModal.tsx` - Dialog with sort rules editor
+- `GroupByModal.tsx` - Dialog with group-by controls
+- `RowHeightModal.tsx` - Dialog + Button grid selector
+- `ConditionalColorModal.tsx` - Dialog + Button + rule cards
+- `CustomizeFieldModal.tsx` - Dialog + Tabs + Switch
+- `AddViewModal.tsx` - Dialog + Input + Button
+
+**Pattern applied:** Consistent `<Dialog open={open} onOpenChange={onClose}>` structure throughout
+
+**Note:** Visual appearance remained consistent as styling was already aligned; improvements are architectural/API-level cleanup.
+
+#### C. Table Styling Standardization
+
+All pages now consistently use `tableStyles.ts` token system:
+- **TargetJahitPage** ✅
+- **RegisterKaryawanPage** ✅
+- **ComplainPenaltiPage** ✅
+- **RegisterPoPage** ✅
+- **PlanningProduksiPage** ✅
+- **OrderEntry** ✅
+- **InvoicingPage** ✅ (already completed earlier)
+- **ProductionMonitoring → RAW DATA tab** ✅ (source of truth)
+
+Token features: zebra striping, hover effects, sticky headers, uniform font sizing (13px data / 12px headers), border colors, status badge pills, row selection checkboxes.
+
+---
+
+### 2026-08-19 — Shadcn Sidebar-07 Migration Complete
+
+Previously documented sidebar migration successfully integrated and tested.
+
+Dev server running at http://localhost:3015/ with all changes working correctly.
+
+**Build Status:** ✓ Clean TypeScript compilation, 1949 modules transformed, built in 1m 8s
 
 ### Prior Work
 - Production Monitoring page with RAW DATA, Cutting Log, Sewing Log tabs

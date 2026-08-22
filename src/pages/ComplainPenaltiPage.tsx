@@ -8,6 +8,8 @@ import { FilterButton, SortButton, ExportButton } from '@/components/Table/Table
 import { ColumnSettingsButton, HiddenColgroup } from '@/components/Table/ColumnSettings';
 import { useColumnSettings } from '@/lib/columnSettings';
 import { applyFilters, applySorts, type FieldOption, type FilterRule, type SortRule } from '@/lib/tableQuery';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import {
   list as listComplain,
   create as createComplain,
@@ -622,18 +624,12 @@ export function ComplainPenaltiPage() {
         <div className="flex items-center justify-between mb-4">
           <h1 className="text-[17px] font-semibold tracking-tight text-slate-900">Complain & Penalti</h1>
           <div className="flex items-center gap-2.5">
-            <button
-              onClick={refresh}
-              className="h-8 px-3.5 text-[12px] font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:shadow-md transition-all flex items-center gap-2"
-            >
-              <RefreshCw className="w-3.5 h-3.5" /> Refresh
-            </button>
-            <button
-              onClick={openCreate}
-              className="h-8 px-3.5 text-[12px] font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 hover:shadow-md hover:shadow-blue-200 transition-all flex items-center gap-2"
-            >
-              <Plus className="w-3.5 h-3.5" /> Tambah Complain
-            </button>
+            <Button onClick={refresh} variant="outline" size="sm" className="h-8 px-3.5">
+              <RefreshCw className="w-3.5 h-3.5 mr-2" /> Refresh
+            </Button>
+            <Button onClick={openCreate} size="sm" className="h-8 px-3.5 bg-blue-600 hover:bg-blue-700">
+              <Plus className="w-3.5 h-3.5 mr-2" /> Tambah Complain
+            </Button>
           </div>
         </div>
         {message && (
@@ -764,26 +760,11 @@ export function ComplainPenaltiPage() {
 
       {/* ===== Modal form complain ===== */}
       {modalOpen && (
-        <div
-          className="fixed inset-0 z-50 bg-slate-900/30 backdrop-blur-[2px] flex items-center justify-center p-4"
-          onClick={closeModal}
-        >
-          <div
-            className="bg-white rounded-2xl shadow-2xl w-[560px] max-w-full max-h-[90vh] flex flex-col border border-gray-100"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="px-5 py-3.5 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
-              <h3 className="text-[14px] font-semibold text-slate-900">
-                {editTarget ? 'Edit Complain' : 'Tambah Complain'}
-              </h3>
-              <button
-                onClick={closeModal}
-                className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
-                title="Tutup"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+        <Dialog open={modalOpen} onOpenChange={closeModal}>
+          <DialogContent className="sm:max-w-[560px] max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>{editTarget ? 'Edit Complain' : 'Tambah Complain'}</DialogTitle>
+            </DialogHeader>
 
             <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
               {/* Row 1: Tanggal | Produk (combobox searchable) */}
@@ -1020,24 +1001,14 @@ export function ComplainPenaltiPage() {
               </div>
             </div>
 
-            <div className="px-5 py-3 border-t border-gray-100 flex justify-end gap-2 flex-shrink-0">
-              <button
-                onClick={closeModal}
-                disabled={saving}
-                className="px-4 py-1.5 text-[11px] text-slate-600 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => void handleSave()}
-                disabled={!isValid || saving}
-                className="px-4 py-1.5 text-[11px] font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
+            <DialogFooter>
+              <Button onClick={closeModal} variant="outline" disabled={saving}>Cancel</Button>
+              <Button onClick={() => void handleSave()} disabled={!isValid || saving} className="bg-blue-600 hover:bg-blue-700">
                 {saving ? 'Saving…' : editTarget ? 'Update Complain' : 'Simpan Complain'}
-              </button>
-            </div>
-          </div>
-        </div>
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   );

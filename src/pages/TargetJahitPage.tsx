@@ -17,6 +17,8 @@ import * as targetJahitDetailSvc from '@/services/targetJahitDetail';
 import { enrichTargetRows, enrichDetails } from '@/lib/targetCompute';
 import type { SewingRecord } from '@/types/pipeline';
 import { useAuth } from '@/contexts/AuthContext';
+import { generateHolidayTooltipInfo } from '@/lib/holidayHelpers';
+import { getNationalHolidaysInMonth } from '@/data/nationalHolidays';
 
 // Map live snake_case target_jahit columns to camelCase render keys.
 const TARGET_COLUMN_ALIAS: Record<string, string> = {
@@ -39,6 +41,7 @@ const TARGET_COLUMN_ALIAS: Record<string, string> = {
   target_ngebut_hari_akumulasi: 'targetNgebutHariAkumulasi',
   progress_accum: 'progressAccum',
   status_final_akumulasi: 'statusFinalAkumulasi',
+  benefit_per_pcs: 'benefitRate',
 };
 
 function normalizeTargetRow(row: TargetJahitRow): Record<string, unknown> {
@@ -48,6 +51,89 @@ function normalizeTargetRow(row: TargetJahitRow): Record<string, unknown> {
     out[alias ?? key] = value;
   }
   return out;
+}
+
+/**
+ * Helper component to display workdays with holiday breakdown tooltip on hover
+ */
+function WorkdaysWithTooltip({ ym, manualHolidays }: { ym: string; manualHolidays: string[] }) {
+  if (!ym || !/^(\d{4})-(\d{2})$/.test(ym)) {
+    return <span className="text-gray-300">—</span>;
+  }
+
+  const nationalHolidays = useMemo(() => getNationalHolidaysInMonth(ym), [ym]);
+
+  const info = useMemo(() => generateHolidayTooltipInfo(ym, manualHolidays, nationalHolidays), [ym, manualHolidays, nationalHolidays]);
+
+  const allHolidays = [...new Set([...manualHolidays, ...nationalHolidays])].sort();
+
+  return (
+    <div className="relative inline-block cursor-help group">
+      <span className="font-medium">{info.workdays} hari</span>
+
+      {/* Info icon trigger */}
+      <button
+        type="button"
+        title="Tampilkan rincian libur"
+        className="ml-1 text-[10px] text-blue-600 font-semibold hover:text-blue-800 underline decoration-dotted"
+      >
+        (?)
+      </button>
+
+      {/* Tooltip popup */}
+      <div className="absolute z-50 hidden group-hover:block w-72 bg-white border border-gray-300 rounded-lg shadow-xl p-3 mt-2 left-0">
+        <p className="text-xs font-semibold mb-2 text-slate-700">Rincian Hari Kerja Efektif</p>
+
+        <div className="space-y-1 text-[11px]">
+          <div className="flex justify-between">
+            <span>Total hari:</span>
+            <span className="font-mono">{info.totalDays}</span>
+          </div>
+          <div className="flex justify-between">
+            <span>Minggu:</span>
+            <span className="font-mono">-{info.sundays}</span>
+          </div>
+          <div className="flex justify-between">
+            <span>Nasional:</span>
+            <span className="font-mono">-{nationalHolidays.length}</span>
+          </div>
+          {manualHolidays.length > 0 && (
+            <div className="flex justify-between">
+              <span>Manual/Lokal:</span>
+              <span className="font-mono">-{manualHolidays.length}</span>
+            </div>
+          )}
+
+          <div className="mt-2 pt-2 border-t border-gray-200 flex justify-between font-semibold">
+            <span>Hari Kerja:</span>
+            <span className="text-blue-600">{info.workdays}</span>
+          </div>
+        </div>
+
+        {allHolidays.length > 0 && (
+          <details className="mt-2">
+            <summary className="cursor-pointer text-xs font-medium text-blue-600 hover:text-blue-800">
+              Detail Tanggal Libur ({allHolidays.length})
+            </summary>
+            <ul className="text-[10px] max-h-40 overflow-auto mt-2 space-y-0.5 pr-2">
+              {nationalHolidays.map((h) => (
+                <li key={`nat-${h}`} className="flex items-start">
+                  <span className="w-24 shrink-0 text-gray-500">{h.slice(5)}</span>
+                  <span className="text-emerald-600">(Nas)</span>
+                </li>
+              ))}
+              {manualHolidays.map((h) => (
+                <li key={`man-${h}`} className="flex items-start">
+                  <span className="w-24 shrink-0 text-gray-500">{h.slice(5)}</span>
+                  <span className="text-amber-600">(Manual)</span>
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+      </div>
+    </div>
+  );
 }
 
 // Column definition — mirrors viewConfig['target-jahit'] order.
@@ -75,6 +161,9 @@ const TARGET_COLUMNS: ColDef[] = [
   { key: 'targetNgebutHariAkumulasi', label: 'Target Ngebut | Akumulasi', align: 'right' },
   { key: 'progressAccum', label: 'Progress Akumulasi', align: 'right', format: 'percent' },
   { key: 'statusFinalAkumulasi', label: 'Status Final | Akumulasi', badge: true },
+  { key: 'benefitRate', label: 'Benefit Rate /Pcs', align: 'right', format: 'currency' },
+  { key: 'extraProduction', label: 'Extra Production', align: 'right' },
+  { key: 'benefitAmount', label: 'Benefit Amount', align: 'right', format: 'currency' },
 ];
 
 type TabKey = 'target' | 'utang-staf';
@@ -133,6 +222,8 @@ export function TargetJahitPage() {
   const [sorts, setSorts] = useState<SortRule[]>([]);
   const [editingSalaryId, setEditingSalaryId] = useState<number | null>(null);
   const [salaryDraft, setSalaryDraft] = useState('');
+  const [editingBenefitId, setEditingBenefitId] = useState<number | null>(null);
+  const [benefitDraft, setBenefitDraft] = useState('');
   const [message, setMessage] = useState<string | null>(null);
 
   // Derived-columns source data (live compute — never written back to DB).
@@ -252,6 +343,25 @@ export function TargetJahitPage() {
       setItems(prev => prev.map(r => (r.id === id ? { ...r, salary: value } : r)));
       setMessage('✅ Salary disimpan.');
       setEditingSalaryId(null);
+    }
+    setTimeout(() => setMessage(null), 3000);
+  }
+
+  // Edit benefit rate inline (owner/finance only)
+  async function handleSaveBenefit(id: number) {
+    const value = Number(benefitDraft);
+    if (Number.isNaN(value) || value < 0) {
+      setMessage('❌ Benefit rate harus angka ≥ 0.');
+      setTimeout(() => setMessage(null), 3000);
+      return;
+    }
+    const { error } = await updateTarget(id, { benefit_per_pcs: value });
+    if (error) {
+      setMessage(`❌ Error: ${error.message}`);
+    } else {
+      setItems(prev => prev.map(r => (r.id === id ? { ...r, benefit_per_pcs: value } : r)));
+      setMessage('✅ Benefit rate disimpan.');
+      setEditingBenefitId(null);
     }
     setTimeout(() => setMessage(null), 3000);
   }
@@ -411,6 +521,23 @@ export function TargetJahitPage() {
                                   {formatCurrency(row.salary as number)}
                                 </button>
                               )
+                            ) : c.key === 'benefitRate' && canSeeDebt ? (
+                              editingBenefitId === Number(row.id) ? (
+                                <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+                                  <input type="number" min={0} value={benefitDraft} onChange={(e) => setBenefitDraft(e.target.value)} autoFocus
+                                    onKeyDown={(e) => { if (e.key === 'Enter') void handleSaveBenefit(Number(row.id)); if (e.key === 'Escape') setEditingBenefitId(null); }}
+                                    className="h-7 w-28 px-2 text-[11px] text-right border border-blue-300 rounded-md outline-none focus:ring-2 focus:ring-blue-100" />
+                                  <button onClick={() => void handleSaveBenefit(Number(row.id))} className="h-7 px-2 text-[10px] font-semibold bg-blue-600 text-white rounded-md hover:bg-blue-700">Simpan</button>
+                                  <button onClick={() => setEditingBenefitId(null)} className="h-7 px-2 text-[10px] text-slate-500 border border-gray-200 rounded-md hover:bg-gray-50">✕</button>
+                                </div>
+                              ) : (
+                                <button onClick={(e) => { e.stopPropagation(); setEditingBenefitId(Number(row.id)); setBenefitDraft(String(row.benefitRate ?? 0)); }} className="underline decoration-dotted decoration-slate-300 underline-offset-2 hover:text-blue-600 cursor-text" title="Klik untuk edit benefit rate">
+                                  {(row.benefitRate as number) !== undefined && (row.benefitRate as number) !== null && (row.benefitRate as number) > 0 ? formatCurrency(row.benefitRate as number) : '-'}
+                                </button>
+                              )
+                            ) : c.key === 'totalHariKerja' ? (
+                              // Special rendering for Hari Kerja Efektif with holiday tooltip
+                              <WorkdaysWithTooltip ym={String((row as any).bulanTahun ?? '')} manualHolidays={libur} />
                             ) : renderCell(c, row)}
                           </td>
                         ))}

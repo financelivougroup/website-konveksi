@@ -2,6 +2,7 @@ import type { SewingRecord } from '@/types/pipeline';
 import type { TargetJahitRow } from '@/services/targetJahit';
 import type { TargetJahitDetailRow } from '@/services/targetJahitDetail';
 import type { PriceMap } from '@/services/staffDebt';
+import { getNationalHolidaysInMonth } from '@/data/nationalHolidays';
 
 // ===== Workdays: Mon–Sat minus daftar_libur =====
 
@@ -21,11 +22,20 @@ function daysInMonth(year: number, month: number): number {
   return new Date(year, month, 0).getDate();
 }
 
-/** Total Mon–Sat days of the month, minus holidays ('YYYY-MM-DD' strings). */
-export function countWorkdays(ym: string, holidays: string[]): number {
+/** Total Mon–Sat days of the month, minus holidays including auto-detected national holidays. */
+export function countWorkdays(ym: string, manualHolidays?: string[]): number {
   const p = parseYm(ym);
   if (!p) return 0;
-  const holidaySet = new Set(holidays);
+
+  const holidaySet = new Set<string>();
+
+  // Add national holidays (auto-detected)
+  const national = getNationalHolidaysInMonth(ym);
+  national.forEach(h => holidaySet.add(h));
+
+  // Add manual holidays from daftar_libur
+  manualHolidays?.forEach(h => holidaySet.add(h));
+
   let n = 0;
   for (let d = 1; d <= daysInMonth(p.year, p.month); d++) {
     const dow = new Date(p.year, p.month - 1, d).getDay(); // 0 = Sunday
@@ -46,13 +56,23 @@ export function monthIsPast(ym: string, today: Date): boolean {
   return p.year < today.getFullYear() || (p.year === today.getFullYear() && p.month < today.getMonth() + 1);
 }
 
-/** Workdays of the month up to and including today (0 for future months, full total for past). */
-export function elapsedWorkdays(ym: string, holidays: string[], today: Date): number {
+export function elapsedWorkdays(ym: string, manualHolidays?: string[], today: Date = new Date()): number {
   const p = parseYm(ym);
   if (!p) return 0;
-  if (monthIsPast(ym, today)) return countWorkdays(ym, holidays);
+
+  // Check month boundaries
+  if (monthIsPast(ym, today)) return countWorkdays(ym, manualHolidays);
   if (!monthIsCurrent(ym, today)) return 0; // future month
-  const holidaySet = new Set(holidays);
+
+  const holidaySet = new Set<string>();
+
+  // Add national holidays for this month
+  const national = getNationalHolidaysInMonth(ym);
+  national.forEach(h => holidaySet.add(h));
+
+  // Add manual holidays
+  manualHolidays?.forEach(h => holidaySet.add(h));
+
   let n = 0;
   for (let d = 1; d <= today.getDate(); d++) {
     const dow = new Date(p.year, p.month - 1, d).getDay();
@@ -90,6 +110,9 @@ export interface EnrichedTargetRow extends TargetJahitRow {
   progressAccum: number; // 0..1
   statusFinal: string;
   statusFinalAkumulasi: string;
+  benefitRate: number;        // normalized from benefit_per_pcs
+  extraProduction: number;    // computed: max(0, realisasi - target)
+  benefitAmount: number;      // computed: extra × rate
 }
 
 /** Map sewing records -> WO product via workOrderProduct (wo.id -> product). */
@@ -155,9 +178,38 @@ export function enrichTargetRows(
   return sorted.map((row) => {
     const ym = String(row.bulan_tahun ?? '');
     const person = row.nama;
+    // Count full month workdays (Mon-Sat minus all holidays)
     const totalHariKerja = countWorkdays(ym, holidays);
+
+    // Count workdays from start of month up to TODAY (inclusive)
     const hariKerjaHariIni = elapsedWorkdays(ym, holidays, today);
-    const sisaHari = Math.max(0, totalHariKerja - hariKerjaHariIni);
+
+    // SISA HARI = Workdays remaining FROM TOMORROW until END OF MONTH
+    let sisaHari: number;
+    if (monthIsCurrent(ym, today)) {
+      // Calculate workdays from tomorrow onwards
+      const p = parseYm(ym);
+      if (!p) {
+        sisaHari = 0;
+      } else {
+        const holidaySet = new Set<string>();
+        const national = getNationalHolidaysInMonth(ym);
+        national.forEach(h => holidaySet.add(h));
+        holidays?.forEach(h => holidaySet.add(h));
+
+        sisaHari = 0;
+        const totalDaysInMonth = daysInMonth(p.year, p.month);
+        for (let d = today.getDate() + 1; d <= totalDaysInMonth; d++) {
+          const dow = new Date(p.year, p.month - 1, d).getDay();
+          if (dow === 0) continue; // Skip Sunday
+          if (holidaySet.has(dateKey(p.year, p.month, d))) continue; // Skip holiday
+          sisaHari++;
+        }
+      }
+    } else {
+      // Past or future month: 0 remaining
+      sisaHari = 0;
+    }
     const targetMonthly = Number(row.target_monthly) || 0;
     const targetDaily = totalHariKerja > 0 ? targetMonthly / totalHariKerja : 0;
 
@@ -193,6 +245,11 @@ export function enrichTargetRows(
     // 'Ngebut' for the accumulation only makes sense in the current month.
     const targetNgebutHariAkumulasi = isCurrent && sisaHari > 0 ? Math.ceil(Math.max(0, targetAccum - realisasiAccum) / sisaHari) : 0;
 
+    // Benefit calculation: per-piece bonus for production above monthly target
+    const benefitRate = Number(row.benefit_per_pcs) || 0;
+    const extraProduction = Math.max(0, realisasiMonthly - targetMonthly);
+    const benefitAmount = extraProduction * benefitRate;
+
     return {
       ...row,
       totalHariKerja,
@@ -211,6 +268,9 @@ export function enrichTargetRows(
       progressAccum,
       statusFinal,
       statusFinalAkumulasi,
+      benefitRate,
+      extraProduction,
+      benefitAmount,
     };
   });
 }

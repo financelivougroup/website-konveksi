@@ -12,7 +12,10 @@ import { ComplainPenaltiPage } from '@/pages/ComplainPenaltiPage';
 import { TargetJahitPage } from '@/pages/TargetJahitPage';
 import { RegisterKaryawanPage } from '@/pages/RegisterKaryawanPage';
 import OrderEntry from '@/pages/OrderEntry';
-import { Sidebar } from '@/components/Layout/Sidebar';
+import { SidebarProvider, SidebarInset, SidebarTrigger } from '@/components/ui/sidebar';
+import { AppSidebar } from '@/components/Layout/AppSidebar';
+import { Breadcrumb, BreadcrumbList, BreadcrumbItem, BreadcrumbPage, BreadcrumbSeparator } from '@/components/ui/breadcrumb';
+import { Separator } from '@/components/ui/separator';
 import { AuthGate } from '@/components/Auth/AuthGate';
 import { TopBar } from '@/components/Layout/TopBar';
 import { ViewTabs } from '@/components/Layout/ViewTabs';
@@ -31,18 +34,15 @@ import { ConditionalColorModal } from '@/components/Modals/ConditionalColorModal
 import { DateRangeModal } from '@/components/Modals/DateRangeModal';
 import { AddViewModal } from '@/components/Modals/AddViewModal';
 import { useToast } from '@/hooks/useToast';
-import { viewConfig } from '@/data/mockData';
+import { viewConfig, navGroups } from '@/data/mockData';
 import * as targetJahitSvc from '@/services/targetJahit';
 import * as registerPenjahitSvc from '@/services/registerPenjahit';
 import * as daftarLiburSvc from '@/services/daftarLibur';
 import { supabase } from '@/lib/supabase';
-import type { ModuleId } from '@/types';
+import type { ModuleId, ViewTabSettings, ModuleViews } from '@/types';
 
 const PAGE_SIZE = 10;
-
 type ModalType = 'customize' | 'filter' | 'dateRange' | 'group' | 'sort' | 'rowHeight' | 'condColor' | 'addView' | null;
-
-import type { ViewTabSettings, ModuleViews } from '@/types';
 
 function makeDefaultSettings(moduleId: ModuleId): ViewTabSettings {
   const config = viewConfig[moduleId];
@@ -63,12 +63,9 @@ function makeDefaultSettings(moduleId: ModuleId): ViewTabSettings {
 }
 
 export default function App() {
-  // 'landing' shows the marketing site, 'app' shows the data dashboard.
   const [viewMode, setViewMode] = useState<'app' | 'landing'>('app');
   const [currentView, setCurrentView] = useState<ModuleId>('production-monitoring');
   const [currentViewTab, setCurrentViewTab] = useState(0);
-  // Active sub-tab inside the combined "Production Data" view.
-  // Ignored for all other modules.
   const [activeSubModule, setActiveSubModule] = useState<ModuleId>('register-jahit');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
@@ -79,20 +76,14 @@ export default function App() {
   const [isAddingNew, setIsAddingNew] = useState(false);
   const { toasts, showToast, removeToast } = useToast();
 
-  // Date range filter (global, per view tab)
   const [dateField, setDateField] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
-
-  // Sidebar table rename: moduleId → custom name
-  const [sidebarRenames, setSidebarRenames] = useState<Record<string, string>>({});
-
-  // Per-module view tabs + per-tab settings
+  const [sidebarRenames, _setSidebarRenames] = useState<Record<string, string>>({});
   const [moduleViews, setModuleViews] = useState<Record<string, ModuleViews>>({});
 
   const getModuleViews = useCallback((moduleId: ModuleId): ModuleViews => {
     if (moduleViews[moduleId]) return moduleViews[moduleId];
-
     return {
       views: [{ name: 'All Data', icon: 'LayoutList' }],
       tabSettings: { 0: makeDefaultSettings(moduleId) },
@@ -125,24 +116,18 @@ export default function App() {
   }, [updateModuleViews]);
 
   const isPipelineView = currentView === 'production-monitoring' || currentView === 'sewing-entry' || currentView === 'finishing-entry' || currentView === 'kancing-entry';
-
   const mv = isPipelineView ? { views: [], tabSettings: {} } : getModuleViews(currentView);
   const settings = isPipelineView ? makeDefaultSettings('production-monitoring') : getSettings(currentView, currentViewTab);
-  // Combined "Production Data" view: resolve the real module from the active sub-tab
-  // so the table, DetailPanel form and column config all follow the sub-tab selection.
   const isCombinedView = !isPipelineView && currentView === 'production-data';
   const effectiveModule = isPipelineView ? 'production-monitoring' : (isCombinedView ? activeSubModule : currentView);
   const config = isPipelineView ? viewConfig['production-monitoring'] : viewConfig[effectiveModule];
 
-  // ====== Supabase data fetching ======
   const [tableData, setTableData] = useState<Record<string, unknown>[]>([]);
 
   useEffect(() => {
     if (isPipelineView) { setTableData([]); return; }
-
     async function fetchModuleData() {
       let rows: Record<string, unknown>[] = [];
-
       switch (effectiveModule) {
         case 'selesai-jahit': {
           const { data: wo } = await supabase.from('work_orders').select('*').order('created_at', { ascending: false });
@@ -184,8 +169,7 @@ export default function App() {
           if (data) rows = data as Record<string, unknown>[];
           break;
         }
-        default:
-          break;
+        default: break;
       }
       setTableData(rows);
     }
@@ -193,8 +177,6 @@ export default function App() {
   }, [effectiveModule, isPipelineView]);
 
   const refetchTableData = useCallback(() => {
-    // trigger re-fetch by toggling a counter or re-running the effect
-    // We just re-run the effect by changing effectiveModule briefly - simpler approach
     if (!isPipelineView) {
       const fetchFresh = async () => {
         let rows: Record<string, unknown>[] = [];
@@ -214,8 +196,7 @@ export default function App() {
             if (data) rows = data.map(r => ({ ...r })) as unknown as Record<string, unknown>[];
             break;
           }
-          case 'selesai-jahit':
-          case 'register-jahit': {
+          case 'selesai-jahit': case 'register-jahit': {
             const { data: wo } = await supabase.from('work_orders').select('*').order('created_at', { ascending: false });
             if (wo) rows = wo as Record<string, unknown>[];
             break;
@@ -244,22 +225,15 @@ export default function App() {
 
   const data = isPipelineView ? [] : tableData;
 
-  // Process data
   const processedData = useMemo(() => {
-    // Recompute "Cut vs Upload" + "STATUS STOCK" dynamically per the AppSheet
-    // formulas, so the table + filters always reflect the latest numbers.
     let result: Record<string, unknown>[] = data.map((row) => {
       const cutVsUpload = computeCutVsUpload(row);
       return { ...row, cutVsUpload, statusStock: computeStatusStock({ ...row, cutVsUpload }) };
     });
-
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
-      result = result.filter((row) =>
-        Object.values(row).some((v) => String(v).toLowerCase().includes(q))
-      );
+      result = result.filter((row) => Object.values(row).some((v) => String(v).toLowerCase().includes(q)));
     }
-
     if (settings.filters.length > 0) {
       result = result.filter((row) =>
         settings.filters.every((f) => {
@@ -273,27 +247,18 @@ export default function App() {
         })
       );
     }
-
-    // Date range filter
     if (dateFrom || dateTo) {
       const field = dateField || 'tanggal';
       result = result.filter((row) => {
         const val = String(row[field] || '');
         if (!val) return false;
         const rowDate = new Date(val + 'T00:00:00');
-        if (isNaN(rowDate.getTime())) return true; // skip non-date values
-        if (dateFrom) {
-          const from = new Date(dateFrom + 'T00:00:00');
-          if (rowDate < from) return false;
-        }
-        if (dateTo) {
-          const to = new Date(dateTo + 'T23:59:59');
-          if (rowDate > to) return false;
-        }
+        if (isNaN(rowDate.getTime())) return true;
+        if (dateFrom) { const from = new Date(dateFrom + 'T00:00:00'); if (rowDate < from) return false; }
+        if (dateTo) { const to = new Date(dateTo + 'T23:59:59'); if (rowDate > to) return false; }
         return true;
       });
     }
-
     if (settings.sorts.length > 0) {
       result.sort((a, b) => {
         for (const s of settings.sorts) {
@@ -305,41 +270,26 @@ export default function App() {
         return 0;
       });
     }
-
     return result;
   }, [data, searchQuery, settings.filters, settings.sorts, dateField, dateFrom, dateTo]);
 
-  // Pagination
   const paginatedData = useMemo(() => {
     const start = (currentPage - 1) * PAGE_SIZE;
     return processedData.slice(start, start + PAGE_SIZE);
   }, [processedData, currentPage]);
 
-  // Ordered, visible columns with custom widths, notes, renames, and sources applied
   const displayColumns = useMemo(() => {
-    // 1. Apply columnOrder to determine sequence
     const orderedIndices = settings.columnOrder.length > 0
       ? settings.columnOrder.filter((i) => settings.visibleColumns.includes(i))
       : settings.visibleColumns;
-
-    // 2. Map to column defs with customizations
     return orderedIndices.map((i) => {
       const col = config.columns[i];
       if (!col) return null;
-
-      // Apply custom width
       const customWidth = settings.columnWidths[col.key];
-
-      // Apply custom name (rename)
       const rename = settings.columnRenames.find((r) => r.columnKey === col.key);
       const displayLabel = rename?.customName || col.label;
-
-      // Find note
       const note = settings.columnNotes.find((n) => n.columnKey === col.key);
-
-      // Find source
       const source = settings.columnSources.find((s) => s.columnKey === col.key);
-
       return {
         ...col,
         width: customWidth ? `${customWidth}px` : col.width,
@@ -351,14 +301,13 @@ export default function App() {
     }).filter(Boolean) as Array<typeof config.columns[0] & { width: string; label: string; _note?: string; _source?: import('@/types').ColumnSource; _originalIndex: number }>;
   }, [settings.columnOrder, settings.visibleColumns, settings.columnWidths, settings.columnRenames, settings.columnNotes, settings.columnSources, config.columns]);
 
-  // Handlers
-  const handleSwitchView = useCallback((view: ModuleId | 'dashboard' | 'reports' | 'settings') => {
+  const handleSwitchView = useCallback((view: string) => {
     if (view === 'dashboard' || view === 'reports' || view === 'settings') {
       showToast(`${view} coming soon!`, 'info');
       return;
     }
     if (view === 'invoicing') {
-      setCurrentView(view);
+      setCurrentView(view as ModuleId);
       setCurrentViewTab(0);
       setCurrentPage(1);
       setSelectedRows(new Set());
@@ -369,7 +318,7 @@ export default function App() {
       setPanelOpen(false);
       return;
     }
-    setCurrentView(view);
+    setCurrentView(view as ModuleId);
     setCurrentViewTab(0);
     setCurrentPage(1);
     setSelectedRows(new Set());
@@ -381,8 +330,6 @@ export default function App() {
     if (view === 'production-data') setActiveSubModule('register-jahit');
   }, [showToast]);
 
-  // Switch sub-tab inside the combined "Production Data" view.
-  // Filter/sort/search share one setting set, so reset them on switch.
   const handleSubTabChange = useCallback((sub: ModuleId) => {
     setActiveSubModule(sub);
     setCurrentPage(1);
@@ -393,6 +340,10 @@ export default function App() {
     setDateField('');
     setPanelOpen(false);
   }, []);
+
+  const handleSubTabChangeString = useCallback((id: string) => {
+    handleSubTabChange(id as ModuleId);
+  }, [handleSubTabChange]);
 
   const handleToggleRow = useCallback((id: number) => {
     setSelectedRows((prev) => {
@@ -431,10 +382,8 @@ export default function App() {
   const handleDeleteRow = useCallback(async (id: number) => {
     if (!confirm('Yakin ingin menghapus data ini?')) return;
     let error: Error | null = null;
-
     switch (effectiveModule) {
-      case 'selesai-jahit':
-      case 'register-jahit': {
+      case 'selesai-jahit': case 'register-jahit': {
         const { error: e } = await supabase.from('work_orders').delete().eq('id', String(id));
         error = e;
         break;
@@ -455,7 +404,6 @@ export default function App() {
         break;
       }
     }
-
     if (error) {
       showToast(`Error: ${error.message}`, 'error');
     } else {
@@ -477,7 +425,6 @@ export default function App() {
 
   const handleSaveData = useCallback(async (formData: Record<string, unknown>) => {
     let error: Error | null = null;
-
     if (isAddingNew) {
       switch (effectiveModule) {
         case 'target-jahit': {
@@ -503,8 +450,7 @@ export default function App() {
     } else if (panelRow) {
       const id = panelRow.id as string | number;
       switch (effectiveModule) {
-        case 'selesai-jahit':
-        case 'register-jahit': {
+        case 'selesai-jahit': case 'register-jahit': {
           const { error: e } = await supabase.from('work_orders').update(formData).eq('id', String(id));
           error = e;
           break;
@@ -530,7 +476,6 @@ export default function App() {
         }
       }
     }
-
     if (error) {
       showToast(`Error: ${error.message}`, 'error');
     } else {
@@ -566,7 +511,7 @@ export default function App() {
         },
       };
     });
-    setCurrentViewTab(mv.views.length); // switch to the new view
+    setCurrentViewTab(mv.views.length);
     showToast(`View "${name}" created!`, 'success');
   }, [currentView, updateModuleViews, mv.views.length, showToast]);
 
@@ -574,213 +519,183 @@ export default function App() {
     <>
       {viewMode === 'landing' && <Landing onEnterApp={() => setViewMode('app')} />}
       {viewMode === 'app' && (
-    <AuthGate>
-    <div className="flex h-screen bg-[#F8FAFC] overflow-hidden font-sans">
-      {/* Sidebar */}
-      <Sidebar
-        currentView={currentView}
-        onSwitchView={handleSwitchView}
-        renames={sidebarRenames}
-        onRename={(id, name) => setSidebarRenames((prev) => ({ ...prev, [id]: name }))}
-        onViewLanding={() => setViewMode('landing')}
-      />
+        <AuthGate>
+          <SidebarProvider>
+            <AppSidebar
+              currentView={currentView}
+              onSwitchView={handleSwitchView}
+              renames={sidebarRenames}
+            />
+            <SidebarInset>
+              <header className="group-has-data-[collapsible=icon]/sidebar-wrapper:h-12 flex h-16 shrink-0 items-center gap-2 border-b transition-[width,height] ease-linear">
+                <div className="flex w-full items-center gap-1 px-4 lg:gap-2 lg:px-6">
+                  <SidebarTrigger className="-ml-1" />
+                  <Separator
+                    orientation="vertical"
+                    className="mx-2 data-[orientation=vertical]:h-4"
+                  />
+                  <Breadcrumb>
+                    <BreadcrumbList>
+                      <BreadcrumbItem>
+                        <BreadcrumbPage>{navGroups.find(g => g.items.some(i => i.id === currentView))?.label || 'Dashboard'}</BreadcrumbPage>
+                      </BreadcrumbItem>
+                      <BreadcrumbSeparator />
+                      <BreadcrumbItem>
+                        <BreadcrumbPage>{currentView.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</BreadcrumbPage>
+                      </BreadcrumbItem>
+                    </BreadcrumbList>
+                  </Breadcrumb>
+                </div>
+              </header>
+              <div className="flex flex-1 flex-col gap-4 p-4 pt-0 overflow-auto">
+                {/* All views rendered inside consistent wrapper */}
+                {currentView === 'sewing-entry' && <SewingEntryForm onBack={() => setCurrentView('production-monitoring')} />}
+                {currentView === 'finishing-entry' && <FinishingEntryForm onBack={() => setCurrentView('production-monitoring')} />}
+                {currentView === 'kancing-entry' && <KancingEntryForm onBack={() => setCurrentView('production-monitoring')} />}
+                {currentView === 'production-monitoring' && (
+                  <ProductionMonitoring onOpenSewingEntry={() => setCurrentView('sewing-entry')} onOpenFinishingEntry={() => setCurrentView('finishing-entry')} onOpenKancingEntry={() => setCurrentView('kancing-entry')} />
+                )}
+                {currentView === 'invoicing' && <InvoicingPage />}
+                {currentView === 'register-po' && <RegisterPoPage />}
+                {currentView === 'order-entry' && <OrderEntry />}
+                {currentView === 'planning-produksi' && <PlanningProduksiPage />}
+                {currentView === 'complain-penalti' && <ComplainPenaltiPage />}
+                {currentView === 'target-jahit' && <TargetJahitPage />}
+                {currentView === 'register-penjahit' && <RegisterKaryawanPage />}
 
-      {/* Main Content */}
-      {currentView === 'sewing-entry' ? (
-        <SewingEntryForm onBack={() => setCurrentView('production-monitoring')} />
-      ) : currentView === 'finishing-entry' ? (
-        <FinishingEntryForm onBack={() => setCurrentView('production-monitoring')} />
-      ) : currentView === 'kancing-entry' ? (
-        <KancingEntryForm onBack={() => setCurrentView('production-monitoring')} />
-      ) : currentView === 'production-monitoring' ? (
-        <ProductionMonitoring onOpenSewingEntry={() => setCurrentView('sewing-entry')} onOpenFinishingEntry={() => setCurrentView('finishing-entry')} onOpenKancingEntry={() => setCurrentView('kancing-entry')} />
-      ) : currentView === 'invoicing' ? (
-        <InvoicingPage />
-      ) : currentView === 'register-po' ? (
-        <RegisterPoPage />
-      ) : currentView === 'order-entry' ? (
-        <OrderEntry />
-      ) : currentView === 'planning-produksi' ? (
-        <PlanningProduksiPage />
-      ) : currentView === 'complain-penalti' ? (
-        <ComplainPenaltiPage />
-      ) : currentView === 'target-jahit' ? (
-        <TargetJahitPage />
-      ) : currentView === 'register-penjahit' ? (
-        <RegisterKaryawanPage />
-      ) : (
-      <main className="flex-1 flex flex-col min-w-0">
-        {/* Top Bar */}
-        <TopBar currentView={currentView} onRefresh={handleRefresh} onAddNew={handleAddNew} />
-
-        {/* View Tabs */}
-        <ViewTabs
-          views={mv.views}
-          activeIndex={currentViewTab}
-          onSwitch={setCurrentViewTab}
-          onRemove={(i) => {
-            if (mv.views.length <= 1) return;
-            updateModuleViews(currentView, (prev) => {
-              const views = [...prev.views];
-              views.splice(i, 1);
-              // rebuild tabSettings: shift indices after removed one
-              const newTabSettings: Record<number, ViewTabSettings> = {};
-              Object.entries(prev.tabSettings).forEach(([oldIdxStr, sett]) => {
-                const oldIdx = parseInt(oldIdxStr);
-                if (oldIdx === i) return; // skip removed
-                if (oldIdx > i) {
-                  newTabSettings[oldIdx - 1] = sett;
-                } else {
-                  newTabSettings[oldIdx] = sett;
-                }
-              });
-              return { ...prev, views, tabSettings: newTabSettings };
-            });
-            setCurrentViewTab((prev) => (prev >= i && prev > 0 ? prev - 1 : prev));
-            showToast('View deleted', 'success');
-          }}
-          onAdd={() => setModalOpen('addView')}
-        />
-
-        {/* Toolbar */}
-        <Toolbar
-          filterCount={settings.filters.length}
-          groupCount={settings.groups.length}
-          colorCount={settings.condColors.length}
-          isReadOnly={!config.editable}
-          dateRangeActive={!!(dateFrom || dateTo)}
-          onCustomizeField={() => setModalOpen('customize')}
-          onFilter={() => setModalOpen('filter')}
-          onGroupBy={() => setModalOpen('group')}
-          onSort={() => setModalOpen('sort')}
-          onRowHeight={() => setModalOpen('rowHeight')}
-          onCondColor={() => setModalOpen('condColor')}
-          onDateRange={() => setModalOpen('dateRange')}
-          onExport={handleExport}
-          onImport={handleImport}
-          subTabs={
-            isCombinedView
-              ? [
-                  { id: 'register-jahit', label: 'Register Jahit' },
-                  { id: 'daftar-libur', label: 'Daftar Libur' },
-                  { id: 'register-penjahit', label: 'Register Penjahit' },
-                ]
-              : undefined
-          }
-          activeSub={isCombinedView ? activeSubModule : undefined}
-          onSubTabChange={(id) => handleSubTabChange(id as ModuleId)}
-        />
-
-        {/* Search Bar */}
-        <SearchBar
-          query={searchQuery}
-          onQueryChange={(q) => { setSearchQuery(q); setCurrentPage(1); }}
-          recordCount={processedData.length}
-        />
-
-        {/* Data Table */}
-        <DataTable
-          columns={displayColumns}
-          data={paginatedData}
-          selectedRows={selectedRows}
-          rowHeight={settings.rowHeight}
-          condColors={settings.condColors}
-          editable={config.editable}
-          sorts={settings.sorts}
-          onToggleRow={handleToggleRow}
-          onToggleAll={handleToggleAll}
-          onViewDetail={handleViewDetail}
-          onEditDetail={handleEditDetail}
-          onDeleteRow={handleDeleteRow}
-          onResizeColumn={(key, width) => {
-            updateSettings(currentView, currentViewTab, (prev) => ({
-              ...prev,
-              columnWidths: { ...prev.columnWidths, [key]: width },
-            }));
-          }}
-          onReorderColumn={(fromOrig, toOrig) => {
-            updateSettings(currentView, currentViewTab, (prev) => {
-              const newOrder = [...prev.columnOrder];
-              const fromPos = newOrder.indexOf(fromOrig);
-              const toPos = newOrder.indexOf(toOrig);
-              if (fromPos === -1 || toPos === -1) return prev;
-              const [removed] = newOrder.splice(fromPos, 1);
-              newOrder.splice(toPos, 0, removed);
-              return { ...prev, columnOrder: newOrder };
-            });
-          }}
-          onRenameColumn={(key, newName) => {
-            updateSettings(currentView, currentViewTab, (prev) => {
-              const updated = [...prev.columnRenames];
-              const idx = updated.findIndex((r) => r.columnKey === key);
-              if (idx >= 0) updated[idx] = { columnKey: key, customName: newName };
-              else updated.push({ columnKey: key, customName: newName });
-              return { ...prev, columnRenames: updated };
-            });
-            showToast(`Column renamed to "${newName}"`, 'success');
-          }}
-          onUpdateNote={(key, note) => {
-            updateSettings(currentView, currentViewTab, (prev) => {
-              const updated = [...prev.columnNotes];
-              const idx = updated.findIndex((n) => n.columnKey === key);
-              if (note) {
-                if (idx >= 0) updated[idx] = { columnKey: key, note };
-                else updated.push({ columnKey: key, note });
-              } else if (idx >= 0) {
-                updated.splice(idx, 1);
-              }
-              return { ...prev, columnNotes: updated };
-            });
-          }}
-          onSortColumn={(field, dir) => {
-            updateSettings(currentView, currentViewTab, (prev) => {
-              // Check if this field already has a sort
-              const existing = prev.sorts.findIndex((s) => s.field === field);
-              let newSorts = [...prev.sorts];
-              if (existing >= 0) {
-                newSorts[existing] = { field, dir };
-              } else {
-                newSorts.push({ field, dir });
-              }
-              return { ...prev, sorts: newSorts };
-            });
-            showToast(`Sorted ${field} ${dir === 'asc' ? 'ascending' : 'descending'}`, 'success');
-          }}
-          onGroupColumn={(field) => {
-            updateSettings(currentView, currentViewTab, (prev) => {
-              const exists = prev.groups.some((g) => g.field === field);
-              if (exists) return prev;
-              return { ...prev, groups: [...prev.groups, { field }] };
-            });
-            showToast(`Grouped by ${field}`, 'success');
-          }}
-          onSetSource={(key, icon, label) => {
-            updateSettings(currentView, currentViewTab, (prev) => {
-              const updated = [...prev.columnSources];
-              const idx = updated.findIndex((s) => s.columnKey === key);
-              if (icon || label) {
-                if (idx >= 0) updated[idx] = { columnKey: key, sourceIcon: icon, sourceLabel: label };
-                else updated.push({ columnKey: key, sourceIcon: icon, sourceLabel: label });
-              } else if (idx >= 0) {
-                updated.splice(idx, 1);
-              }
-              return { ...prev, columnSources: updated };
-            });
-            showToast(`Source indicator updated for "${key}"`, 'success');
-          }}
-        />
-
-        {/* Pagination */}
-        <Pagination
-          total={processedData.length}
-          currentPage={currentPage}
-          pageSize={PAGE_SIZE}
-          onPageChange={setCurrentPage}
-        />
-      </main>
+                {/* DataTable pages with toolbar - only for views not listed above */}
+                {!['sewing-entry', 'finishing-entry', 'kancing-entry', 'production-monitoring', 'invoicing', 'register-po', 'order-entry', 'planning-produksi', 'complain-penalti', 'target-jahit', 'register-penjahit'].includes(currentView) && (
+                  <>
+                    <TopBar onRefresh={handleRefresh} onAddNew={handleAddNew} />
+                    <ViewTabs
+                      views={mv.views}
+                      activeIndex={currentViewTab}
+                      onSwitch={setCurrentViewTab}
+                      onRemove={(i) => {
+                        if (mv.views.length <= 1) return;
+                        updateModuleViews(currentView, (prev) => {
+                          const views = [...prev.views];
+                          views.splice(i, 1);
+                          const newTabSettings: Record<number, ViewTabSettings> = {};
+                          Object.entries(prev.tabSettings).forEach(([oldIdxStr, sett]) => {
+                            const oldIdx = parseInt(oldIdxStr);
+                            if (oldIdx === i) return;
+                            if (oldIdx > i) { newTabSettings[oldIdx - 1] = sett; }
+                            else { newTabSettings[oldIdx] = sett; }
+                          });
+                          return { ...prev, views, tabSettings: newTabSettings };
+                        });
+                        setCurrentViewTab((prev) => (prev >= i && prev > 0 ? prev - 1 : prev));
+                        showToast('View deleted', 'success');
+                      }}
+                      onAdd={() => setModalOpen('addView')}
+                    />
+                    <Toolbar
+                      filterCount={settings.filters.length}
+                      groupCount={settings.groups.length}
+                      colorCount={settings.condColors.length}
+                      isReadOnly={!config.editable}
+                      dateRangeActive={!!(dateFrom || dateTo)}
+                      onCustomizeField={() => setModalOpen('customize')}
+                      onFilter={() => setModalOpen('filter')}
+                      onGroupBy={() => setModalOpen('group')}
+                      onSort={() => setModalOpen('sort')}
+                      onRowHeight={() => setModalOpen('rowHeight')}
+                      onCondColor={() => setModalOpen('condColor')}
+                      onDateRange={() => setModalOpen('dateRange')}
+                      onExport={handleExport}
+                      onImport={handleImport}
+                      subTabs={isCombinedView ? [{ id: 'register-jahit', label: 'Register Jahit' }, { id: 'daftar-libur', label: 'Daftar Libur' }, { id: 'register-penjahit', label: 'Register Penjahit' }] : undefined}
+                      activeSub={isCombinedView ? activeSubModule : undefined}
+                      onSubTabChange={handleSubTabChangeString}
+                    />
+                    <SearchBar query={searchQuery} onQueryChange={(q) => { setSearchQuery(q); setCurrentPage(1); }} recordCount={processedData.length} />
+                    <DataTable
+                      columns={displayColumns}
+                      data={paginatedData}
+                      selectedRows={selectedRows}
+                      rowHeight={settings.rowHeight}
+                      condColors={settings.condColors}
+                      editable={config.editable}
+                      sorts={settings.sorts}
+                      onToggleRow={handleToggleRow}
+                      onToggleAll={handleToggleAll}
+                      onViewDetail={handleViewDetail}
+                      onEditDetail={handleEditDetail}
+                      onDeleteRow={handleDeleteRow}
+                      onResizeColumn={(key, width) => updateSettings(currentView, currentViewTab, (prev) => ({ ...prev, columnWidths: { ...prev.columnWidths, [key]: width } }))}
+                      onReorderColumn={(fromOrig, toOrig) => {
+                        updateSettings(currentView, currentViewTab, (prev) => {
+                          const newOrder = [...prev.columnOrder];
+                          const fromPos = newOrder.indexOf(fromOrig);
+                          const toPos = newOrder.indexOf(toOrig);
+                          if (fromPos === -1 || toPos === -1) return prev;
+                          const [removed] = newOrder.splice(fromPos, 1);
+                          newOrder.splice(toPos, 0, removed);
+                          return { ...prev, columnOrder: newOrder };
+                        });
+                      }}
+                      onRenameColumn={(key, newName) => {
+                        updateSettings(currentView, currentViewTab, (prev) => {
+                          const updated = [...prev.columnRenames];
+                          const idx = updated.findIndex((r) => r.columnKey === key);
+                          if (idx >= 0) updated[idx] = { columnKey: key, customName: newName };
+                          else updated.push({ columnKey: key, customName: newName });
+                          return { ...prev, columnRenames: updated };
+                        });
+                        showToast(`Column renamed to "${newName}"`, 'success');
+                      }}
+                      onUpdateNote={(key, note) => {
+                        updateSettings(currentView, currentViewTab, (prev) => {
+                          const updated = [...prev.columnNotes];
+                          const idx = updated.findIndex((n) => n.columnKey === key);
+                          if (note) { if (idx >= 0) updated[idx] = { columnKey: key, note }; else updated.push({ columnKey: key, note }); }
+                          else if (idx >= 0) { updated.splice(idx, 1); }
+                          return { ...prev, columnNotes: updated };
+                        });
+                      }}
+                      onSortColumn={(field, dir) => {
+                        updateSettings(currentView, currentViewTab, (prev) => {
+                          const existing = prev.sorts.findIndex((s) => s.field === field);
+                          let newSorts = [...prev.sorts];
+                          if (existing >= 0) { newSorts[existing] = { field, dir }; }
+                          else { newSorts.push({ field, dir }); }
+                          return { ...prev, sorts: newSorts };
+                        });
+                        showToast(`Sorted ${field} ${dir === 'asc' ? 'ascending' : 'descending'}`, 'success');
+                      }}
+                      onGroupColumn={(field) => {
+                        updateSettings(currentView, currentViewTab, (prev) => {
+                          const exists = prev.groups.some((g) => g.field === field);
+                          if (exists) return prev;
+                          return { ...prev, groups: [...prev.groups, { field }] };
+                        });
+                        showToast(`Grouped by ${field}`, 'success');
+                      }}
+                      onSetSource={(key, icon, label) => {
+                        updateSettings(currentView, currentViewTab, (prev) => {
+                          const updated = [...prev.columnSources];
+                          const idx = updated.findIndex((s) => s.columnKey === key);
+                          if (icon || label) {
+                            if (idx >= 0) updated[idx] = { columnKey: key, sourceIcon: icon, sourceLabel: label };
+                            else updated.push({ columnKey: key, sourceIcon: icon, sourceLabel: label });
+                          }
+                          else if (idx >= 0) { updated.splice(idx, 1); }
+                          return { ...prev, columnSources: updated };
+                        });
+                        showToast(`Source indicator updated for "${key}"`, 'success');
+                      }}
+                    />
+                    <Pagination total={processedData.length} currentPage={currentPage} pageSize={PAGE_SIZE} onPageChange={setCurrentPage} />
+                  </>
+                )}
+              </div>
+            </SidebarInset>
+          </SidebarProvider>
+        </AuthGate>
       )}
 
-      {/* Detail Panel */}
+      {/* Detail Panel and Modals outside conditional flow */}
       <DetailPanel
         open={panelOpen}
         moduleId={effectiveModule}
@@ -833,7 +748,7 @@ export default function App() {
         onApply={() => {
           setModalOpen(null);
           if (dateFrom || dateTo) {
-            showToast(`Date range ${dateFrom && dateTo ? `${dateFrom} \u2014 ${dateTo}` : dateFrom ? `from ${dateFrom}` : `until ${dateTo}`} applied!`, 'success');
+            showToast(`Date range ${dateFrom && dateTo ? `${dateFrom} — ${dateTo}` : dateFrom ? `from ${dateFrom}` : `until ${dateTo}`} applied!`, 'success');
           } else {
             showToast('Date range cleared', 'success');
           }
@@ -881,11 +796,7 @@ export default function App() {
         onCreate={handleCreateView}
       />
 
-      {/* Toast Container */}
       <ToastContainer toasts={toasts} onRemove={removeToast} />
-    </div>
-    </AuthGate>
-      )}
     </>
   );
 }

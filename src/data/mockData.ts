@@ -85,6 +85,9 @@ export const viewConfig: Record<ModuleId, ViewConfig> = {
       { key: 'targetNgebutHariAkumulasi', label: 'Target Ngebut | Akumulasi', width: '150px', align: 'right', icon: 'Zap' },
       { key: 'progressAccum', label: 'Progress Akumulasi', width: '120px', align: 'right', format: 'percent', icon: 'Percent' },
       { key: 'statusFinalAkumulasi', label: 'Status Final | Akumulasi', width: '150px', badge: true, icon: 'Award' },
+      { key: 'benefitRate', label: 'Benefit Rate /Pcs', width: '110px', align: 'right', format: 'currency', icon: 'Banknote' },
+      { key: 'extraProduction', label: 'Extra Production', width: '90px', align: 'right', icon: 'TrendingUp' },
+      { key: 'benefitAmount', label: 'Benefit Amount', width: '120px', align: 'right', format: 'currency', icon: 'TrendingUp' },
     ],
   },
   'planning-produksi': {

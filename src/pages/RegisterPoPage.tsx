@@ -7,6 +7,10 @@ import { FilterButton, SortButton, ExportButton } from '@/components/Table/Table
 import { ColumnSettingsButton, HiddenColgroup } from '@/components/Table/ColumnSettings';
 import { useColumnSettings } from '@/lib/columnSettings';
 import { applyFilters, applySorts, type FieldOption, type FilterRule, type SortRule } from '@/lib/tableQuery';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   fetchAllRegisterPo,
   createRegisterPo,
@@ -217,12 +221,12 @@ export function RegisterPoPage() {
             <h1 className="text-[17px] font-semibold tracking-tight text-slate-900">Register PO</h1>
           </div>
           <div className="flex items-center gap-2.5">
-            <button onClick={refresh} className="h-8 px-3.5 text-[12px] font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 hover:shadow-md hover:shadow-slate-200 transition-all flex items-center gap-2">
-              <RefreshCw className="w-3.5 h-3.5" /> Refresh
-            </button>
-            <button onClick={openCreate} className="h-8 px-3.5 text-[12px] font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 hover:shadow-md hover:shadow-blue-200 transition-all flex items-center gap-2">
-              <Plus className="w-3.5 h-3.5" /> New Register PO
-            </button>
+            <Button onClick={refresh} variant="outline" size="sm" className="h-8 px-3.5">
+              <RefreshCw className="w-3.5 h-3.5 mr-2" /> Refresh
+            </Button>
+            <Button onClick={openCreate} size="sm" className="h-8 px-3.5 bg-blue-600 hover:bg-blue-700">
+              <Plus className="w-3.5 h-3.5 mr-2" /> New Register PO
+            </Button>
           </div>
         </div>
         {message && (
@@ -278,56 +282,66 @@ export function RegisterPoPage() {
         </div>
       </div>
 
-      {modalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center" onClick={() => setModalOpen(false)}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-            <div className="px-5 py-3 border-b border-gray-200 flex items-center justify-between flex-shrink-0">
-              <h3 className="text-[14px] font-semibold text-slate-900">{editTarget ? '✏️ Edit Register PO' : '➕ New Register PO'}</h3>
-              <button onClick={() => setModalOpen(false)} className="text-slate-400 hover:text-slate-600 text-lg leading-none">&times;</button>
-            </div>
+      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{editTarget ? '✏️ Edit Register PO' : '➕ New Register PO'}</DialogTitle>
+          </DialogHeader>
 
-            <div className="p-5 space-y-4 overflow-y-auto flex-1">
-              {!editTarget && (
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Production Order *</label>
-                  <select value={poId} onChange={(e) => setPoId(e.target.value)} className="w-full h-9 px-3 text-[12px] border border-gray-200 rounded-lg outline-none bg-white focus:border-blue-300" disabled={loadingPOs}>
-                    <option value="">— Pilih PO (sudah PULLED & belum punya Register PO) —</option>
-                    {pendingPOs.map((p) => (
-                      <option key={p.id} value={p.id}>{p.workCode} — {p.brand} · {p.product} · {p.quantity} pcs</option>
-                    ))}
-                  </select>
-                  {loadingPOs && <p className="text-[10px] text-slate-400 mt-1">Loading...</p>}
-                </div>
-              )}
-
+          <div className="space-y-4 py-4">
+            {!editTarget && (
               <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Komponen Biaya (isi nominal per PCS)</label>
-                <div className="space-y-2">
-                  {components.map((comp, idx) => (
-                    <div key={comp.localId} className="flex items-center gap-3">
-                      <span className="w-24 text-[11px] font-medium text-slate-600 text-right flex-shrink-0">{comp.label}</span>
-                      <input type="number" min={0} value={comp.value} onChange={(e) => { setComponents((prev) => prev.map((c) => (c.localId === comp.localId ? { ...c, value: e.target.value } : c))); }} placeholder="0" className="flex-1 h-9 px-3 text-[12px] border border-gray-200 rounded-lg outline-none bg-white text-right focus:border-blue-300" />
-                      <span className="text-[10px] text-slate-400 w-12 text-right flex-shrink-0">{idx === 0 ? '/pcs' : ''}</span>
-                    </div>
+                <Label htmlFor="production-order">Production Order *</Label>
+                <select
+                  id="production-order"
+                  value={poId}
+                  onChange={(e) => setPoId(e.target.value)}
+                  disabled={loadingPOs}
+                  className="w-full h-9 px-3 text-sm border border-gray-200 rounded-lg outline-none bg-white focus:border-blue-300 focus:ring-2 focus:ring-blue-100 mt-1"
+                >
+                  <option value="">— Pilih PO (sudah PULLED & belum punya Register PO) —</option>
+                  {pendingPOs.map((p) => (
+                    <option key={p.id} value={p.id}>{p.workCode} — {p.brand} · {p.product} · {p.quantity} pcs</option>
                   ))}
-                </div>
+                </select>
+                {loadingPOs && <p className="text-xs text-slate-400 mt-1">Loading...</p>}
               </div>
+            )}
 
-              <div className="border-t border-gray-200 pt-3">
-                <div className="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-lg px-4 py-3">
-                  <span className="text-[13px] font-bold text-blue-800">Total/PCS</span>
-                  <span className="text-[16px] font-bold text-blue-800">Rp {totalPerPcs.toLocaleString('id-ID')}</span>
-                </div>
+            <div>
+              <Label>Komponen Biaya (isi nominal per PCS)</Label>
+              <div className="space-y-2 mt-2">
+                {components.map((comp, idx) => (
+                  <div key={comp.localId} className="flex items-center gap-3">
+                    <span className="w-24 text-sm font-medium text-slate-600 text-right flex-shrink-0">{comp.label}</span>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={comp.value}
+                      onChange={(e) => { setComponents((prev) => prev.map((c) => (c.localId === comp.localId ? { ...c, value: e.target.value } : c))); }}
+                      placeholder="0"
+                      className="flex-1 text-right"
+                    />
+                    <span className="text-xs text-slate-400 w-12 text-right flex-shrink-0">{idx === 0 ? '/pcs' : ''}</span>
+                  </div>
+                ))}
               </div>
             </div>
 
-            <div className="px-5 py-3 border-t border-gray-200 flex justify-end gap-2 flex-shrink-0">
-              <button onClick={() => setModalOpen(false)} className="px-4 py-1.5 text-[11px] text-slate-600 border border-gray-200 rounded-lg hover:bg-gray-50" disabled={saving}>Cancel</button>
-              <button onClick={handleSave} disabled={!isValid || saving} className="px-4 py-1.5 text-[11px] font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed">{saving ? 'Saving…' : editTarget ? 'Update Register PO' : 'Save Register PO'}</button>
+            <div className="border-t border-gray-200 pt-3">
+              <div className="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-lg px-4 py-3">
+                <span className="text-sm font-bold text-blue-800">Total/PCS</span>
+                <span className="text-base font-bold text-blue-800">Rp {totalPerPcs.toLocaleString('id-ID')}</span>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+
+          <DialogFooter>
+            <Button onClick={() => setModalOpen(false)} variant="outline" disabled={saving}>Cancel</Button>
+            <Button onClick={handleSave} disabled={!isValid || saving} className="bg-blue-600 hover:bg-blue-700">{saving ? 'Saving…' : editTarget ? 'Update Register PO' : 'Save Register PO'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }
