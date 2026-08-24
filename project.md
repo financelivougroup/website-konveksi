@@ -199,6 +199,23 @@ Website Konveksi/
 
 ## Latest Progress
 
+### 2026-08-22 — Planning Produksi: Top Bar Cleanup + Bulk Status + Fix Real-Time Status
+
+**Top bar dirapikan:**
+- Tombol **Import** kini pakai ikon lucide `Upload`, gaya persis tombol Export (`T_TOOLBAR_BTN` + `T_TOOLBAR_BTN_IDLE`) — tidak lagi emoji 📥 dan tidak menyala biru saat baris dicentang (selalu idle, tetap disabled saat 0 terpilih).
+- **Dihapus**: deretan pill bulan violet ("Agustus 2026 ✓"), label "Generate untuk bulan", dan count "N planning produksi" di kanan toolbar.
+- Input bulan (genMonth) tetap ada di kanan, direstyle seragam dengan toolbar lain: `h-8 px-2.5 text-[11px] border-gray-200 text-slate-600 focus:border-blue-300`.
+
+**Fitur baru — bulk update status:**
+- Centang 1+ baris → muncul dropdown shadcn `Select` "Update status (n)…" di sebelah tombol Delete.
+- Pilih draft/approved/rejected → semua baris terpilih di-update ke Supabase sekaligus, state lokal disinkronkan, seleksi dibersihkan.
+
+**Fix bug real-time status per-baris:**
+- Sebelumnya ganti status via dropdown satu baris hanya menulis ke DB tanpa update state lokal, sehingga badge lama tampil sampai pindah halaman balik.
+- Kini optimistic update: `setItems` langsung saat dropdown diganti; rollback kalau Supabase error.
+
+**File**: `src/pages/PlanningProduksiPage.tsx` saja. Build ✅ (~10s).
+
 ### 2026-08-22 — Target Jahit: 3 Tampilan (Target · Utang Staf · Benefit)
 
 **Tab bar Target Jahit kini 3 tampilan** (semua keputusan produk disepakati via brainstorming):
