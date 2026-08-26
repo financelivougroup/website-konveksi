@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase'
 import { generateId } from '@/lib/utils'
-import type { WorkOrder } from '@/types/pipeline'
+import { buildProductId, buildVariationId } from '@/lib/workOrderIdentity'
+import type { ProductionOrder, WorkOrder } from '@/types/pipeline'
 
 const TABLE = 'work_orders'
 
@@ -70,6 +71,27 @@ export async function create(input: Omit<WorkOrder, 'id'>): Promise<{ data: Work
     .select()
     .single()
   return { data: data ? mapRow(data as Record<string, unknown>) : null, error }
+}
+
+export async function pullFromProductionOrder(
+  productionOrder: ProductionOrder,
+  pulledBy: string,
+): Promise<{ data: WorkOrder | null; error: Error | null }> {
+  const productId = buildProductId(productionOrder.brand, productionOrder.product)
+  const variationId = buildVariationId(productId, productionOrder.warna, productionOrder.size)
+  const { data, error } = await supabase
+    .rpc('pull_production_order_to_konveksi', {
+      p_production_order_id: productionOrder.id,
+      p_product_id: productId,
+      p_variation_id: variationId,
+      p_pulled_by: pulledBy,
+    })
+    .single()
+
+  if (error) return { data: null, error }
+  if (!data) return { data: null, error: new Error('Pull berhasil tanpa work order hasil') }
+
+  return { data: mapRow(data as Record<string, unknown>), error: null }
 }
 
 export async function update(id: string, updates: Partial<WorkOrder>): Promise<{ error: Error | null }> {

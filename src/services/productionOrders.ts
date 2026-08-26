@@ -64,10 +64,16 @@ export async function update(id: string, updates: Partial<ProductionOrder>): Pro
   if (updates.status !== undefined) db.status = updates.status
   if (updates.pulledAt !== undefined) db.pulled_at = updates.pulledAt
   if (updates.pulledBy !== undefined) db.pulled_by = updates.pulledBy
-  console.log('[productionOrders.update] id:', id, 'db:', db, 'table:', TABLE);
-  const { data, error } = await supabase.from(TABLE).update(db).eq('id', id).select();
-  console.log('[productionOrders.update] result:', { data, error });
-  return { error }
+  const { data, error } = await supabase
+    .from(TABLE)
+    .update(db)
+    .eq('id', id)
+    .select('id')
+    .single()
+
+  if (error) return { error }
+  if (!data) return { error: new Error(`Production order ${id} tidak diperbarui`) }
+  return { error: null }
 }
 
 export async function remove(id: string): Promise<{ error: Error | null }> {
@@ -97,15 +103,4 @@ export async function fetchProductionOrdersWaitingRegisterPo(): Promise<Array<{ 
   return (woData as Array<{ id: string; work_code: string; product: string; brand: string; quantity: number; source_order_id: string }>)
     .filter((w) => w.source_order_id && !alreadyRegisteredPoIds.has(w.source_order_id))
     .map((w) => ({ id: w.source_order_id, workCode: w.work_code, product: w.product, brand: w.brand, quantity: w.quantity }));
-}
-
-export async function pullToKonveksi(id: string, pulledBy: string): Promise<{ error: Error | null }> {
-  console.log('[pullToKonveksi] updating PO id:', id, 'to PULLED');
-  const { data, error } = await supabase.from(TABLE).update({
-    status: 'PULLED',
-    pulled_at: new Date().toISOString(),
-    pulled_by: pulledBy,
-  }).eq('id', id).select();
-  console.log('[pullToKonveksi] result:', { data, error });
-  return { error }
 }

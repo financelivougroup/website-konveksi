@@ -199,6 +199,23 @@ Website Konveksi/
 
 ## Latest Progress
 
+### 2026-08-26 — Pull Order Entry → Production Monitoring atomik dan retry-safe
+
+- Root cause status Sheen Pants yang tertinggal di `PLANNING` terkonfirmasi pada database live: RLS `production_orders` belum mengizinkan UPDATE authenticated, sedangkan Production Monitoring sebelumnya membuat Work Order terlebih dahulu lalu mengabaikan kegagalan update Production Order.
+- Migration `atomic_pull_production_order` menambah policy UPDATE khusus `authenticated`, partial unique index `work_orders(source_order_id)` non-null, dan RPC `pull_production_order_to_konveksi` berjenis `SECURITY INVOKER` dengan execute hanya untuk authenticated.
+- Pull dari **Order Entry** dan **Production Monitoring** kini memakai satu RPC transaksional: sukses selalu menghasilkan PO `PULLED` beserta metadata pull dan tepat satu WO; retry mengembalikan WO yang sama; kegagalan tidak mengubah state UI seolah sukses.
+- Pembentukan Product ID/Variation ID disatukan di `src/lib/workOrderIdentity.ts`, termasuk aturan baku `White → WHT`, dan dilindungi 4 tes regresi Node.
+- Record `PO-785cd71b` (`Produksi - Awal | Sheen Pants | White | S`) direkonsiliasi secara sempit menjadi `PULLED`; metadata cocok dengan `WO-6b268a24`, dan WO tersebut tetap `FINISHED`. Record legacy lain tidak diubah.
+- Verifikasi Supabase MCP: migration/policy/index/privilege sesuai, tidak ada duplikat `source_order_id`, serta probe transaksi membuktikan first pull, retry idempotent, penolakan PO cancelled, dan rollback tanpa data sisa.
+- Verifikasi repository: 7/7 tes hijau, `npm run build` hijau (1957 modul), focused ESLint 0 error dengan 1 warning hook dependency pre-existing di `ProductionMonitoring.tsx`.
+
+### 2026-08-26 — Register PO: kolom Product Note menggantikan PO ID
+
+- Kolom pertama tabel **Register PO** kini berlabel **Product Note** dan hanya menampilkan `productionOrder.productNote` (contoh: `PDFF_LVU-TOP-02_B-00_PRDN`), bukan lagi gabungan Work Code, Brand, dan Product.
+- Search, Filter/Sort metadata, Column Settings, serta export CSV ikut menggunakan key/label **Product Note**.
+- Relasi internal `productionOrderId`, modal create/edit, service, dan database tidak berubah.
+- Verifikasi: `npm run build` hijau (1956 modul).
+
 ### 2026-08-26 — Target Jahit: Utang Staf mengikuti kekurangan akumulatif terbaru
 
 - Nominal utang **tetap memakai rumus lama**: `max(0, Total Gaji − Total Nilai PCS)` melalui `computeDebt`.

@@ -149,7 +149,7 @@ export function RegisterPoPage() {
   const displayData = useMemo(() => {
     return items.map((item) => ({
       id: item.po.id,
-      productionOrderId: `${item.productionOrder.workCode} (${item.productionOrder.brand} · ${item.productionOrder.product})`,
+      productNote: item.productionOrder.productNote,
       workCode: item.productionOrder.workCode,
       brand: item.productionOrder.brand,
       product: item.productionOrder.product,
@@ -162,11 +162,11 @@ export function RegisterPoPage() {
   const filtered = useMemo(() => {
     if (!search) return displayData;
     const q = search.toLowerCase();
-    return displayData.filter((d) => String(d.productionOrderId).toLowerCase().includes(q));
+    return displayData.filter((d) => String(d.productNote).toLowerCase().includes(q));
   }, [displayData, search]);
 
   const PO_FIELDS: FieldOption[] = [
-    { key: 'productionOrderId', label: 'PO ID' },
+    { key: 'productNote', label: 'Product Note' },
     { key: 'workCode', label: 'Work Code' },
     { key: 'brand', label: 'Brand' },
     { key: 'product', label: 'Product' },
@@ -181,8 +181,8 @@ export function RegisterPoPage() {
   const handleImport = () => { if (selectedRows.size === 0) { alert('Pilih minimal 1!'); return; } alert(`✅ ${selectedRows.size} Register PO di-import`); setSelectedRows(new Set()); };
   const handleExport = () => {
     const esc = (v: string | number | null | undefined) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-    const header = ['PO ID', 'Total/PCS', 'Created'];
-    const lines = filtered.map((r) => [r.productionOrderId, r.totalPerPcs, r.createdAt].map(esc).join(','));
+    const header = ['Product Note', 'Total/PCS', 'Created'];
+    const lines = filtered.map((r) => [r.productNote, r.totalPerPcs, r.createdAt].map(esc).join(','));
     const csv = '﻿' + [header.map(esc).join(','), ...lines].join('\r\n'); // BOM for Excel UTF-8
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
     const a = document.createElement('a');
@@ -242,7 +242,7 @@ export function RegisterPoPage() {
           </div>
           <FilterButton fields={PO_FIELDS} value={filters} onChange={setFilters} />
           <SortButton fields={PO_FIELDS} value={sorts} onChange={setSorts} />
-          <ColumnSettingsButton fields={[{ key: 'productionOrderId', label: 'PO ID' }, { key: 'totalPerPcs', label: 'Total/PCS' }, { key: 'createdAt', label: 'Created' }]} hidden={hiddenCols} onToggle={toggleCol} />
+          <ColumnSettingsButton fields={[{ key: 'productNote', label: 'Product Note' }, { key: 'totalPerPcs', label: 'Total/PCS' }, { key: 'createdAt', label: 'Created' }]} hidden={hiddenCols} onToggle={toggleCol} />
           <ExportButton onClick={handleExport} />
           <button onClick={handleImport} className={cn('h-8 px-2.5 text-[11px] rounded-lg flex items-center gap-1.5 font-medium transition-colors', selectedRows.size > 0 ? 'bg-blue-500 text-white hover:bg-blue-600' : 'border border-gray-200 text-slate-400')}>📥 Import ({selectedRows.size})</button>
           {selectedRows.size > 0 && (
@@ -255,10 +255,10 @@ export function RegisterPoPage() {
 
         <div className={T_WRAP}>
           <table className={cn(T_TABLE, 'w-auto min-w-full whitespace-nowrap')}>
-            <HiddenColgroup hidden={hiddenCols} cols={['__sel', 'productionOrderId', 'totalPerPcs', 'createdAt']} />
+            <HiddenColgroup hidden={hiddenCols} cols={['__sel', 'productNote', 'totalPerPcs', 'createdAt']} />
             <thead><tr className={T_HEAD_ROW}>
               <th className={cn(T_TH, 'w-12 text-center')}><input type="checkbox" checked={selectedRows.size === rows.length && rows.length > 0} onChange={handleToggleAll} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 align-middle" /></th>
-              <th className={cn(T_TH, 'text-left')}>PO ID</th>
+              <th className={cn(T_TH, 'text-left')}>Product Note</th>
               <th className={cn(T_TH, 'text-right')}>Total/PCS</th>
               <th className={cn(T_TH, 'text-left')}>Created</th>
             </tr></thead>
@@ -271,7 +271,7 @@ export function RegisterPoPage() {
                 return (
                   <tr key={row.id} className={cn(rowClass(i, selected), 'cursor-pointer')} onClick={() => openEdit(item)} title="Klik untuk edit">
                     <td className={cn(T_TD, 'text-center')} onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={selected} onChange={() => handleToggleRow(String(row.id))} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 align-middle" /></td>
-                    <td className={cn(T_TD, 'text-gray-700')} title={String(row.productionOrderId)}>{String(row.productionOrderId)}</td>
+                    <td className={cn(T_TD, 'text-gray-700')} title={String(row.productNote)}>{String(row.productNote)}</td>
                     <td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>{formatCurrency(row.totalPerPcs)}</td>
                     <td className={cn(T_TD, 'text-gray-700 whitespace-nowrap')}>{formatDate(String(row.createdAt))}</td>
                   </tr>

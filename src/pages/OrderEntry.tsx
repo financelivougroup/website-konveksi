@@ -3,32 +3,10 @@ import { Search, Plus, CheckCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { generateWorkCode } from '@/data/pipelineData';
+import { buildVariationId } from '@/lib/workOrderIdentity';
 import * as productionOrderSvc from '@/services/productionOrders';
 import * as workOrderSvc from '@/services/workOrders';
 import type { ProductionOrder } from '@/types/pipeline';
-
-// Warna abbreviation map (for Variation ID)
-const WARNA_ABBR: Record<string, string> = {
-  black: 'BLK', white: 'WHT', navy: 'NVY', red: 'RED',
-  grey: 'GRY', gray: 'GRY', beige: 'BEG', blue: 'BLU',
-  green: 'GRN', brown: 'BRN', pink: 'PNK', yellow: 'YLW',
-  orange: 'ORG', purple: 'PRP', cream: 'CRM', khaki: 'KHK',
-  maroon: 'MRN', silver: 'SLV', gold: 'GLD',
-};
-
-function getWarnaAbbr(warna: string): string {
-  const key = warna.toLowerCase().trim();
-  if (WARNA_ABBR[key]) return WARNA_ABBR[key];
-  // fallback: remove vowels, uppercase, max 3 chars
-  const noVowels = key.replace(/[aeiou]/gi, '');
-  return noVowels.toUpperCase().substring(0, 3) || key.toUpperCase().substring(0, 3);
-}
-
-// Variation ID = productId-warna-size (e.g. LVU-TOP-05-BLK-M)
-function buildVariationId(productId: string, warna: string, size: string): string {
-  if (!productId || !warna || !size) return '';
-  return `${productId}-${getWarnaAbbr(warna)}-${size}`;
-}
 
 export default function OrderEntry() {
   const { profile } = useAuth();
@@ -38,6 +16,7 @@ export default function OrderEntry() {
   const [message, setMessage] = useState<string | null>(null);
   const [form, setForm] = useState({ productId: '', productNote: 'B-00', product: '', brand: 'Cassca', warna: '', size: '' });
   const [loading, setLoading] = useState(true);
+  const [pullingOrderId, setPullingOrderId] = useState<string | null>(null);
   const [orders, setOrders] = useState<ProductionOrder[]>([]);
   const mountedRef = useRef(false);
 
@@ -73,50 +52,40 @@ export default function OrderEntry() {
 
   const handlePull = async (poId: string) => {
     const po = orders.find((p) => p.id === poId);
-    console.log('[Pull] attempting pull for po.id:', poId, 'found:', !!po, 'status:', po?.status);
-    if (!po || po.status !== 'PLANNING') return;
+    if (!po || po.status !== 'PLANNING' || pullingOrderId) return;
 
-    const pid = `${po.brand.substring(0, 3).toUpperCase()}-${po.product.replace(/\s/g, '-').toUpperCase().substring(0, 5)}`;
-    const varId = buildVariationId(pid, po.warna, po.size);
-    const now = new Date().toISOString().split('T')[0];
-
-    // Update UI dulu — langsung hilang dari tab PLANNING
-    setOrders((prev) => prev.map((p) => p.id === poId ? { ...p, status: 'PULLED' as const, pulledAt: now, pulledBy: currentDisplayName } : p));
+    setPullingOrderId(poId);
     setMessage('⏳ Memproses Pull...');
 
-    // Update PO di DB + tunggu hasilnya
-    const { error: pullErr } = await productionOrderSvc.pullToKonveksi(po.id, currentDisplayName);
-    console.log('[OrderEntry] pullToKonveksi result:', pullErr);
+    try {
+      const { data: workOrder, error } = await workOrderSvc.pullFromProductionOrder(
+        po,
+        currentDisplayName,
+      );
 
-    if (pullErr) {
-      // Rollback UI
-      setOrders((prev) => prev.map((p) => p.id === poId ? { ...p, status: 'PLANNING' as const } : p));
-      setMessage(`❌ Gagal update status PO: ${pullErr.message}`);
-      setTimeout(() => setMessage(null), 3000);
-      return;
+      if (error || !workOrder) {
+        setMessage(`❌ Gagal pull order: ${error?.message ?? 'Work order tidak dikembalikan'}`);
+        return;
+      }
+
+      setOrders((prev) => prev.map((order) => (
+        order.id === poId
+          ? {
+              ...order,
+              status: 'PULLED' as const,
+              pulledAt: workOrder.pulledAt,
+              pulledBy: workOrder.createdBy,
+            }
+          : order
+      )));
+      setMessage(`✅ "${po.product}" berhasil di-pull! (WO: ${workOrder.id}) → Lanjut Register PO.`);
+    } catch (error: unknown) {
+      const detail = error instanceof Error ? error.message : String(error);
+      setMessage(`❌ Gagal pull order: ${detail}`);
+    } finally {
+      setPullingOrderId(null);
+      setTimeout(() => setMessage(null), 4000);
     }
-
-    // Verify: refetch dari DB untuk pastiin beneran keupdate
-    const { data: updatedPO } = await productionOrderSvc.fetchById(po.id);
-    console.log('[OrderEntry] verifikasi status PO:', updatedPO?.status);
-
-    // Create WO di DB
-    const { data: newWO, error: woErr } = await workOrderSvc.create({
-      workCode: po.workCode, sourceOrderId: po.id,
-      productNote: po.productNote,
-      product: po.product, productId: pid,
-      variationId: varId,
-      informationVariation: po.informationVariation, warna: po.warna, size: po.size, brand: po.brand,
-      quantity: po.quantity, productionStatus: 'NEW', invoiceStatus: 'NONE',
-      createdBy: currentDisplayName, createdAt: po.createdAt, pulledAt: now,
-    });
-
-    if (woErr) {
-      setMessage(`⚠️ PO sudah PULLED, tapi WO gagal: ${woErr.message}. Hapus dari RAW DATA atau coba lagi.`);
-    } else {
-      setMessage(`✅ "${po.product}" berhasil di-pull! (WO: ${newWO?.id}) → Lanjut Register PO.`);
-    }
-    setTimeout(() => setMessage(null), 4000);
   };
 
   const handleCancel = async (poId: string) => {
@@ -130,10 +99,11 @@ export default function OrderEntry() {
       const { error } = await productionOrderSvc.update(poId, { status: 'CANCELLED' });
       if (error) throw error;
       setMessage(`✅ Order "${po.product}" dibatalkan.`);
-    } catch (e: any) {
+    } catch (error: unknown) {
       // Rollback UI kalau gagal
       setOrders((prev) => prev.map((p) => (p.id === poId ? { ...p, status: 'PLANNING' as const } : p)));
-      setMessage(`❌ Gagal: ${e?.message || e}`);
+      const message = error instanceof Error ? error.message : String(error);
+      setMessage(`❌ Gagal: ${message}`);
     }
     setTimeout(() => setMessage(null), 3000);
   };
@@ -273,7 +243,7 @@ export default function OrderEntry() {
                   <td className="px-4 py-3 text-center space-x-2">
                     {order.status === 'PLANNING' && (
                       <>
-                        <button onClick={() => handlePull(order.id)} className="text-sky-600 hover:text-sky-700 text-sm font-medium underline">Pull</button>
+                        <button onClick={() => handlePull(order.id)} disabled={pullingOrderId !== null} className="text-sky-600 hover:text-sky-700 text-sm font-medium underline disabled:cursor-not-allowed disabled:opacity-50">{pullingOrderId === order.id ? 'Pulling…' : 'Pull'}</button>
                         <button onClick={() => handleCancel(order.id)} className="text-red-600 hover:text-red-700 text-sm font-medium underline">Cancel</button>
                       </>
                     )}
