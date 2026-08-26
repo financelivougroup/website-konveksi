@@ -199,6 +199,17 @@ Website Konveksi/
 
 ## Latest Progress
 
+### 2026-08-26 — Target Jahit: Utang Staf mengikuti kekurangan akumulatif terbaru
+
+- Nominal utang **tetap memakai rumus lama**: `max(0, Total Gaji − Total Nilai PCS)` melalui `computeDebt`.
+- Syarat tampil diperketat: staf hanya masuk tab **Utang Staf** bila baris target bulan terbarunya memiliki **Selisih Akumulasi < 0** dan nominal utang masih lebih dari Rp0.
+- Kekurangan bulan lama yang sudah tertutup oleh kelebihan produksi bulan berikutnya otomatis mengeluarkan staf dari daftar; staf tanpa snapshot target tidak ditampilkan.
+- Enrichment lengkap dipisahkan dari hasil pencarian tab Target agar isi Utang Staf tidak berubah saat pengguna mengetik pencarian.
+- Helper murni baru `src/lib/staffDebtEligibility.ts` memilih snapshot terbaru per staf dan menerapkan eligibility; dilindungi 3 tes Node di `tests/staffDebtEligibility.test.ts`.
+- Tidak ada perubahan database/schema. Verifikasi: 3/3 tes hijau, `npm run build` hijau (1952 modul), helper lint bersih; halaman tetap memiliki 3 temuan lint pre-existing yang identik dengan baseline.
+
+---
+
 ### 2026-08-22 — Planning Produksi: Top Bar Cleanup + Bulk Status + Fix Real-Time Status
 
 **Top bar dirapikan:**
@@ -215,6 +226,8 @@ Website Konveksi/
 - Kini optimistic update: `setItems` langsung saat dropdown diganti; rollback kalau Supabase error.
 
 **File**: `src/pages/PlanningProduksiPage.tsx` saja. Build ✅ (~10s).
+
+---
 
 ### 2026-08-22 — Target Jahit: 3 Tampilan (Target · Utang Staf · Benefit)
 

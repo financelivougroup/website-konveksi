@@ -15,6 +15,7 @@ import * as sewingRecordSvc from '@/services/sewingRecords';
 import * as workOrderSvc from '@/services/workOrders';
 import * as targetJahitDetailSvc from '@/services/targetJahitDetail';
 import { enrichTargetRows, enrichDetails } from '@/lib/targetCompute';
+import { filterDebtRowsByLatestAccum } from '@/lib/staffDebtEligibility';
 import type { SewingRecord } from '@/types/pipeline';
 import { useAuth } from '@/contexts/AuthContext';
 import { generateHolidayTooltipInfo } from '@/lib/holidayHelpers';
@@ -302,11 +303,15 @@ export function TargetJahitPage() {
 
   // Live enrichment: all 22 columns computed from source data at render time
   // (workdays, realization from sewing_records, accumulation, status).
+  const allEnriched = useMemo(
+    () => enrichTargetRows(items, sewing, woProduct, prices, details, libur, new Date()),
+    [items, sewing, woProduct, prices, details, libur],
+  );
+
   const enriched = useMemo(() => {
-    const all = enrichTargetRows(items, sewing, woProduct, prices, details, libur, new Date());
-    if (!search) return all;
+    if (!search) return allEnriched;
     const q = search.toLowerCase();
-    return all.filter((d) =>
+    return allEnriched.filter((d) =>
       [
         d.bulan_tahun,
         d.nama,
@@ -316,7 +321,12 @@ export function TargetJahitPage() {
         d.statusFinalAkumulasi,
       ].some((v) => String(v).toLowerCase().includes(q)),
     );
-  }, [items, sewing, woProduct, prices, details, libur, search]);
+  }, [allEnriched, search]);
+
+  const visibleDebtRows = useMemo(
+    () => filterDebtRowsByLatestAccum(debtRows, allEnriched),
+    [debtRows, allEnriched],
+  );
 
   const normalized = useMemo(
     () => applySorts(applyFilters(enriched.map((r) => normalizeTargetRow(r)), filters), sorts),
@@ -600,9 +610,9 @@ export function TargetJahitPage() {
           <>
             {debtLoading ? (
               <p className="text-slate-400 text-sm">Menghitung utang staf...</p>
-            ) : debtRows.filter((r) => r.utang > 0).length === 0 ? (
+            ) : visibleDebtRows.length === 0 ? (
               <p className="text-slate-400 text-sm">
-                {debtRows.length === 0 ? 'Belum ada data utang staf.' : '🎉 Semua staf sudah lunas — tidak ada utang jahit.'}
+                {debtRows.length === 0 ? 'Belum ada data utang staf.' : '🎉 Tidak ada staf dengan kekurangan target akumulasi dan utang jahit.'}
               </p>
             ) : (
               <div className={T_WRAP}>
@@ -614,7 +624,7 @@ export function TargetJahitPage() {
                     <th className={cn(T_TH, 'text-right')}>Utang</th>
                   </tr></thead>
                   <tbody>
-                    {debtRows.filter((r) => r.utang > 0).map((r, i) => (
+                    {visibleDebtRows.map((r, i) => (
                       <tr key={r.nama} className={rowClass(i)}>
                         <td className={cn(T_TD, 'font-medium text-gray-900')}>{r.nama}</td>
                         <td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>{formatCurrency(r.totalGaji)}</td>
@@ -627,7 +637,7 @@ export function TargetJahitPage() {
               </div>
             )}
             <p className="text-[11px] text-slate-400 mt-3">
-              Utang = Total Gaji − Total Nilai PCS (hasil kerja berharga). Hanya staf yang masih memiliki utang yang ditampilkan.
+              Utang = Total Gaji − Total Nilai PCS (hasil kerja berharga). Ditampilkan bila Selisih Akumulasi bulan terbaru masih negatif dan nominal utang lebih dari Rp0.
             </p>
           </>
         )}
