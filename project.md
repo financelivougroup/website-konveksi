@@ -199,6 +199,13 @@ Website Konveksi/
 
 ## Latest Progress
 
+### 2026-08-26 — Universal Excel Import: design approved
+
+- Desain fitur Import Excel nyata disetujui untuk enam modul: RAW DATA, Planning Produksi, Register Karyawan, Register PO, Complain & Penalti, dan Target Jahit. Tombol Import mock berbasis checkbox akan diganti dialog upload nyata.
+- Arsitektur: satu mesin import bersama + adapter per modul; dukung `.xlsx`, `.xls`, `.csv`; template terpisah per modul dengan sheet Data + Petunjuk; batas 2.000 baris; preview Valid/Duplikat/Error sebelum konfirmasi; baris valid tetap diproses walau sebagian error; duplikat dilewati tanpa overwrite; tersedia laporan error untuk download.
+- Status hasil import mengikuti default aman sistem. Referensi yang belum terdaftar menolak baris. RAW DATA mempertahankan Work Code/Product ID/Variation ID dari Excel dan secara atomik membuat Production Order PULLED + Work Order NEW. Register PO memakai satu baris per PO dengan delapan komponen biaya dan transaksi parent/child atomik. Complain diimpor tanpa foto. Target Jahit mengimpor Planning draft, bukan menulis target langsung.
+- Skema live untuk seluruh tabel terkait sudah diverifikasi via Supabase MCP sebelum desain transaksi. Spec: `docs/superpowers/specs/2026-08-26-universal-excel-import-design.md`. Tahap berikutnya: implementation plan rinci setelah review spec.
+
 ### 2026-08-22 — InvoicingPage: font seragam + header layout standar shadcn
 
 **Font kolom data diseragamkan dengan tabel lain:**
