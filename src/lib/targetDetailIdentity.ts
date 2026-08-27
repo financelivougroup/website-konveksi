@@ -56,6 +56,10 @@ export function calculateDetailRealizations(
   ym: string,
   workOrders: Map<string, WorkOrderDesignIdentity>,
 ): DetailRealization[] {
+  if (!ym) {
+    return details.map(() => ({ qtyRealisasi: 0, nilai: 0 }));
+  }
+
   const preciseDetailKeys = new Set<string>();
   const legacyProducts = new Set<string>();
 

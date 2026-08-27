@@ -52,6 +52,14 @@ test('memisahkan realisasi Product Note berbeda dan mengagregasi tuple yang sama
   ]);
 });
 
+test('bulan kosong tidak menghitung seluruh riwayat jahit', () => {
+  const result = calculateDetailRealizations([
+    { productNote: 'Produksi 1', product: 'Dress', warna: 'Hitam', qtyTarget: 20, hargaJahit: 1000, hargaObras: 500 },
+  ], sewing, 'Ayu', '', workOrders);
+
+  assert.deepEqual(result, [{ qtyRealisasi: 0, nilai: 0 }]);
+});
+
 test('detail legacy memakai fallback Product', () => {
   const result = calculateDetailRealizations([
     { productNote: null, product: 'Dress', warna: null, qtyTarget: 40, hargaJahit: 1000, hargaObras: 500 },
