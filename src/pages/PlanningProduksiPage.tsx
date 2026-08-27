@@ -119,7 +119,7 @@ export function PlanningProduksiPage() {
     setModalOpen(true);
   }, [loadPenjahit]);
 
-  const isValid = form.namaPenjahit && form.productNote.trim() && form.product && form.qty && form.bulanTarget;
+  const isValid = Boolean(form.namaPenjahit && form.productNote.trim() && form.product && form.qty && form.bulanTarget);
 
   async function handleSave() {
     if (!isValid) {
@@ -301,7 +301,7 @@ export function PlanningProduksiPage() {
 
         <div className={T_WRAP}>
           <table className={cn(T_TABLE, 'w-auto min-w-full whitespace-nowrap')}>
-            <HiddenColgroup hidden={hiddenCols} cols={['namaPenjahit', 'productNote', 'product', 'warna', 'size', 'qty', 'bulanTarget', 'status']} />
+            <HiddenColgroup hidden={hiddenCols} cols={['_select', 'namaPenjahit', 'productNote', 'product', 'warna', 'size', 'qty', 'bulanTarget', 'status']} />
             <thead><tr className={T_HEAD_ROW}>
               <th className={cn(T_TH, 'w-12 text-center')}><input type="checkbox" checked={selectedRows.size === rows.length && rows.length > 0} onChange={handleToggleAll} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 align-middle" /></th>
               <th className={cn(T_TH, 'text-left')}>Nama Penjahit</th>
