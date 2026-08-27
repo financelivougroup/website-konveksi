@@ -34,6 +34,7 @@ const PLAN_STATUS_BADGE: Record<string, string> = {
 
 interface PlanningForm {
   namaPenjahit: string;
+  productNote: string;
   product: string;
   warna: string;
   size: string;
@@ -43,6 +44,7 @@ interface PlanningForm {
 
 const EMPTY_FORM: PlanningForm = {
   namaPenjahit: '',
+  productNote: '',
   product: '',
   warna: '',
   size: '',
@@ -106,6 +108,7 @@ export function PlanningProduksiPage() {
     setEditTarget(item);
     setForm({
       namaPenjahit: item.namaPenjahit,
+      productNote: item.productNote ?? '',
       product: item.product,
       warna: item.warna ?? '',
       size: item.size ?? '',
@@ -116,11 +119,11 @@ export function PlanningProduksiPage() {
     setModalOpen(true);
   }, [loadPenjahit]);
 
-  const isValid = form.namaPenjahit && form.product && form.qty && form.bulanTarget;
+  const isValid = form.namaPenjahit && form.productNote.trim() && form.product && form.qty && form.bulanTarget;
 
   async function handleSave() {
     if (!isValid) {
-      setMessage('❌ Lengkapi Nama Penjahit, Produk, Qty, dan Bulan Target.');
+      setMessage('❌ Lengkapi Nama Penjahit, Product Note, Produk, Qty, dan Bulan Target.');
       setTimeout(() => setMessage(null), 3000);
       return;
     }
@@ -130,6 +133,7 @@ export function PlanningProduksiPage() {
     // satisfy the service input; omit it on update so it stays as stored.
     const payload = {
       namaPenjahit: form.namaPenjahit,
+      productNote: form.productNote.trim(),
       product: form.product,
       warna: form.warna || null,
       size: form.size || null,
@@ -191,6 +195,7 @@ export function PlanningProduksiPage() {
 
   const PLAN_FIELDS: FieldOption[] = [
     { key: 'namaPenjahit', label: 'Nama Penjahit' },
+    { key: 'productNote', label: 'Product Note' },
     { key: 'product', label: 'Product' },
     { key: 'warna', label: 'Warna' },
     { key: 'size', label: 'Size' },
@@ -201,7 +206,7 @@ export function PlanningProduksiPage() {
   const filtered = items.filter((r) => {
     if (search) {
       const q = search.toLowerCase();
-      return r.namaPenjahit.toLowerCase().includes(q) || r.product.toLowerCase().includes(q) || r.warna?.toLowerCase().includes(q) || r.size?.toLowerCase().includes(q);
+      return r.namaPenjahit.toLowerCase().includes(q) || r.productNote?.toLowerCase().includes(q) || r.product.toLowerCase().includes(q) || r.warna?.toLowerCase().includes(q) || r.size?.toLowerCase().includes(q);
     }
     return true;
   });
@@ -213,8 +218,8 @@ export function PlanningProduksiPage() {
   const handleImport = () => { if (selectedRows.size === 0) { alert('Pilih minimal 1!'); return; } alert(`✅ ${selectedRows.size} planning di-import`); setSelectedRows(new Set()); };
   const handleExport = () => {
     const esc = (v: string | number | null | undefined) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-    const header = ['Nama Penjahit', 'Product', 'Warna', 'Size', 'Qty', 'Bulan Target', 'Status'];
-    const lines = filtered.map((r) => [r.namaPenjahit, r.product, r.warna ?? '', r.size ?? '', r.qty, r.bulanTarget, r.status].map(esc).join(','));
+    const header = ['Nama Penjahit', 'Product Note', 'Product', 'Warna', 'Size', 'Qty', 'Bulan Target', 'Status'];
+    const lines = filtered.map((r) => [r.namaPenjahit, r.productNote ?? '', r.product, r.warna ?? '', r.size ?? '', r.qty, r.bulanTarget, r.status].map(esc).join(','));
     const csv = '﻿' + [header.map(esc).join(','), ...lines].join('\r\n'); // BOM for Excel UTF-8
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
     const a = document.createElement('a');
@@ -296,10 +301,11 @@ export function PlanningProduksiPage() {
 
         <div className={T_WRAP}>
           <table className={cn(T_TABLE, 'w-auto min-w-full whitespace-nowrap')}>
-            <HiddenColgroup hidden={hiddenCols} cols={['namaPenjahit', 'product', 'warna', 'size', 'qty', 'bulanTarget', 'status']} />
+            <HiddenColgroup hidden={hiddenCols} cols={['namaPenjahit', 'productNote', 'product', 'warna', 'size', 'qty', 'bulanTarget', 'status']} />
             <thead><tr className={T_HEAD_ROW}>
               <th className={cn(T_TH, 'w-12 text-center')}><input type="checkbox" checked={selectedRows.size === rows.length && rows.length > 0} onChange={handleToggleAll} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 align-middle" /></th>
               <th className={cn(T_TH, 'text-left')}>Nama Penjahit</th>
+              <th className={cn(T_TH, 'text-left')}>Product Note</th>
               <th className={cn(T_TH, 'text-left')}>Product</th>
               <th className={cn(T_TH, 'text-left')}>Warna</th>
               <th className={cn(T_TH, 'text-left')}>Size</th>
@@ -308,13 +314,16 @@ export function PlanningProduksiPage() {
               <th className={cn(T_TH, 'text-center')}>Status</th>
             </tr></thead>
             <tbody>
-              {rows.length === 0 && <tr><td colSpan={8} className="py-10 text-center text-sm text-gray-400">{filtered.length === 0 ? 'Belum ada planning produksi' : 'Tidak ada hasil yang cocok dengan filter'}</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={9} className="py-10 text-center text-sm text-gray-400">{filtered.length === 0 ? 'Belum ada planning produksi' : 'Tidak ada hasil yang cocok dengan filter'}</td></tr>}
               {rows.map((r, i) => {
                 const selected = selectedRows.has(r.id);
                 return (
                   <tr key={r.id} className={cn(rowClass(i, selected), 'cursor-pointer')} onClick={() => openEdit(r)} title="Klik untuk edit">
                     <td className={cn(T_TD, 'text-center')} onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={selected} onChange={() => handleToggleRow(r.id)} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 align-middle" /></td>
                     <td className={cn(T_TD, 'text-gray-700')}>{r.namaPenjahit}</td>
+                    <td className={cn(T_TD, 'text-gray-700')}>
+                      {r.productNote || <span className="text-gray-300">—</span>}
+                    </td>
                     <td className={cn(T_TD, 'text-gray-700')}>{r.product}</td>
                     <td className={cn(T_TD, 'text-gray-700')}>{r.warna || <span className="text-gray-300">—</span>}</td>
                     <td className={cn(T_TD, 'text-gray-700')}>{r.size || <span className="text-gray-300">—</span>}</td>
@@ -359,6 +368,18 @@ export function PlanningProduksiPage() {
                 ))}
               </select>
               {penjahitList.length === 0 && <p className="text-xs text-slate-400 mt-1">Belum ada karyawan aktif dengan posisi Penjahit — daftarkan di Register Karyawan.</p>}
+            </div>
+
+            <div>
+              <Label htmlFor="productNote">Product Note *</Label>
+              <Input
+                id="productNote"
+                type="text"
+                value={form.productNote}
+                onChange={(e) => setField('productNote', e.target.value)}
+                placeholder="e.g. Produksi 2"
+                className="mt-1"
+              />
             </div>
 
             <div className="grid grid-cols-2 gap-3">
