@@ -3,6 +3,10 @@ import type { TargetJahitRow } from '@/services/targetJahit';
 import type { TargetJahitDetailRow } from '@/services/targetJahitDetail';
 import type { PriceMap } from '@/services/staffDebt';
 import { getNationalHolidaysInMonth } from '@/data/nationalHolidays';
+import {
+  calculateDetailRealizations,
+  type WorkOrderDesignIdentity,
+} from '@/lib/targetDetailIdentity';
 
 // ===== Workdays: Mon–Sat minus daftar_libur =====
 
@@ -115,20 +119,6 @@ export interface EnrichedTargetRow extends TargetJahitRow {
   benefitAmount: number;      // computed: extra × rate
 }
 
-/** Map sewing records -> WO product via workOrderProduct (wo.id -> product). */
-function sewingQtyByProduct(sewing: SewingRecord[], person: string, ym: string, workOrderProduct: Map<string, string>): Map<string, number> {
-  const out = new Map<string, number>();
-  if (!ym) return out;
-  for (const s of sewing) {
-    if (s.picPenjahit !== person) continue;
-    if (!String(s.tanggalLaporan ?? '').startsWith(ym)) continue;
-    const product = workOrderProduct.get(s.workOrderId);
-    if (!product) continue;
-    out.set(product, (out.get(product) ?? 0) + (Number(s.qtySelesai) || 0));
-  }
-  return out;
-}
-
 function monthlyRealisasi(sewing: SewingRecord[], person: string, ym: string): number {
   let n = 0;
   if (!ym) return n;
@@ -140,22 +130,20 @@ function monthlyRealisasi(sewing: SewingRecord[], person: string, ym: string): n
   return n;
 }
 
-/**
- * Per-design realization: detail rows sharing a product split that product's
- * sewing qty proportionally to qtyTarget (covers multi-colour per product).
- */
-export function enrichDetails(details: TargetJahitDetailRow[], sewing: SewingRecord[], person: string, ym: string, workOrderProduct: Map<string, string>): { qtyRealisasi: number; nilai: number }[] {
-  const byProduct = sewingQtyByProduct(sewing, person, ym, workOrderProduct);
-  const targetByProduct = new Map<string, number>();
-  for (const d of details) targetByProduct.set(d.product, (targetByProduct.get(d.product) ?? 0) + d.qtyTarget);
-  return details.map((d) => {
-    const totalQty = byProduct.get(d.product) ?? 0;
-    const totalTarget = targetByProduct.get(d.product) ?? 0;
-    const share = totalTarget > 0 ? d.qtyTarget / totalTarget : details.length > 0 ? 1 / details.length : 0;
-    const qtyRealisasi = Math.round(totalQty * share);
-    const nilai = qtyRealisasi * (d.hargaJahit + d.hargaObras);
-    return { qtyRealisasi, nilai };
-  });
+export function enrichDetails(
+  details: TargetJahitDetailRow[],
+  sewing: SewingRecord[],
+  person: string,
+  ym: string,
+  workOrderDesign: Map<string, WorkOrderDesignIdentity>,
+): { qtyRealisasi: number; nilai: number }[] {
+  return calculateDetailRealizations(
+    details,
+    sewing,
+    person,
+    ym,
+    workOrderDesign,
+  );
 }
 
 /**
@@ -166,7 +154,7 @@ export function enrichDetails(details: TargetJahitDetailRow[], sewing: SewingRec
 export function enrichTargetRows(
   rows: TargetJahitRow[],
   sewing: SewingRecord[],
-  workOrderProduct: Map<string, string>,
+  workOrderDesign: Map<string, WorkOrderDesignIdentity>,
   prices: PriceMap,
   details: TargetJahitDetailRow[],
   holidays: string[],
@@ -220,7 +208,7 @@ export function enrichTargetRows(
 
     // Realization cost: prefer detail prices, fall back to price map.
     const myDetails = details.filter((d) => d.targetJahitId === row.id);
-    const enrichedDetails = enrichDetails(myDetails, sewing, person, ym, workOrderProduct);
+    const enrichedDetails = enrichDetails(myDetails, sewing, person, ym, workOrderDesign);
     let realisasiCostPosisi = 0;
     enrichedDetails.forEach((e, i) => {
       const d = myDetails[i];
