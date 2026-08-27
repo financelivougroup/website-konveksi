@@ -8,7 +8,7 @@ export interface PlannedTargetDetailInput extends WorkOrderDesignIdentity {
   qty: number;
 }
 
-export interface GroupedTargetDetail extends PlannedTargetDetailInput {}
+export type GroupedTargetDetail = PlannedTargetDetailInput;
 
 export interface TargetDetailIdentityInput extends WorkOrderDesignIdentity {
   qtyTarget: number;
@@ -91,35 +91,59 @@ export function calculateDetailRealizations(
     }
   }
 
-  const targetByPreciseKey = new Map<string, number>();
-  const targetByLegacyProduct = new Map<string, number>();
+  const preciseDetailIndices = new Map<string, number[]>();
+  const legacyDetailIndices = new Map<string, number[]>();
 
-  for (const detail of details) {
+  details.forEach((detail, index) => {
     if (detail.productNote != null && detail.productNote !== '') {
       const key = designIdentityKey(detail);
-      targetByPreciseKey.set(
-        key,
-        (targetByPreciseKey.get(key) ?? 0) + detail.qtyTarget,
-      );
+      const indices = preciseDetailIndices.get(key) ?? [];
+      indices.push(index);
+      preciseDetailIndices.set(key, indices);
     } else {
-      targetByLegacyProduct.set(
-        detail.product,
-        (targetByLegacyProduct.get(detail.product) ?? 0) + detail.qtyTarget,
-      );
+      const indices = legacyDetailIndices.get(detail.product) ?? [];
+      indices.push(index);
+      legacyDetailIndices.set(detail.product, indices);
     }
+  });
+
+  const allocatedQty = Array<number>(details.length).fill(0);
+  const allocateBucket = (indices: number[], totalQty: number) => {
+    const totalTarget = indices.reduce(
+      (sum, index) => sum + details[index].qtyTarget,
+      0,
+    );
+    if (totalTarget <= 0) return;
+
+    const allocations = indices.map((index) => {
+      const exact = totalQty * details[index].qtyTarget / totalTarget;
+      const base = Math.floor(exact);
+      allocatedQty[index] = base;
+      return { index, remainder: exact - base };
+    });
+    const allocatedBase = allocations.reduce(
+      (sum, allocation) => sum + allocatedQty[allocation.index],
+      0,
+    );
+    const remaining = totalQty - allocatedBase;
+
+    allocations.sort((a, b) =>
+      b.remainder - a.remainder || a.index - b.index,
+    );
+    for (let i = 0; i < remaining; i++) {
+      allocatedQty[allocations[i].index] += 1;
+    }
+  };
+
+  for (const [key, indices] of preciseDetailIndices) {
+    allocateBucket(indices, qtyByPreciseKey.get(key) ?? 0);
+  }
+  for (const [product, indices] of legacyDetailIndices) {
+    allocateBucket(indices, qtyByLegacyProduct.get(product) ?? 0);
   }
 
-  return details.map((detail) => {
-    const isPrecise = detail.productNote != null && detail.productNote !== '';
-    const key = designIdentityKey(detail);
-    const totalQty = isPrecise
-      ? qtyByPreciseKey.get(key) ?? 0
-      : qtyByLegacyProduct.get(detail.product) ?? 0;
-    const totalTarget = isPrecise
-      ? targetByPreciseKey.get(key) ?? 0
-      : targetByLegacyProduct.get(detail.product) ?? 0;
-    const share = totalTarget > 0 ? detail.qtyTarget / totalTarget : 0;
-    const qtyRealisasi = Math.round(totalQty * share);
+  return details.map((detail, index) => {
+    const qtyRealisasi = allocatedQty[index];
     const nilai = qtyRealisasi * (detail.hargaJahit + detail.hargaObras);
     return { qtyRealisasi, nilai };
   });

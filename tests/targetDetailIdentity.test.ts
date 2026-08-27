@@ -71,3 +71,31 @@ test('fallback legacy tidak menghitung ulang sewing yang sudah cocok dengan deta
     { qtyRealisasi: 7, nilai: 10_500 },
   ]);
 });
+
+test('alokasi duplicate precise mempertahankan total dan memecahkan seri berdasarkan urutan detail', () => {
+  const result = calculateDetailRealizations([
+    { productNote: 'Produksi 1', product: 'Dress', warna: 'Hitam', qtyTarget: 10, hargaJahit: 1000, hargaObras: 500 },
+    { productNote: 'Produksi 1', product: 'Dress', warna: 'Hitam', qtyTarget: 10, hargaJahit: 1000, hargaObras: 500 },
+  ], [
+    { workOrderId: 'wo-1', picPenjahit: 'Ayu', qtySelesai: 1, tanggalLaporan: '2026-08-05' },
+  ], 'Ayu', '2026-08', workOrders);
+
+  assert.deepEqual(result, [
+    { qtyRealisasi: 1, nilai: 1_500 },
+    { qtyRealisasi: 0, nilai: 0 },
+  ]);
+});
+
+test('alokasi duplicate legacy mempertahankan total dan memecahkan seri berdasarkan urutan detail', () => {
+  const result = calculateDetailRealizations([
+    { productNote: null, product: 'Dress', warna: null, qtyTarget: 10, hargaJahit: 1000, hargaObras: 500 },
+    { productNote: null, product: 'Dress', warna: null, qtyTarget: 10, hargaJahit: 1000, hargaObras: 500 },
+  ], [
+    { workOrderId: 'wo-1', picPenjahit: 'Ayu', qtySelesai: 1, tanggalLaporan: '2026-08-05' },
+  ], 'Ayu', '2026-08', workOrders);
+
+  assert.deepEqual(result, [
+    { qtyRealisasi: 1, nilai: 1_500 },
+    { qtyRealisasi: 0, nilai: 0 },
+  ]);
+});
