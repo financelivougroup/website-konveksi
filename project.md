@@ -207,7 +207,7 @@ Website Konveksi/
 - Rincian Realisasi per Desain menampilkan **Product Note sebelum Product** dan menghitung Qty Realisasi/nominal berdasarkan identitas Work Order yang sama.
 - Data legacy tanpa Product Note tetap tampil `—` dengan fallback Product yang tidak menghitung ulang sewing yang sudah cocok ke detail beridentitas; alokasi duplicate detail memakai largest-remainder agar total realisasi tetap sama dengan sumber.
 - Rumus induk Target, Benefit, Utang Staf, realisasi bulanan, dan role-gating nominal tidak berubah.
-- Verifikasi final: **10/10 tes Node lulus**, build produksi lulus (**1.953 modul**), stale Product-only map tidak tersisa, dan `git diff --check` bersih. Focused lint tetap melaporkan **4 error pre-existing** yang identik dengan baseline: 1 `no-explicit-any` di Planning Produksi serta 2 conditional-hooks + 1 `no-explicit-any` di Target Jahit; tidak ada temuan lint baru dari fitur ini.
+- Verifikasi final: **11/11 tes Node lulus** (termasuk regresi bulan kosong agar tidak menghitung seluruh riwayat jahit), build produksi lulus (**1.953 modul**), stale Product-only map tidak tersisa, dan `git diff --check` bersih. Focused lint tetap melaporkan **4 error pre-existing** yang identik dengan baseline: 1 `no-explicit-any` di Planning Produksi serta 2 conditional-hooks + 1 `no-explicit-any` di Target Jahit; tidak ada temuan lint baru dari fitur ini.
 
 ---
 
