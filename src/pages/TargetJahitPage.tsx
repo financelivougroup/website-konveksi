@@ -15,6 +15,7 @@ import * as sewingRecordSvc from '@/services/sewingRecords';
 import * as workOrderSvc from '@/services/workOrders';
 import * as targetJahitDetailSvc from '@/services/targetJahitDetail';
 import { enrichTargetRows, enrichDetails } from '@/lib/targetCompute';
+import type { WorkOrderDesignIdentity } from '@/lib/targetDetailIdentity';
 import { filterDebtRowsByLatestAccum } from '@/lib/staffDebtEligibility';
 import type { SewingRecord } from '@/types/pipeline';
 import { useAuth } from '@/contexts/AuthContext';
@@ -241,7 +242,7 @@ export function TargetJahitPage() {
   const [libur, setLibur] = useState<string[]>([]);
   const [sewing, setSewing] = useState<SewingRecord[]>([]);
   const [details, setDetails] = useState<import('@/services/targetJahitDetail').TargetJahitDetailRow[]>([]);
-  const [woProduct, setWoProduct] = useState<Map<string, string>>(new Map());
+  const [workOrderDesign, setWorkOrderDesign] = useState<Map<string, WorkOrderDesignIdentity>>(new Map());
   const [prices, setPrices] = useState<Record<string, { jahit: number; obras: number }>>({});
   const [overlayId, setOverlayId] = useState<number | null>(null);
 
@@ -259,7 +260,16 @@ export function TargetJahitPage() {
     setLibur((l.data ?? []).map((r) => r.tanggal));
     setSewing(s.data ?? []);
     setDetails(d.data ?? []);
-    setWoProduct(new Map((wo.data ?? []).map((w) => [w.id, w.product] as const)));
+    setWorkOrderDesign(new Map(
+      (wo.data ?? []).map((w) => [
+        w.id,
+        {
+          productNote: w.productNote || null,
+          product: w.product,
+          warna: w.warna || null,
+        },
+      ] as const),
+    ));
     setPrices(pm);
     setLoading(false);
   }, []);
@@ -304,8 +314,8 @@ export function TargetJahitPage() {
   // Live enrichment: all 22 columns computed from source data at render time
   // (workdays, realization from sewing_records, accumulation, status).
   const allEnriched = useMemo(
-    () => enrichTargetRows(items, sewing, woProduct, prices, details, libur, new Date()),
-    [items, sewing, woProduct, prices, details, libur],
+    () => enrichTargetRows(items, sewing, workOrderDesign, prices, details, libur, new Date()),
+    [items, sewing, workOrderDesign, prices, details, libur],
   );
 
   const enriched = useMemo(() => {
@@ -695,7 +705,7 @@ export function TargetJahitPage() {
         const src = enriched.find((r) => r.id === overlayId);
         if (!src) return null;
         const myDetails = details.filter((d) => d.targetJahitId === overlayId);
-        const enrichedD = enrichDetails(myDetails, sewing, src.nama, src.bulan_tahun, woProduct);
+        const enrichedD = enrichDetails(myDetails, sewing, src.nama, src.bulan_tahun, workOrderDesign);
         const progressPct = src.progressMonthly * 100;
         return (
           <div className="fixed inset-0 z-[100] bg-slate-900/40 backdrop-blur-[2px] flex items-center justify-center p-4" onClick={() => setOverlayId(null)}>
@@ -757,6 +767,7 @@ export function TargetJahitPage() {
                   ) : (
                     <table className={cn(T_TABLE, 'w-auto min-w-full whitespace-nowrap')}>
                       <thead><tr className={T_HEAD_ROW}>
+                        <th className={cn(T_TH, 'text-left')}>Product Note</th>
                         <th className={cn(T_TH, 'text-left')}>Product</th>
                         <th className={cn(T_TH, 'text-left')}>Warna</th>
                         <th className={cn(T_TH, 'text-right')}>Qty Target</th>
@@ -771,6 +782,9 @@ export function TargetJahitPage() {
                           const pct = d.qtyTarget > 0 ? (qty / d.qtyTarget) * 100 : 0;
                           return (
                             <tr key={d.id} className={rowClass(di)}>
+                              <td className={cn(T_TD, 'text-gray-700')}>
+                                {d.productNote || <span className="text-gray-300">—</span>}
+                              </td>
                               <td className={cn(T_TD, 'font-medium text-gray-900')}>{d.product}</td>
                               <td className={cn(T_TD, 'text-gray-700')}>{d.warna || <span className="text-gray-300">—</span>}</td>
                               <td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>{d.qtyTarget}</td>

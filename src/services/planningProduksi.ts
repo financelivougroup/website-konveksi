@@ -5,6 +5,7 @@ const TABLE = 'planning_produksi'
 export interface PlanningProduksiRow {
   id: number
   namaPenjahit: string
+  productNote: string | null
   product: string
   warna: string | null
   size: string | null
@@ -17,6 +18,7 @@ function mapRow(row: Record<string, unknown>): PlanningProduksiRow {
   return {
     id: row.id as number,
     namaPenjahit: row.nama_penjahit as string,
+    productNote: (row.product_note as string | null) ?? null,
     product: row.product as string,
     warna: (row.warna as string | null) ?? null,
     size: (row.size as string | null) ?? null,
@@ -26,9 +28,14 @@ function mapRow(row: Record<string, unknown>): PlanningProduksiRow {
   }
 }
 
-function toColumns(input: Omit<PlanningProduksiRow, 'id'>): Record<string, unknown> {
+type PlanningProduksiInput = Omit<PlanningProduksiRow, 'id' | 'productNote'> & {
+  productNote?: string | null
+}
+
+function toColumns(input: PlanningProduksiInput): Record<string, unknown> {
   return {
     nama_penjahit: input.namaPenjahit,
+    product_note: input.productNote ?? null,
     product: input.product,
     warna: input.warna,
     size: input.size,
@@ -51,7 +58,7 @@ export async function list(
 }
 
 export async function create(
-  input: Omit<PlanningProduksiRow, 'id'>,
+  input: PlanningProduksiInput,
 ): Promise<{ data: PlanningProduksiRow | null; error: Error | null }> {
   const { data, error } = await supabase
     .from(TABLE)
@@ -67,6 +74,7 @@ export async function update(
 ): Promise<{ error: Error | null }> {
   const fields: Record<string, unknown> = {}
   if (updates.namaPenjahit !== undefined) fields.nama_penjahit = updates.namaPenjahit
+  if (updates.productNote !== undefined) fields.product_note = updates.productNote
   if (updates.product !== undefined) fields.product = updates.product
   if (updates.warna !== undefined) fields.warna = updates.warna
   if (updates.size !== undefined) fields.size = updates.size

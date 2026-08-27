@@ -199,6 +199,18 @@ Website Konveksi/
 
 ## Latest Progress
 
+### 2026-08-27 — Target Jahit: Product Note menjadi identitas produksi
+
+- Planning Produksi menyimpan dan mewajibkan Product Note untuk data baru/edit; Product Note ikut tersedia pada tabel, pencarian, filter, sort, pengaturan kolom, dan export CSV.
+- `planning_produksi` dan `target_jahit_detail` mendapat kolom nullable `product_note` melalui migration `2026-08-27-target-jahit-product-note.sql` yang telah diterapkan via Supabase MCP; verifikasi live terakhir mengonfirmasi keduanya bertipe `text` dan nullable.
+- Generate Target memisahkan detail berdasarkan tuple **Product Note + Product + Warna**; tuple identik tetap mengakumulasi Qty Target.
+- Rincian Realisasi per Desain menampilkan **Product Note sebelum Product** dan menghitung Qty Realisasi/nominal berdasarkan identitas Work Order yang sama.
+- Data legacy tanpa Product Note tetap tampil `—` dengan fallback Product yang tidak menghitung ulang sewing yang sudah cocok ke detail beridentitas; alokasi duplicate detail memakai largest-remainder agar total realisasi tetap sama dengan sumber.
+- Rumus induk Target, Benefit, Utang Staf, realisasi bulanan, dan role-gating nominal tidak berubah.
+- Verifikasi final: **11/11 tes Node lulus** (termasuk regresi bulan kosong agar tidak menghitung seluruh riwayat jahit), build produksi lulus (**1.953 modul**), stale Product-only map tidak tersisa, dan `git diff --check` bersih. Focused lint tetap melaporkan **4 error pre-existing** yang identik dengan baseline: 1 `no-explicit-any` di Planning Produksi serta 2 conditional-hooks + 1 `no-explicit-any` di Target Jahit; tidak ada temuan lint baru dari fitur ini.
+
+---
+
 ### 2026-08-26 — Pull Order Entry → Production Monitoring atomik dan retry-safe
 
 - Root cause status Sheen Pants yang tertinggal di `PLANNING` terkonfirmasi pada database live: RLS `production_orders` belum mengizinkan UPDATE authenticated, sedangkan Production Monitoring sebelumnya membuat Work Order terlebih dahulu lalu mengabaikan kegagalan update Production Order.

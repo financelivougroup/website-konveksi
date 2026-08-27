@@ -5,6 +5,7 @@ const TABLE = 'target_jahit_detail'
 export interface TargetJahitDetailRow {
   id: number
   targetJahitId: number
+  productNote: string | null
   product: string
   warna: string | null
   qtyTarget: number
@@ -17,6 +18,7 @@ function mapRow(row: Record<string, unknown>): TargetJahitDetailRow {
   return {
     id: row.id as number,
     targetJahitId: row.target_jahit_id as number,
+    productNote: (row.product_note as string | null) ?? null,
     product: row.product as string,
     warna: (row.warna as string | null) ?? null,
     qtyTarget: row.qty_target as number,
@@ -29,6 +31,7 @@ function mapRow(row: Record<string, unknown>): TargetJahitDetailRow {
 function toColumns(input: Omit<TargetJahitDetailRow, 'id'>): Record<string, unknown> {
   return {
     target_jahit_id: input.targetJahitId,
+    product_note: input.productNote,
     product: input.product,
     warna: input.warna,
     qty_target: input.qtyTarget,
