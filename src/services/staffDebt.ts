@@ -1,3 +1,4 @@
+import { groupPlannedTargetDetails } from '@/lib/targetDetailIdentity'
 import { supabase } from '@/lib/supabase'
 
 export interface PriceMapValue {
@@ -200,7 +201,12 @@ export async function generateTargetsFromPlanning(
     rows: Record<string, unknown>[],
     totalQty: number,
     targetCost: number,
-    products: Map<string, { product: string; qty: number; warna: string | null }>,
+    plans: Array<{
+      productNote: string | null;
+      product: string;
+      warna: string | null;
+      qty: number;
+    }>;
   }>()
   for (const r of (planRows ?? []) as Record<string, unknown>[]) {
     const nama = r.nama_penjahit as string
@@ -211,16 +217,18 @@ export async function generateTargetsFromPlanning(
     const pcsCost = (price ? price.jahit + price.obras : 0) * qty
 
     if (!byStaff.has(nama)) {
-      byStaff.set(nama, { rows: [], totalQty: 0, targetCost: 0, products: new Map() })
+      byStaff.set(nama, { rows: [], totalQty: 0, targetCost: 0, plans: [] })
     }
     const staff = byStaff.get(nama)!
     staff.rows.push(r)
     staff.totalQty += qty
     staff.targetCost += pcsCost
-    const key = product + '|' + (warna ?? '')
-    const existing = staff.products.get(key)
-    if (existing) existing.qty += qty
-    else staff.products.set(key, { product, qty, warna })
+    staff.plans.push({
+      productNote: (r.product_note as string | null) ?? null,
+      product,
+      warna,
+      qty,
+    })
   }
 
   let created = 0
@@ -247,10 +255,12 @@ export async function generateTargetsFromPlanning(
       .single()
     if (parentErr || !parent) continue
 
-    const details = Array.from(staff.products.values()).map((p) => {
+    const groupedDetails = groupPlannedTargetDetails(staff.plans)
+    const details = groupedDetails.map((p) => {
       const price = priceMap[p.product]
       return {
         target_jahit_id: parent.id as number,
+        product_note: p.productNote,
         product: p.product,
         warna: p.warna,
         qty_target: p.qty,
