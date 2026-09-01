@@ -6,7 +6,6 @@ import SewingEntryForm from '@/pages/SewingEntryForm';
 import FinishingEntryForm from '@/pages/FinishingEntryForm';
 import KancingEntryForm from '@/pages/KancingEntryForm';
 import InvoicingPage from '@/pages/InvoicingPage';
-import { RegisterPoPage } from '@/pages/RegisterPoPage';
 import { PlanningProduksiPage } from '@/pages/PlanningProduksiPage';
 import { ComplainPenaltiPage } from '@/pages/ComplainPenaltiPage';
 import { TargetJahitPage } from '@/pages/TargetJahitPage';
@@ -556,7 +555,6 @@ export default function App() {
                   <ProductionMonitoring onOpenSewingEntry={() => setCurrentView('sewing-entry')} onOpenFinishingEntry={() => setCurrentView('finishing-entry')} onOpenKancingEntry={() => setCurrentView('kancing-entry')} />
                 )}
                 {currentView === 'invoicing' && <InvoicingPage />}
-                {currentView === 'register-po' && <RegisterPoPage />}
                 {currentView === 'order-entry' && <OrderEntry />}
                 {currentView === 'planning-produksi' && <PlanningProduksiPage />}
                 {currentView === 'complain-penalti' && <ComplainPenaltiPage />}
@@ -564,7 +562,7 @@ export default function App() {
                 {currentView === 'register-penjahit' && <RegisterKaryawanPage />}
 
                 {/* DataTable pages with toolbar - only for views not listed above */}
-                {!['sewing-entry', 'finishing-entry', 'kancing-entry', 'production-monitoring', 'invoicing', 'register-po', 'order-entry', 'planning-produksi', 'complain-penalti', 'target-jahit', 'register-penjahit'].includes(currentView) && (
+                {!['sewing-entry', 'finishing-entry', 'kancing-entry', 'production-monitoring', 'invoicing', 'order-entry', 'planning-produksi', 'complain-penalti', 'target-jahit', 'register-penjahit'].includes(currentView) && (
                   <>
                     <TopBar onRefresh={handleRefresh} onAddNew={handleAddNew} />
                     <ViewTabs

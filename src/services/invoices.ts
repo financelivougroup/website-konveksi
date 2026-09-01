@@ -7,7 +7,7 @@ const WO_TABLE = 'work_orders';
 interface DbInvoiceRow {
   id: string;
   work_order_id: string;
-  register_po_id: string | null;
+  order_price_id: string | null;
   auto_created: boolean;
   work_code: string;
   invoice_code: string;
@@ -32,7 +32,7 @@ function mapRow(row: DbInvoiceRow): InvoiceRow {
   return {
     id: row.id,
     workOrderId: row.work_order_id,
-    registerPoId: row.register_po_id ?? undefined,
+    orderPriceId: row.order_price_id ?? undefined,
     autoCreated: row.auto_created,
     workCode: row.work_code,
     invoiceCode: row.invoice_code,
@@ -105,7 +105,7 @@ export async function fetchMaxSequenceNumber(): Promise<{ sequence: number; erro
 export async function createInvoiceAuto(input: Omit<InvoiceRow, 'id' | 'createdAt' | 'updatedAt'>): Promise<{ data: InvoiceRow | null; error: Error | null }> {
   const dbInput = {
     work_order_id: input.workOrderId,
-    register_po_id: input.registerPoId ?? null,
+    order_price_id: input.orderPriceId ?? null,
     auto_created: input.autoCreated,
     work_code: input.workCode,
     invoice_code: input.invoiceCode,

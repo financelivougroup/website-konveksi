@@ -312,7 +312,7 @@ export function ComplainPenaltiPage() {
     }
   }, [form.product, form.warna, warnaOptions]);
 
-  // Saran potongan otomatis dari Register PO (berdasarkan work code + posisi).
+  // Saran potongan otomatis dari harga Order Entry (berdasarkan work code + posisi).
   useEffect(() => {
     if (!form.workCode || !form.posisi) return;
     const opt = complainOptions.find(
@@ -914,7 +914,7 @@ export function ComplainPenaltiPage() {
                     placeholder="0"
                     className={inputCls}
                   />
-                  <p className="mt-1 text-[10px] text-slate-400">Saran otomatis dari Register PO — bisa diubah.</p>
+                  <p className="mt-1 text-[10px] text-slate-400">Saran otomatis dari harga Order Entry — bisa diubah.</p>
                 </div>
               </div>
 
