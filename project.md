@@ -30,9 +30,9 @@ Each work order carries two independent status axes: **production status** (phys
 
 ## Database
 
-Currently using **mock data** (`src/data/mockData.ts` and `src/data/pipelineData.ts`). Data is stored in-memory as typed arrays. All mutations (CRUD) modify these arrays directly.
+The operational pipeline uses a **local Supabase/PostgreSQL instance** for persistent storage, authentication, RLS, transactional RPCs, and production records. Persistent application data is accessed through the service layer in `src/services/`; `src/data/` is limited to static view configuration, fixtures, and shared reference data.
 
-**Planned:** Supabase integration for persistent storage, real-time sync, and authentication.
+Order intake is normalized as one `production_orders` parent per unique Product Note, with child rows in `production_order_variations` and shared per-piece pricing in `production_order_prices` / `production_order_price_components`. Each variation fans out to one scalar `work_orders` row when production starts.
 
 ## Folder Structure
 
@@ -128,10 +128,12 @@ Website Konveksi/
 - Auto-updates WO status to SEWING_COMPLETE when total reaches quantity
 
 ### Order Entry
-- Table of production orders with status filters (All / Planning / Pulled / Cancelled)
-- Create new order modal with product note, product, brand, warna, size, quantity
-- Pull-to-Konveksi action (creates WorkOrder with CUTTING_PENDING status)
-- Cancel order action (only while PLANNING)
+- Operational order list with search, lifecycle filters, compact order status, and row-click editing/viewing
+- Full-screen single-page shadcn Dialog containing identity, repeatable color–size–quantity variations, and eight per-piece price components with an automatic total
+- Product Note is the required normalized-unique production code; one order can contain multiple variations
+- Atomic, idempotent Pull creates exactly one scalar Work Order per variation from Production Monitoring
+- Planning rows open in Edit mode; pulled/locked rows open read-only. Server guards still lock variation structure after Pull and make the entire order view-only once production or invoice progress exists
+- Legacy production orders are retained as one variation each; incomplete pricing or variation review blocks production
 
 ### Data Modules (via sidebar)
 | Module | Status | Description |
@@ -198,6 +200,17 @@ Website Konveksi/
 - [ ] Revise user authentication flow to use `supabase.auth.getUser()` instead of local storage tracking
 
 ## Latest Progress
+
+### 2026-09-01 — Order Entry multi-variasi, harga terpadu, dan penghapusan Register PO
+
+- Halaman Order Entry kini berfokus pada **Create New Order** dan daftar operasional. Create, View, dan Edit memakai Dialog shadcn layar penuh satu halaman yang memuat identitas order, baris kombinasi warna–size–qty, delapan komponen harga per potong, serta ringkasan total otomatis. Tabel memakai label ringkas Customer/Product, menampilkan status Order Entry di kolom tersendiri, dan membuka Edit atau read-only lewat klik baris tanpa deretan action yang berlebihan.
+- Product Note menjadi kode produksi parent yang wajib dan unik setelah `trim` + case-fold. Model data dinormalisasi menjadi `production_orders`, `production_order_variations`, `production_order_prices`, dan `production_order_price_components`; setiap kombinasi variasi menghasilkan satu Work Order scalar agar modul produksi downstream tetap kompatibel.
+- RPC server-authoritative menangani save/cancel/Pull secara transaksional. Pull bersifat atomik dan idempotent per `source_variation_id`; harga yang belum lengkap atau variasi legacy yang perlu review tidak dapat memulai produksi. Setelah Pull struktur variasi dikunci, sedangkan adanya record Cutting/Sewing/Finishing/Kancing/Invoice membuat seluruh order view-only.
+- Data lama dipertahankan dan dibackfill menjadi satu variasi per order. Dua set Register PO lama beserta 16 komponennya dipindahkan dengan parity assertion ke harga Order Entry, lalu konsumen harga Auto Invoice, invoice persistence, Staff Debt, Target Jahit, dan saran potongan Complain dipindahkan ke harga exact source order/Product Note.
+- Invoice lama tetap menyimpan snapshot `unit_price = 35.000` dan `total_amount = 1.750.000` walaupun harga order saat ini 40.000. Delapan snapshot Target Jahit juga tetap utuh (`harga_jahit` total 20.000 dan `harga_obras` total 20.000).
+- Modul Register PO telah dihapus dari sidebar/rendering, source page/service/type, relasi invoice lama, trigger/function/policy/index/constraint, serta tabel `register_po_components` dan `register_po`. Kolom variasi scalar lama pada `production_orders`, overload Pull empat argumen, dan halaman seed orphan yang memakai schema lama juga dihapus; cleanup dilakukan eksplisit tanpa `CASCADE` setelah parity terverifikasi.
+- Migration yang diterapkan via Supabase MCP: `order_entry_normalized_additive` (`20260901023329`), `remove_register_po` (`20260901132618`), dan forward fix `fix_order_entry_variation_ordinality`. Probe integrasi `BEGIN ... ROLLBACK` memverifikasi create tiga variasi, unique Product Note, exact-order pricing, incomplete-price gate, fan-out/retry Pull, edit metadata/harga setelah Pull, variation lock, serta progress edit guard.
+- Verifikasi final repository: **22/22 tes Node lulus**, build produksi lulus (**2.044 modul**), focused ESLint **0 error / 2 warning** (React Hook Form compiler warning dan dependency warning lama di Production Monitoring), serta `git diff --check` bersih selain notice normalisasi LF/CRLF. Build tetap mencatat warning non-blocking Browserslist lama, mixed static/dynamic import `invoiceCode`, dan ukuran main chunk di atas 500 KB.
 
 ### 2026-08-27 — Target Jahit: Product Note menjadi identitas produksi
 

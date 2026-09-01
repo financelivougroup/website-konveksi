@@ -14,6 +14,8 @@ export type InvoiceStatus =
   | 'PARTIAL_PAID'
   | 'PAID';
 
+export type ProductionOrderLifecycle = 'PLANNING' | 'PULLED' | 'CANCELLED';
+
 export interface ProductionOrder {
   id: string;
   workCode: string;
@@ -24,17 +26,108 @@ export interface ProductionOrder {
   size: string;
   brand: string;
   quantity: number;
-  status: 'PLANNING' | 'PULLED' | 'CANCELLED';
+  status: ProductionOrderLifecycle;
   createdBy: string;
   createdAt: string;
   pulledAt?: string;
   pulledBy?: string;
 }
 
+export const ORDER_PRICE_COMPONENTS = [
+  { key: 'potong', label: 'Potong' },
+  { key: 'jahit', label: 'Jahit' },
+  { key: 'obras', label: 'Obras' },
+  { key: 'finishing', label: 'Finishing' },
+  { key: 'operational', label: 'Operational' },
+  { key: 'material_basic', label: 'Material Basic' },
+  { key: 'margin', label: 'Margin' },
+  { key: 'jasa_pasang_kancing', label: 'Jasa Pasang Kancing' },
+] as const;
+
+export type OrderPriceComponentKey = typeof ORDER_PRICE_COMPONENTS[number]['key'];
+
+export interface ProductionOrderVariation {
+  id?: string;
+  color: string;
+  size: string;
+  quantity: number;
+  variationId?: string;
+  workCode?: string;
+  sortOrder?: number;
+  legacyNeedsReview?: boolean;
+}
+
+export interface OrderPriceComponent {
+  id?: string;
+  key: OrderPriceComponentKey;
+  label: string;
+  value: number;
+  sortOrder?: number;
+}
+
+export interface OrderPricing {
+  id?: string;
+  totalPerPiece: number;
+  complete: boolean;
+  components: OrderPriceComponent[];
+}
+
+export interface OrderEntryOverview {
+  id: string;
+  productionCode: string;
+  productId: string;
+  product: string;
+  brand: string;
+  status: ProductionOrderLifecycle;
+  createdBy: string;
+  createdAt: string;
+  pulledAt?: string | null;
+  pulledBy?: string | null;
+  totalQuantity: number;
+  variationCount: number;
+  totalPerPiece: number;
+  priceComplete: boolean;
+  legacyNeedsReview: boolean;
+  productionStatus: string;
+  canEdit: boolean;
+  structureLocked: boolean;
+  editBlockReason?: string | null;
+}
+
+export interface OrderEntryDetail {
+  id: string;
+  productionCode: string;
+  productId: string;
+  product: string;
+  brand: string;
+  status: ProductionOrderLifecycle;
+  createdBy: string;
+  createdAt: string;
+  pulledAt?: string | null;
+  pulledBy?: string | null;
+  canEdit: boolean;
+  structureLocked: boolean;
+  editBlockReason?: string | null;
+  variations: ProductionOrderVariation[];
+  pricing: OrderPricing;
+}
+
+export interface OrderEntrySaveInput {
+  id?: string;
+  productionCode: string;
+  productId: string;
+  product: string;
+  brand: string;
+  variations: Array<Pick<ProductionOrderVariation, 'color' | 'size' | 'quantity'>>;
+  components: Array<Pick<OrderPriceComponent, 'key' | 'value'>>;
+  actor: string;
+}
+
 export interface WorkOrder {
   id: string;
   workCode: string;
   sourceOrderId: string;
+  sourceVariationId?: string;
   productNote: string;
   product: string;
   productId: string;
@@ -130,7 +223,7 @@ export type BillingType = 'mass_production' | 'sample_production';
 export interface InvoiceRow {
   id: string;
   workOrderId: string;
-  registerPoId?: string;
+  orderPriceId?: string;
   autoCreated: boolean;
   workCode: string;
   invoiceCode: string;
@@ -169,24 +262,6 @@ export interface InvoicePaymentFileRow {
   filePath: string;
   fileUrl: string;
   uploadedAt?: string;
-}
-
-export interface RegisterPoRow {
-  id: string;
-  productionOrderId: string;
-  totalPerPcs: number;
-  notes: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface RegisterPoComponentRow {
-  id: string;
-  registerPoId: string;
-  key: string;
-  label: string;
-  value: number;
-  sortOrder: number;
 }
 
 // Sejalan dengan batasan CHECK pada kolom public.profiles.role.

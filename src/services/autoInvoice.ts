@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase';
-import { fetchRegisterPoByProductionOrderId } from '@/services/registerPo';
+import { fetchOrderPriceByProductionOrderId } from '@/services/orderPricing';
 import {
   clientCodeFromBrand,
   billingTypeCode,
@@ -37,7 +37,6 @@ export async function transitionToFinishingComplete(workOrderId: string): Promis
   console.log('[autoInvoice] transitionToFinishingComplete called for:', workOrderId);
   const wo = currentWo as Record<string, unknown>;
   console.log('[autoInvoice] wo.prod_status:', wo.prod_status, 'source_order_id:', wo.source_order_id);
-  // Use source_order_id (the production order ID) for register_po lookup
   const poId = (wo.source_order_id as string | null) ?? null;
 
   // 2. Idempotency — already at FINISHED or INVOICED
@@ -48,7 +47,16 @@ export async function transitionToFinishingComplete(workOrderId: string): Promis
     };
   }
 
-  // 3. Update prod_status
+  // 3. Validate exact-order pricing before changing production status.
+  if (!poId) {
+    throw new Error('Work Order tidak memiliki sumber Order Entry');
+  }
+  const orderPrice = await fetchOrderPriceByProductionOrderId(poId);
+  if (!orderPrice?.complete || !orderPrice.id || orderPrice.totalPerPiece <= 0) {
+    throw new Error('Harga Order Entry belum lengkap');
+  }
+
+  // 4. Update prod_status only after pricing is known to be valid.
   const { data: updatedWo, error: updErr } = await supabase
     .from('work_orders')
     .update({ prod_status: 'FINISHED' })
@@ -57,21 +65,10 @@ export async function transitionToFinishingComplete(workOrderId: string): Promis
     .single();
   if (updErr || !updatedWo) throw updErr ?? new Error('update failed');
 
-  // 4. Already has an invoice? Skip generation.
+  // 5. Already has an invoice? Skip generation.
   const { data: existing } = await fetchInvoiceByWorkOrderId(workOrderId);
   if (existing) {
     return { workOrder: updatedWo as unknown as WorkOrder, invoiceCreated: false, invoice: existing };
-  }
-
-  // 5. Must have a register_po (lookup by source_order_id = production order ID)
-  if (!poId) {
-    console.warn('WO has no source_order_id; skipping invoice', workOrderId);
-    return { workOrder: updatedWo as unknown as WorkOrder, invoiceCreated: false };
-  }
-  const registerPo = await fetchRegisterPoByProductionOrderId(poId);
-  if (!registerPo) {
-    console.warn('No register_po for', poId);
-    return { workOrder: updatedWo as unknown as WorkOrder, invoiceCreated: false };
   }
 
   // 6. Compute derived values
@@ -93,13 +90,13 @@ export async function transitionToFinishingComplete(workOrderId: string): Promis
 
   const fin = computeInvoiceFinancials({
     pcsLinked: quantity,
-    unitPrice: registerPo.totalPerPcs,
+    unitPrice: orderPrice.totalPerPiece,
     rateManpower: 0,
   });
 
   const invoiceInput: Omit<InvoiceRow, 'id' | 'createdAt' | 'updatedAt'> = {
     workOrderId,
-    registerPoId: registerPo.id,
+    orderPriceId: orderPrice.id,
     autoCreated: true,
     workCode: (wo.work_code as string) ?? '',
     invoiceCode,
@@ -110,7 +107,7 @@ export async function transitionToFinishingComplete(workOrderId: string): Promis
     billingType,
     billingTypeCodeValue,
     pcsLinked: quantity,
-    unitPrice: registerPo.totalPerPcs,
+    unitPrice: orderPrice.totalPerPiece,
     totalAmount: fin.totalAmount,
     rateOperational: fin.rateOperational,
     totalIncomeManpower: fin.totalIncomeManpower,
@@ -180,11 +177,11 @@ async function generateInvoiceForFinishedWo(workOrderId: string): Promise<boolea
   const { data: existing } = await fetchInvoiceByWorkOrderId(workOrderId);
   if (existing) return false;
 
-  // Need register_po
+  // Need a complete price for the exact source order.
   const poId = (wo.source_order_id as string | null) ?? null;
   if (!poId) return false;
-  const registerPo = await fetchRegisterPoByProductionOrderId(poId);
-  if (!registerPo) return false;
+  const orderPrice = await fetchOrderPriceByProductionOrderId(poId);
+  if (!orderPrice?.complete || !orderPrice.id || orderPrice.totalPerPiece <= 0) return false;
 
   const brand = wo.brand as string;
   const quantity = wo.quantity as number;
@@ -204,13 +201,13 @@ async function generateInvoiceForFinishedWo(workOrderId: string): Promise<boolea
 
   const fin = computeInvoiceFinancials({
     pcsLinked: quantity,
-    unitPrice: registerPo.totalPerPcs,
+    unitPrice: orderPrice.totalPerPiece,
     rateManpower: 0,
   });
 
   const invoiceInput: Omit<InvoiceRow, 'id' | 'createdAt' | 'updatedAt'> = {
     workOrderId,
-    registerPoId: registerPo.id,
+    orderPriceId: orderPrice.id,
     autoCreated: true,
     workCode: (wo.work_code as string) ?? '',
     invoiceCode,
@@ -221,7 +218,7 @@ async function generateInvoiceForFinishedWo(workOrderId: string): Promise<boolea
     billingType,
     billingTypeCodeValue,
     pcsLinked: quantity,
-    unitPrice: registerPo.totalPerPcs,
+    unitPrice: orderPrice.totalPerPiece,
     totalAmount: fin.totalAmount,
     rateOperational: fin.rateOperational,
     totalIncomeManpower: fin.totalIncomeManpower,
