@@ -199,6 +199,18 @@ Website Konveksi/
 
 ## Latest Progress
 
+### 2026-09-02 — Target Jahit: kolom hari kerja disembunyikan dari UI (logika tetap di backend)
+
+- **Hari Kerja Efektif** (`totalHariKerja`) dan **Hari Kerja Hari Ini** (`hariKerjaHariIni`) dihapus dari tampilan Target Jahit atas permintaan user; perhitungannya **tetap hidup** di `src/lib/targetCompute.ts` karena masih menjadi dasar kolom lain.
+- Commit `8a164ba`: kedua kolom dibuang dari `viewConfig['target-jahit']` (`src/data/mockData.ts`) dan dari `TARGET_COLUMNS` (`src/pages/TargetJahitPage.tsx`); komponen khusus `WorkdaysWithTooltip` beserta import `holidayHelpers` / `getNationalHolidaysInMonth` di halaman ikut dihapus.
+- Commit `a22de6f`: baris contoh `mockData['target-jahit']` dibersihkan dari sisa field `totalHariKerja` & `hariKerjaHariIni` agar sejalan dengan tampilan.
+- **Yang sengaja dipertahankan**: `countWorkdays()` masih dipakai untuk `Target | Daily` (`target_monthly ÷ totalHariKerja`); `elapsedWorkdays()` tetap diekspor meski outputnya kini tak dirender; `sisaHari` (turunan dari perhitungan hari kerja yang sama) **tetap ditampilkan** sesuai keputusan user.
+- `src/lib/holidayHelpers.ts` kini tidak lagi dipakai dari halaman Target Jahit (masih ada sebagai modul helper; belum dihapus).
+- Verifikasi: **23/23 tes Node lulus** (12 sewingBacklog, 3 staffDebtEligibility, 8 targetDetailIdentity), build produksi hijau (**1952 modul**), lint `mockData.ts` bersih.
+- **Catatan state kerja**: worktree ini menyimpan WIP tab **Belum Jahit** yang belum selesai di `src/pages/TargetJahitPage.tsx` (tipe `TabKey` sudah punya `'belum-jahit'`, tetapi tombol tab dan blok render-nya belum ada) — `npm run build` gagal dengan 16 error TS6133 "declared but never read". Ini status WIP, bukan regresi. Pekerjaan hari ini dilakukan dengan WIP tersebut di-`git stash` sementara, lalu dikembalikan.
+
+---
+
 ### 2026-08-27 — Target Jahit: Product Note menjadi identitas produksi
 
 - Planning Produksi menyimpan dan mewajibkan Product Note untuk data baru/edit; Product Note ikut tersedia pada tabel, pencarian, filter, sort, pengaturan kolom, dan export CSV.
