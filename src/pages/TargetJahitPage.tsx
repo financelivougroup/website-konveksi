@@ -19,8 +19,6 @@ import type { WorkOrderDesignIdentity } from '@/lib/targetDetailIdentity';
 import { filterDebtRowsByLatestAccum } from '@/lib/staffDebtEligibility';
 import type { SewingRecord } from '@/types/pipeline';
 import { useAuth } from '@/contexts/AuthContext';
-import { generateHolidayTooltipInfo } from '@/lib/holidayHelpers';
-import { getNationalHolidaysInMonth } from '@/data/nationalHolidays';
 
 // Map live snake_case target_jahit columns to camelCase render keys.
 const TARGET_COLUMN_ALIAS: Record<string, string> = {
@@ -55,89 +53,6 @@ function normalizeTargetRow(row: TargetJahitRow): Record<string, unknown> {
   return out;
 }
 
-/**
- * Helper component to display workdays with holiday breakdown tooltip on hover
- */
-function WorkdaysWithTooltip({ ym, manualHolidays }: { ym: string; manualHolidays: string[] }) {
-  if (!ym || !/^(\d{4})-(\d{2})$/.test(ym)) {
-    return <span className="text-gray-300">—</span>;
-  }
-
-  const nationalHolidays = useMemo(() => getNationalHolidaysInMonth(ym), [ym]);
-
-  const info = useMemo(() => generateHolidayTooltipInfo(ym, manualHolidays, nationalHolidays), [ym, manualHolidays, nationalHolidays]);
-
-  const allHolidays = [...new Set([...manualHolidays, ...nationalHolidays])].sort();
-
-  return (
-    <div className="relative inline-block cursor-help group">
-      <span className="font-medium">{info.workdays} hari</span>
-
-      {/* Info icon trigger */}
-      <button
-        type="button"
-        title="Tampilkan rincian libur"
-        className="ml-1 text-[10px] text-blue-600 font-semibold hover:text-blue-800 underline decoration-dotted"
-      >
-        (?)
-      </button>
-
-      {/* Tooltip popup */}
-      <div className="absolute z-50 hidden group-hover:block w-72 bg-white border border-gray-300 rounded-lg shadow-xl p-3 mt-2 left-0">
-        <p className="text-xs font-semibold mb-2 text-slate-700">Rincian Hari Kerja Efektif</p>
-
-        <div className="space-y-1 text-[11px]">
-          <div className="flex justify-between">
-            <span>Total hari:</span>
-            <span className="font-mono">{info.totalDays}</span>
-          </div>
-          <div className="flex justify-between">
-            <span>Minggu:</span>
-            <span className="font-mono">-{info.sundays}</span>
-          </div>
-          <div className="flex justify-between">
-            <span>Nasional:</span>
-            <span className="font-mono">-{nationalHolidays.length}</span>
-          </div>
-          {manualHolidays.length > 0 && (
-            <div className="flex justify-between">
-              <span>Manual/Lokal:</span>
-              <span className="font-mono">-{manualHolidays.length}</span>
-            </div>
-          )}
-
-          <div className="mt-2 pt-2 border-t border-gray-200 flex justify-between font-semibold">
-            <span>Hari Kerja:</span>
-            <span className="text-blue-600">{info.workdays}</span>
-          </div>
-        </div>
-
-        {allHolidays.length > 0 && (
-          <details className="mt-2">
-            <summary className="cursor-pointer text-xs font-medium text-blue-600 hover:text-blue-800">
-              Detail Tanggal Libur ({allHolidays.length})
-            </summary>
-            <ul className="text-[10px] max-h-40 overflow-auto mt-2 space-y-0.5 pr-2">
-              {nationalHolidays.map((h) => (
-                <li key={`nat-${h}`} className="flex items-start">
-                  <span className="w-24 shrink-0 text-gray-500">{h.slice(5)}</span>
-                  <span className="text-emerald-600">(Nas)</span>
-                </li>
-              ))}
-              {manualHolidays.map((h) => (
-                <li key={`man-${h}`} className="flex items-start">
-                  <span className="w-24 shrink-0 text-gray-500">{h.slice(5)}</span>
-                  <span className="text-amber-600">(Manual)</span>
-                </li>
-              ))}
-            </ul>
-          </details>
-        )}
-      </div>
-    </div>
-  );
-}
-
 // Column definition — mirrors viewConfig['target-jahit'] order.
 interface ColDef { key: string; label: string; align?: 'right'; format?: 'currency' | 'percent'; badge?: boolean; inv?: boolean }
 const TARGET_COLUMNS: ColDef[] = [
@@ -145,8 +60,6 @@ const TARGET_COLUMNS: ColDef[] = [
   { key: 'nama', label: 'Nama' },
   { key: 'posisi', label: 'Posisi', badge: true, inv: true },
   { key: 'salary', label: 'Salary', align: 'right', format: 'currency' },
-  { key: 'totalHariKerja', label: 'Hari Kerja Efektif', align: 'right' },
-  { key: 'hariKerjaHariIni', label: 'Hari Kerja Hari Ini', align: 'right', inv: true },
   { key: 'sisaHari', label: 'Sisa Hari', align: 'right', inv: true },
   { key: 'targetDaily', label: 'Target | Daily', align: 'right' },
   { key: 'targetNgebutHari', label: 'Target Ngebut | Daily', align: 'right' },
@@ -598,9 +511,6 @@ export function TargetJahitPage() {
                                   {(row.benefitRate as number) !== undefined && (row.benefitRate as number) !== null && (row.benefitRate as number) > 0 ? formatCurrency(row.benefitRate as number) : '-'}
                                 </button>
                               )
-                            ) : c.key === 'totalHariKerja' ? (
-                              // Special rendering for Hari Kerja Efektif with holiday tooltip
-                              <WorkdaysWithTooltip ym={String((row as any).bulanTahun ?? '')} manualHolidays={libur} />
                             ) : renderCell(c, row)}
                           </td>
                         ))}

@@ -67,8 +67,6 @@ export const viewConfig: Record<ModuleId, ViewConfig> = {
       { key: 'nama', label: 'Nama', width: '130px', icon: 'User' },
       { key: 'posisi', label: 'Posisi', width: '90px', badge: true, icon: 'Briefcase' },
       { key: 'salary', label: 'Salary', width: '100px', align: 'right', format: 'currency', icon: 'Banknote' },
-      { key: 'totalHariKerja', label: 'Hari Kerja Efektif', width: '110px', align: 'right', icon: 'CalendarCheck' },
-      { key: 'hariKerjaHariIni', label: 'Hari Kerja Hari Ini', width: '110px', align: 'right', icon: 'CalendarCheck' },
       { key: 'sisaHari', label: 'Sisa Hari', width: '80px', align: 'right', icon: 'Hourglass' },
       { key: 'targetDaily', label: 'Target | Daily', width: '90px', align: 'right', icon: 'Target' },
       { key: 'targetNgebutHari', label: 'Target Ngebut | Daily', width: '130px', align: 'right', icon: 'Zap' },
