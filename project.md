@@ -199,6 +199,19 @@ Website Konveksi/
 
 ## Latest Progress
 
+### 2026-09-03 — Target Jahit: tab Belum Jahit, Sisa Uang bulanan, dan ringkasan backlog
+
+- **Tab baru "Belum Jahit"** (tersedia untuk **semua role**, tanpa gate): daftar global seluruh Work Order dengan sisa jahit > 0, dikelompokkan per Product Note dan bisa di-expand sampai rincian Work Order (Work Code, Product, Warna, Size, Qty Order, Qty Jahit, Total Belum Jahit, tarif). Kolom grup: Product Note | Product | Total Qty Order | Qty Jahit | Total Belum Jahit | Tarif Jahit + Obras. Grup diurutkan Total Belum Jahit turun lalu Product Note naik; WO di dalam grup Total Belum Jahit turun lalu Work Code naik. Pencarian mencakup Product Note, Product, Work Code, Warna, Size. Fitur **baca-saja** — tidak ada input, rekomendasi, atau pemindahan alokasi.
+- **Sisa Uang yang Harus Dikejar** (`max(0, salary − realisasiCostPosisi)` bulan tersebut) ditambahkan sebagai kartu kelima pada overlay detail Target, **hanya owner/finance** — digate di render lewat `canSeeDebt`, sehingga Inventory tidak pernah menerima nilainya sama sekali.
+- **Ringkasan "Product Note Belum Jahit"** pada overlay: 5 grup teratas + tombol "Lihat Semua Belum Jahit" yang menutup overlay dan membuka tab Belum Jahit.
+- **Tarif**: ringkasan per grup menampilkan nominal seragam, `Bervariasi` (beda nilai atau sebagian hilang), atau `—` (tidak ada tarif). Tarif diambil **eksak** per `work_orders.source_order_id`, bukan `buildPriceMap()` (latest-price-by-product) sesuai constraint plan.
+- Helper murni `src/lib/sewingBacklog.ts` (`buildSewingBacklog`, `calculateMonthlyRemainingMoney`) tanpa fetch dan tanpa impor supabase; dilindungi **12 tes Node** di `tests/sewingBacklog.test.ts`.
+- **Koreksi terhadap plan (terverifikasi via Supabase MCP)**: tabel `register_po` / `register_po_components` **sudah tidak ada** di schema live (migration `remove_register_po`, 2026-09-01). Karena itu Task 2 membuat service baru `src/services/productionOrderPrices.ts` dengan jalur `work_orders.source_order_id → production_order_prices.production_order_id → production_order_price_components(component_key IN ['jahit','obras'])`, alih-alih menambah fungsi ke `src/services/registerPo.ts` (file itu tidak disentuh agar modul Register PO di branch lain tidak terganggu).
+- **Verifikasi**: **23/23 tes Node lulus**; `npm run build` **exit 0** (1954 modul, 2m38s; satu peringatan chunk >500 kB pre-existing dan satu peringatan dynamic-import pada `invoiceCode.ts`, keduanya bukan kegagalan); lint pada `sewingBacklog.ts`, `productionOrderPrices.ts`, dan `TargetJahitPage.tsx` **bersih** (0 temuan — lebih baik dari catatan baseline sebelumnya yang menyebut 4 temuan pre-existing, karena baseline HEAD untuk file ini juga terbukti bersih saat diuji). `list_migrations` mengonfirmasi **tidak ada migration/DDL baru**; migrasi terakhir tetap `20260901134016`. Smoke test terhadap data live (4 WO: WO-6b268a24 selesai tersaring, 2 grup tersisa @ 100 pcs dengan tarif Rp10.000 dan Rp12.000) sesuai ekspektasi helper.
+- Commit: `caa5eb5`. Working tree menyisipkan WIP `src/data/mockData.ts` di `git stash@{0}` (di luar cakupan plan ini, sengaja dipertahankan).
+
+---
+
 ### 2026-09-02 — Target Jahit: kolom hari kerja disembunyikan dari UI (logika tetap di backend)
 
 - **Hari Kerja Efektif** (`totalHariKerja`) dan **Hari Kerja Hari Ini** (`hariKerjaHariIni`) dihapus dari tampilan Target Jahit atas permintaan user; perhitungannya **tetap hidup** di `src/lib/targetCompute.ts` karena masih menjadi dasar kolom lain.
