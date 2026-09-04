@@ -227,6 +227,15 @@ Website Konveksi/
 - Migration yang diterapkan via Supabase MCP: `order_entry_normalized_additive` (`20260901023329`), `remove_register_po` (`20260901132618`), dan forward fix `fix_order_entry_variation_ordinality`. Probe integrasi `BEGIN ... ROLLBACK` memverifikasi create tiga variasi, unique Product Note, exact-order pricing, incomplete-price gate, fan-out/retry Pull, edit metadata/harga setelah Pull, variation lock, serta progress edit guard.
 - Verifikasi final repository: **22/22 tes Node lulus**, build produksi lulus (**2.044 modul**), focused ESLint **0 error / 2 warning** (React Hook Form compiler warning dan dependency warning lama di Production Monitoring), serta `git diff --check` bersih selain notice normalisasi LF/CRLF. Build tetap mencatat warning non-blocking Browserslist lama, mixed static/dynamic import `invoiceCode`, dan ukuran main chunk di atas 500 KB.
 
+### 2026-08-29 — Matt Pocock Skills repository setup
+
+- Configured the repository for Matt Pocock engineering skills through a new `## Agent skills` section in `CLAUDE.md`.
+- Added the default feature-delivery chain `/grill-with-docs` → `/to-spec` → `/to-tickets` → `/implement`; transitions run without asking for redundant permission, while each skill's required confirmation and safety checkpoints remain mandatory.
+- Selected local Markdown as the issue tracker; specs and tickets will live under `.scratch/<feature>/` according to `docs/agents/issue-tracker.md`.
+- Selected a single-context domain documentation layout; consumer rules are recorded in `docs/agents/domain.md`, while `CONTEXT.md` and ADRs will be created lazily when domain decisions are resolved.
+- The `triage` skill is not installed, so no triage-label configuration was added.
+- Existing `.superpowers/` and `docs/superpowers/` history was preserved unchanged.
+
 ### 2026-08-27 — Target Jahit: Product Note menjadi identitas produksi
 
 - Planning Produksi menyimpan dan mewajibkan Product Note untuk data baru/edit; Product Note ikut tersedia pada tabel, pencarian, filter, sort, pengaturan kolom, dan export CSV.
