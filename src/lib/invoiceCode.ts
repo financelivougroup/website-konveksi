@@ -1,13 +1,7 @@
-const CLIENT_CODE_MAP: Record<string, string> = {
-  Livou: 'LVU',
-  Cassca: 'CSC',
-};
-
-export function clientCodeFromBrand(brand: string): string {
-  const code = CLIENT_CODE_MAP[brand];
-  if (!code) throw new Error(`Unknown client brand: ${brand}. Add it to CLIENT_CODE_MAP.`);
-  return code;
-}
+// Kode client tidak lagi dipetakan secara hardcoded di sini — sumbernya adalah
+// tabel `register_client` (menu Master Data → Register Client), diterjemahkan
+// lewat `findClientByBrand` di src/lib/clientCode.ts. Nilai `clientCode` yang
+// diteruskan ke buildInvoiceCode sudah merupakan hasil resolusi tersebut.
 
 export type BillingType = 'mass_production' | 'sample_production';
 

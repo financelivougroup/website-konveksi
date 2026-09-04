@@ -140,12 +140,22 @@ export const viewConfig: Record<ModuleId, ViewConfig> = {
     ],
   },
   'register-penjahit': {
-    title: 'Register Karyawan Tim Jahit',
+    title: 'Register Karyawan',
     editable: true,
     sync: false,
     columns: [
       { key: 'picPenjahit', label: 'Nama Karyawan', width: '180px', icon: 'User' },
       { key: 'posisi', label: 'Posisi', width: '120px', badge: true, icon: 'Briefcase' },
+      { key: 'status', label: 'Status', width: '100px', badge: true, icon: 'Activity' },
+    ],
+  },
+  'register-client': {
+    title: 'Register Client',
+    editable: true,
+    sync: false,
+    columns: [
+      { key: 'namaClient', label: 'Nama Client', width: '180px', icon: 'User' },
+      { key: 'kodeClient', label: 'Kode Client', width: '120px', icon: 'Fingerprint' },
       { key: 'status', label: 'Status', width: '100px', badge: true, icon: 'Activity' },
     ],
   },
@@ -242,6 +252,9 @@ export const mockData: Record<ModuleId, Record<string, unknown>[]> = {
     { id: 3, picPenjahit: 'Caca', posisi: 'Penjahit', status: 'Aktif' },
     { id: 4, picPenjahit: 'Dedi Kurniawan', posisi: 'Finishing', status: 'Non-Aktif' },
   ],
+  // Live data: Register Client dibaca langsung dari Supabase lewat
+  // src/services/registerClient.ts di RegisterClientPage.
+  'register-client': [],
   'master-product': [
     { id: 1, brand: 'Cassca', productId: 'CSC-001', product: 'Kaos Polos', category: 'Atasan', statusProduct: 'Aktif', warningStock: '-' },
     { id: 2, brand: 'Livou', productId: 'LVU-002', product: 'Kemeja', category: 'Atasan', statusProduct: 'Aktif', warningStock: 'Stok Menipis' },
@@ -338,6 +351,7 @@ export const navGroups = [
       { id: 'target-jahit' as const, label: 'Target Jahit', icon: 'Target' },
       { id: 'planning-produksi' as const, label: 'Planning Produksi', icon: 'Target' },
       { id: 'register-penjahit' as const, label: 'Register Karyawan', icon: 'Users' },
+      { id: 'register-client' as const, label: 'Register Client', icon: 'Building2' },
       { id: 'complain-penalti' as const, label: 'Complain & Penalti', icon: 'AlertTriangle' },
     ],
   },

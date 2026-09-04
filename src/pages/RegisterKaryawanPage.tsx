@@ -171,7 +171,7 @@ export function RegisterKaryawanPage() {
       <div className="px-8 pt-4 pb-0">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h1 className="text-[17px] font-semibold tracking-tight text-slate-900">Register Karyawan Tim Jahit</h1>
+            <h1 className="text-[17px] font-semibold tracking-tight text-slate-900">Register Karyawan</h1>
           </div>
           <div className="flex items-center gap-2.5">
             <button onClick={refresh} className="h-8 px-3.5 text-[12px] font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 hover:shadow-md hover:shadow-slate-200 transition-all flex items-center gap-2">

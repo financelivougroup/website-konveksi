@@ -8,7 +8,7 @@ import {
   SidebarMenuItem,
 } from '@/components/ui/sidebar';
 import { Badge } from '@/components/ui/badge';
-import { Lock, Layers, ClipboardList, Package, Users, Target, AlertTriangle, BarChart3, Settings, Box, ChevronRight } from 'lucide-react';
+import { Lock, Layers, ClipboardList, Package, Users, Building2, Target, AlertTriangle, BarChart3, Settings, Box, ChevronRight } from 'lucide-react';
 import type { ModuleId } from '@/types';
 import { navGroups } from '@/data/mockData';
 
@@ -73,6 +73,7 @@ function NavMenuItem({ item, currentView, onSwitchView, rename }: NavMenuItemPro
             {item.icon === 'ClipboardList' && <ClipboardList className="size-4" />}
             {item.icon === 'Package' && <Package className="size-4" />}
             {item.icon === 'Users' && <Users className="size-4" />}
+            {item.icon === 'Building2' && <Building2 className="size-4" />}
             {item.icon === 'Target' && <Target className="size-4" />}
             {item.icon === 'AlertTriangle' && <AlertTriangle className="size-4" />}
             {item.icon === 'BarChart3' && <BarChart3 className="size-4" />}

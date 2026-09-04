@@ -1,10 +1,10 @@
 import { supabase } from '@/lib/supabase';
 import { fetchOrderPriceByProductionOrderId } from '@/services/orderPricing';
 import {
-  clientCodeFromBrand,
   billingTypeCode,
   buildInvoiceCode,
 } from '@/lib/invoiceCode';
+import { resolveClientByBrand } from '@/services/registerClient';
 import { formatMonthYear } from '@/lib/monthYear';
 import { computeInvoiceFinancials } from '@/lib/invoiceCompute';
 import { deriveBillingType } from '@/lib/autoInvoice';
@@ -74,7 +74,16 @@ export async function transitionToFinishingComplete(workOrderId: string): Promis
   // 6. Compute derived values
   const brand = wo.brand as string;
   const quantity = wo.quantity as number;
-  const clientCode = clientCodeFromBrand(brand);
+  const { data: client, error: clientErr } = await resolveClientByBrand(brand);
+  if (clientErr) throw clientErr;
+  if (!client) {
+    // Gagal cepat: pengguna sedang menunggu invoice untuk WO ini, jadi brand
+    // yang belum terdaftar harus terlihat, bukan dilewati diam-diam.
+    throw new Error(
+      `Brand "${brand}" belum terdaftar di Register Client. Tambahkan dulu di menu Master Data → Register Client.`,
+    );
+  }
+  const clientCode = client.kodeClient;
   const billingType = deriveBillingType(quantity);
   const billingTypeCodeValue = billingTypeCode(billingType);
   const invoiceDate = todayIso();
@@ -102,7 +111,7 @@ export async function transitionToFinishingComplete(workOrderId: string): Promis
     invoiceCode,
     invoiceDate,
     monthYear,
-    clientName: brand,
+    clientName: client.namaClient,
     clientCode,
     billingType,
     billingTypeCodeValue,
@@ -185,7 +194,18 @@ async function generateInvoiceForFinishedWo(workOrderId: string): Promise<boolea
 
   const brand = wo.brand as string;
   const quantity = wo.quantity as number;
-  const clientCode = clientCodeFromBrand(brand);
+  // Backfill memproses banyak WO sekaligus, jadi brand yang belum terdaftar
+  // dilewati per-baris (sudah dicatat pemanggil) alih-alih menggagalkan semua.
+  const { data: client, error: clientErr } = await resolveClientByBrand(brand);
+  if (clientErr) {
+    console.error('[backfill] gagal memuat Register Client untuk', workOrderId, clientErr);
+    return false;
+  }
+  if (!client) {
+    console.warn(`[backfill] brand "${brand}" belum terdaftar di Register Client, WO ${workOrderId} dilewati`);
+    return false;
+  }
+  const clientCode = client.kodeClient;
   const billingType = deriveBillingType(quantity);
   const billingTypeCodeValue = billingTypeCode(billingType);
   const invoiceDate = todayIso();
@@ -213,7 +233,7 @@ async function generateInvoiceForFinishedWo(workOrderId: string): Promise<boolea
     invoiceCode,
     invoiceDate,
     monthYear,
-    clientName: brand,
+    clientName: client.namaClient,
     clientCode,
     billingType,
     billingTypeCodeValue,

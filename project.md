@@ -143,6 +143,7 @@ Website Konveksi/
 | Raw Product Monitoring | Read-only | Fabric stock levels with status, priorities |
 | Master Data Import | Read-only | Supplier import log |
 | Target Jahit | Editable | Penjahit monthly targets & performance |
+| Register Client | Editable | Master data klien: Nama, Kode (dipakai kode invoice), Status |
 | Production Data | Combined view | Sub-tabs: Register Jahit, Daftar Libur, Register Penjahit |
 | Invoicing | Planned | Coming soon |
 
@@ -200,6 +201,20 @@ Website Konveksi/
 - [ ] Revise user authentication flow to use `supabase.auth.getUser()` instead of local storage tracking
 
 ## Latest Progress
+
+### 2026-09-03 — Register Client baru + penyesuaian judul Register Karyawan
+
+- **Judul Register Karyawan disederhanakan**: "Register Karyawan Tim Jahit" → **"Register Karyawan"** di `viewConfig['register-penjahit'].title` (`src/data/mockData.ts`) dan heading halaman `RegisterKaryawanPage`. Tidak ada perubahan kolom, form, service, atau skema.
+- **Modul baru Register Client** di sidebar grup **Master Data** (setelah Register Karyawan, ikon `Building2`), dengan kolom **Nama Client | Kode Client | Status** (keputusan user). Halaman `src/pages/RegisterClientPage.tsx` mengikuti pola persis `RegisterKaryawanPage`: header standar 17px + tombol Refresh/Tambah Client, toolbar Search + Filter + Sort + Kolom + Export CSV + Delete bulk, tabel token `tableStyles.ts`, klik baris untuk edit, modal tambah/edit, dan pengaturan kolom persist per-tabel (`register-client`).
+- **Tabel baru `register_client`** (`id`, `nama_client`, `kode_client`, `status`, `created_at`) dibuat via Supabase MCP (migration `register_client_module`, file `supabase/migrations/2026-09-03-register-client.sql`). Unique index case-insensitive+trim pada `nama_client` dan `kode_client`; RLS mengikuti pola existing — SELECT untuk `public`, INSERT/UPDATE/DELETE hanya `authenticated`.
+- **Service `src/services/registerClient.ts`** dengan `fetchAll/create/update/remove` dan pemetaan snake_case ↔ camelCase, mengikuti `registerPenjahit.ts`.
+- **Kode Client divalidasi** huruf/angka saja dan disimpan huruf besar, karena nilainya menyusun kode invoice `INV/{MP|SP}/{KODE}/{DDMMYY}/{seq}`. Seed awal Livou/LVU dan Cassca/CSC mempertahankan pemetaan lama yang sebelumnya berada di `CLIENT_CODE_MAP`.
+- Wiring: `ModuleId` baru `'register-client'`, entri `viewConfig` + `mockData` (kosong, data live dari Supabase), item `navGroups`, ikon di `NavMain`, rute `register-client` → `RegisterClientPage` di `App.tsx` (termasuk daftar pengecualian tabel generik).
+- **Register Client kini menjadi sumber kode invoice** (menggantikan `CLIENT_CODE_MAP` yang di-hardcode): helper murni baru `src/lib/clientCode.ts` (`findClientByBrand`, pencocokan case-insensitive + trim selaras dengan unique index DB) dilindungi tes Node di `tests/clientCode.test.ts`; resolver `resolveClientByBrand` ditambahkan ke service `registerClient` dan dipakai kedua jalur pembuatan invoice di `src/services/autoInvoice.ts`. `clientCodeFromBrand` dan `CLIENT_CODE_MAP` dihapus dari `src/lib/invoiceCode.ts` karena sudah tidak dipakai.
+- **Delete bulk Register Client kini melakukan impact check fail-closed sebelum konfirmasi**: service mengambil seluruh `work_orders(id, brand)` dan `invoices(work_order_id, client_name)` dengan pagination 1.000 baris + urutan deterministik, lalu `tallyClientUsage` menghitung WO yang **belum memiliki invoice** dan jumlah snapshot invoice lama per client. UI memakai shadcn `AlertDialog`, menampilkan rincian per-client, memperingatkan bahwa penghapusan akan memblokir pembuatan invoice bagi WO aktif, serta menjelaskan invoice lama tetap aman. Jika pemeriksaan gagal, penghapusan dibatalkan; target delete di-snapshot ketika dialog dibuka; kegagalan delete parsial hanya menghapus baris yang benar-benar berhasil dari state UI.
+- **Perilaku brand yang belum terdaftar sengaja dibedakan per jalur**: `transitionToFinishingComplete` (jalur interaktif) **gagal cepat** dengan pesan yang menyuruh menambahkan client di Register Client, agar tidak ada invoice yang gagal tanpa penjelasan; `backfillMissingInvoices` **melewati per-baris** dan mencatat `console.warn`, supaya satu brand belum terdaftar tidak menggagalkan seluruh backfill.
+- **Invoice lama kebal terhadap perubahan master**: tidak ada FK dari `invoices` ke `register_client`; `client_name` dan `client_code` tersimpan sebagai snapshot per baris. Diverifikasi via Supabase MCP dalam transaksi `BEGIN … ROLLBACK` — menghapus client "Livou" tidak mengubah invoice `INV/MP/LVU/050826/001`. Seluruh 4 work order yang ada dan 1 invoice existing masih ter-resolve ke client yang benar (tanpa regresi).
+- **Verifikasi**: `npm run build` hijau (**2.047 modul**), **30/30 tes Node lulus** (8 clientCode termasuk kalkulasi usage, 7 orderEntry, 3 staffDebtEligibility, 8 targetDetailIdentity, 4 workOrderIdentity), probe transaksional `BEGIN … ROLLBACK` via Supabase MCP membuktikan penolakan duplikat nama & kode (case-insensitive), insert/update/delete valid, ketahanan invoice terhadap penghapusan client, serta tanpa data sisa. Query live mengonfirmasi impact check saat ini: Livou = 3 WO belum invoice + 1 invoice lama; Cassca = 0 + 0. Focused ESLint bersih pada `clientCode.ts`, `registerClient.ts`, `RegisterClientPage.tsx`, dan `clientCode.test.ts`; initial-load halaman baru memakai promise callback + cancellation guard sehingga tidak membawa `react-hooks/set-state-in-effect` dari halaman referensi. `git diff --check` bersih selain notice normalisasi LF/CRLF. Build tetap mencatat warning non-blocking Browserslist lama, mixed static/dynamic import `invoiceCode`, dan ukuran main chunk di atas 500 KB.
 
 ### 2026-09-01 — Order Entry multi-variasi, harga terpadu, dan penghapusan Register PO
 

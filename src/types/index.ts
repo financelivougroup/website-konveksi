@@ -96,6 +96,7 @@ export type ModuleId =
   | 'register-jahit'
   | 'daftar-libur'
   | 'register-penjahit'
+  | 'register-client'
   | 'master-product'
   | 'raw-monitoring'
   | 'master-import'

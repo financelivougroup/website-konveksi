@@ -10,6 +10,7 @@ import { PlanningProduksiPage } from '@/pages/PlanningProduksiPage';
 import { ComplainPenaltiPage } from '@/pages/ComplainPenaltiPage';
 import { TargetJahitPage } from '@/pages/TargetJahitPage';
 import { RegisterKaryawanPage } from '@/pages/RegisterKaryawanPage';
+import { RegisterClientPage } from '@/pages/RegisterClientPage';
 import OrderEntry from '@/pages/OrderEntry';
 import { SidebarProvider, SidebarInset, SidebarTrigger } from '@/components/ui/sidebar';
 import { AppSidebar } from '@/components/Layout/AppSidebar';
@@ -560,9 +561,10 @@ export default function App() {
                 {currentView === 'complain-penalti' && <ComplainPenaltiPage />}
                 {currentView === 'target-jahit' && <TargetJahitPage />}
                 {currentView === 'register-penjahit' && <RegisterKaryawanPage />}
+                {currentView === 'register-client' && <RegisterClientPage />}
 
                 {/* DataTable pages with toolbar - only for views not listed above */}
-                {!['sewing-entry', 'finishing-entry', 'kancing-entry', 'production-monitoring', 'invoicing', 'order-entry', 'planning-produksi', 'complain-penalti', 'target-jahit', 'register-penjahit'].includes(currentView) && (
+                {!['sewing-entry', 'finishing-entry', 'kancing-entry', 'production-monitoring', 'invoicing', 'order-entry', 'planning-produksi', 'complain-penalti', 'target-jahit', 'register-penjahit', 'register-client'].includes(currentView) && (
                   <>
                     <TopBar onRefresh={handleRefresh} onAddNew={handleAddNew} />
                     <ViewTabs
