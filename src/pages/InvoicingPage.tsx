@@ -3,17 +3,19 @@ import { Download, RefreshCw, Search, Sparkles, Wallet } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { fetchAllInvoices } from '@/services/invoices'
 import { fetchPaymentsByInvoiceIds } from '@/services/invoicePayments'
+import { fetchByIds as fetchWorkOrdersByIds } from '@/services/workOrders'
 import { backfillMissingInvoices } from '@/services/autoInvoice'
 import { computeFinanceValidation, computeOutstanding } from '@/lib/invoiceCompute'
 import { useToast } from '@/hooks/useToast'
 import { FilterButton, SortButton, ExportButton } from '@/components/Table/TableTools'
 import { ColumnSettingsButton, HiddenColgroup } from '@/components/Table/ColumnSettings'
 import { PaymentModal } from '@/components/Modals/PaymentModal'
+import { InvoiceImage } from '@/components/Invoice/InvoiceImage'
 import { useColumnSettings } from '@/lib/columnSettings'
 import { applyFilters, applySorts } from '@/lib/tableQuery'
 import type { FieldOption, FilterRule, SortRule } from '@/lib/tableQuery'
 import { T_WRAP, T_TABLE, T_HEAD_ROW, T_TH, T_TD, rowClass } from '@/lib/tableStyles'
-import type { InvoiceRow, InvoicePaymentRow } from '@/types/pipeline'
+import type { InvoiceRow, InvoicePaymentRow, WorkOrder } from '@/types/pipeline'
 
 interface PaymentBundle {
   payments: InvoicePaymentRow[]
@@ -49,6 +51,7 @@ const STATUS_LABEL: Record<PaymentStatus, string> = {
 export function InvoicingPage() {
   const [invoices, setInvoices] = useState<InvoiceRow[]>([])
   const [paymentsByInvoice, setPaymentsByInvoice] = useState<Record<string, PaymentBundle>>({})
+  const [workOrdersById, setWorkOrdersById] = useState<Record<string, WorkOrder>>({})
   const [paymentLoadError, setPaymentLoadError] = useState<string | null>(null)
   const [page, setPage] = useState(1)
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set())
@@ -109,8 +112,24 @@ export function InvoicingPage() {
       bundle.totalPayment += payment.amount
     }
 
+    // Detail item (produk/warna/size) untuk template invoice. Kegagalan fetch
+    // work order menurunkan tampilan ke fallback aman, bukan memblokir tabel.
+    const { data: workOrders, error: workOrderError } = await fetchWorkOrdersByIds(
+      list.map(inv => inv.workOrderId),
+    )
+    if (requestId !== refreshRequestRef.current) return
+    if (workOrderError) {
+      showToast(`Gagal load detail work order: ${workOrderError.message}`, 'error')
+    }
+
+    const workOrderMap: Record<string, WorkOrder> = {}
+    for (const workOrder of workOrders ?? []) {
+      workOrderMap[workOrder.id] = workOrder
+    }
+
     setInvoices(list)
     setPaymentsByInvoice(bundles)
+    setWorkOrdersById(workOrderMap)
     setPaymentLoadError(null)
     setPage(1)
   }, [showToast])
@@ -439,6 +458,20 @@ export function InvoicingPage() {
           </div>
         </div>
       </div>
+
+      {/* Template sekarang murni data invoice + work order; riwayat pembayaran
+          tidak lagi dicetak di dokumen klien, jadi render tidak perlu menunggu
+          bundle pembayaran tersedia. */}
+      {invoices.map((invoice) => (
+        <InvoiceImage
+          key={invoice.id}
+          elementRef={(element) => {
+            invoiceImageRefs.current[invoice.id] = element
+          }}
+          invoice={invoice}
+          workOrder={workOrdersById[invoice.workOrderId] ?? null}
+        />
+      ))}
 
       <PaymentModal
         open={paymentTarget !== null}

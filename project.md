@@ -30,9 +30,7 @@ Each work order carries two independent status axes: **production status** (phys
 
 ## Database
 
-Currently using **mock data** (`src/data/mockData.ts` and `src/data/pipelineData.ts`). Data is stored in-memory as typed arrays. All mutations (CRUD) modify these arrays directly.
-
-**Planned:** Supabase integration for persistent storage, real-time sync, and authentication.
+Persistent application records are stored in **Supabase** and accessed through the service layer in `src/services/`. Some static view configuration, fixtures, and legacy modules still use data from `src/data/`; remaining mock-backed modules are being migrated incrementally. Supabase Auth is implemented, while a few legacy identity paths still need migration away from local storage.
 
 ## Folder Structure
 
@@ -142,7 +140,7 @@ Website Konveksi/
 | Master Data Import | Read-only | Supplier import log |
 | Target Jahit | Editable | Penjahit monthly targets & performance |
 | Production Data | Combined view | Sub-tabs: Register Jahit, Daftar Libur, Register Penjahit |
-| Invoicing | Planned | Coming soon |
+| Invoicing | Active | Auto-generated invoice list, cash/termin payment entry, payment-proof storage, aggregate paid/outstanding status, PNG download |
 
 ### Table Features
 - Column visibility toggle, drag-reorder, resize
@@ -172,7 +170,7 @@ Website Konveksi/
 | Phase D | Cutting Module (queue, input form, locked submission) | ✅ Done |
 | Phase E | Sewing Module (queue, entries view, progress bar, target-jahit ref) | 🔶 Partial |
 | Phase F | Finishing Module (queue, form-based import, auto status formula) | ❌ Pending |
-| Phase G | Invoicing Module (invoice list, generate, record payment, status flow) | ❌ Pending |
+| Phase G | Invoicing Module (invoice list, generate, record payment, status flow) | 🔶 Partial — core payment flow active; PDF/email delivery belum ada |
 | Phase H | Audit Log & Admin Override (audit log page, override modal) | ❌ Pending |
 | Phase I | Migration + E2E Testing | ❌ Pending |
 
@@ -188,16 +186,49 @@ Website Konveksi/
 | [ ] Dark mode support via next-themes | ⏸️ Pending |
 
 ### Other Pending Items
-- [ ] Supabase integration (replace mock data)
-- [ ] Real authentication (currently only role switcher) — **Note:** Supabase Auth implemented, needs migration from localStorage-based identity
+- [ ] Complete Supabase migration for remaining mock-backed modules
+- [ ] Complete authentication migration from legacy localStorage-based identity to `supabase.auth.getUser()`
 - [ ] PDF invoice generation
 - [ ] Email delivery for invoices
-- [ ] Invoicing module sidebar integration
 - [ ] Reports & analytics dashboards
 - [ ] Settings page
 - [ ] Revise user authentication flow to use `supabase.auth.getUser()` instead of local storage tracking
 
 ## Latest Progress
+
+### 2026-09-06 — Revisi isi & tata letak template invoice PNG
+
+- Menindaklanjuti revisi user pada template PNG. Enam perubahan isi diterapkan di `src/components/Invoice/InvoiceImage.tsx`: baris **"Kode Client"** dihapus; header tabel **"Deskripsi" → "Item"**; work code (yang memuat prefix fase internal **"Produksi - Awal"**) tidak lagi dicetak di dokumen; paragraf **"Terima kasih atas kepercayaan Anda. Mohon cantumkan nomor invoice…"** dihapus; blok **"Riwayat Pembayaran"** dihapus; dan ringkasan **Total Dibayar / Sisa / Status** dihapus.
+- Tata letak diselaraskan ke `contoh invoice.png`: serif Georgia sebagai font dasar dokumen (sans hanya untuk kolom angka), monogram **LK** kini berupa lingkaran berbatas seperti referensi, judul **INVOICE** diperbesar ke 50 px dengan letter-spacing 9, blok **Kepada** dan **Dari** berdampingan di bawah baris "Tanggal / No. Invoice / Periode", tabel dipangkas ke 4 kolom (Item / Kuantitas / Harga / Total), ringkasan kanan hanya Subtotal dan Total, lalu footer kiri **"Metode Pembayaran"** dan footer kanan **"Hormat Kami,"** dengan garis tanda tangan.
+- Tinggi lembar diturunkan **1000 → 880 px** karena riwayat pembayaran dan blok status tidak lagi dicetak, sehingga tidak ada blok kosong besar di tengah. Ukuran halaman dipusatkan di `src/lib/invoicePage.ts` dan dipakai bersama oleh komponen dan `downloadInvoicePng.ts`, supaya ukuran kanvas tidak bisa bergeser dari ukuran template.
+- Prop `payments`, `totalPayment`, dan `outstanding` dihapus dari `InvoiceImage`; render template tidak lagi bergantung pada bundle pembayaran (`paymentLoadError`) sehingga invoice tetap dapat di-download walau fetch payment gagal. `computeOutstanding` dan `paymentLoadError` tetap dipakai tabel dan modal, jadi tidak ada kode mati.
+- Batasan data tetap dipegang: tidak ada alamat, kontak, NPWP, atau tanda tangan rekaan; rekening tetap placeholder tersamarkan; `totalIncomeManpower`/`totalIncomeOperational` tidak ditampilkan; produk diambil dari work order, bukan `clientName`. Ongkos kirim dan diskon tidak ditulis karena tidak ada field-nya di model.
+- Verifikasi: `tsc -b --noEmit` lulus (exit 0); ESLint terfokus pada empat file yang diubah lulus (exit 0); modul yang disajikan dev server sudah memuat `Item`/`Kuantitas`/`Harga`/`Total` dan tidak lagi memuat "Kode Client", "Deskripsi", "Riwayat Pembayaran", "Total Dibayar", "Mohon cantumkan", `workCode`, "Produksi - Awal", atau `totalIncome*`. Direktori sementara `.tmp-verify`, `.tmp-diag`, `.tmp-diag2` dan `public/__invoice-debug.html` dibersihkan; `package.json`/`package-lock.json` tidak tersentuh.
+
+### 2026-09-04 — Redesain template invoice PNG (portrait cream)
+
+- `src/components/Invoice/InvoiceImage.tsx` dibangun ulang sebagai lembar portrait ukuran tetap **800 × 1000 px** dengan latar cream `#FAF6EF` yang dicat eksplisit. Hierarki mengikuti referensi: monogram tipografis **LK** + identitas "Livou Konveksi" kiri atas, judul **INVOICE** serif kanan atas, "Billed To" (nama + kode client) kiri, metadata kanan (Invoice No, Tanggal, Periode, Jenis Tagihan), tabel satu item bergaris horizontal, ringkasan Subtotal/Total rata kanan, ucapan "Thank you!", lalu footer kiri berisi Payment Information + Riwayat Pembayaran dan footer kanan berisi Total Dibayar/Sisa/Status + identitas penutup.
+- Data item kini berasal dari work order nyata, bukan nama client. `src/services/workOrders.ts` menambah bulk fetch `fetchByIds` (menghindari N+1), dan `src/pages/InvoicingPage.tsx` membentuk `workOrdersById` yang dilindungi `refreshRequestRef`. Produk/warna/size diambil dari work order, quantity fallback ke `invoice.pcsLinked`, dan field yang tidak tersedia ditampilkan sebagai `—` (bukan data salah).
+- Baris pajak dihilangkan karena model tidak memiliki data pajak. Seluruh output client-facing untuk `totalIncomeManpower` dan `totalIncomeOperational` dihapus. Status untuk dokumen klien hanya menyatakan kondisi pelunasan (Lunas / Belum Lunas / Belum Dibayar) tanpa label workflow internal.
+- Rekening memakai **placeholder tersamarkan** (`Bank: BCA`, `No. Rekening: •••• •••• ••••`, `Atas Nama: ••••••••`) menggantikan data rekening atas nama pribadi sebelumnya. Tidak ada alamat, kontak, tanda tangan, atau identitas bank resmi yang direka.
+- Daftar termin dibatasi `MAX_PAYMENT_ROWS = 4` agar lembar berukuran tetap tidak overflow; kelebihan pembayaran diringkas satu baris "+N pembayaran lainnya (total …)" tanpa mengubah total. Overpayment tetap ditampilkan apa adanya di Total Dibayar, sementara Sisa memakai nilai yang sudah di-clamp ke Rp0.
+- `src/lib/downloadInvoicePng.ts` menyamakan `backgroundColor` fallback dengan warna cream template. `pixelRatio: 2`, `cacheBust`, Blob download, dan sanitasi nama file dipertahankan. Tidak ada web font atau asset remote, sehingga hasil capture konsisten.
+- Spacer vertikal memakai `alignItems: 'center'` (sebelumnya `flex-end`) dan tinggi halaman diturunkan 1131 → 1000 px; ini menghilangkan blok kosong ~389 px di tengah lembar sehingga "Thank you!" terdistribusi seimbang (~135 px atas, ~130 px bawah).
+- Verifikasi: `tsc --noEmit` bersih; ESLint terfokus pada empat file yang diubah lulus; `npm run build` lulus; `git diff --check` hanya menghasilkan warning line-ending LF/CRLF. `npm run lint` seluruh repo masih gagal pada 42 temuan pre-existing di file yang tidak tersentuh (`App.tsx`, `ProductionMonitoring.tsx`, `TargetJahitPage.tsx`, komponen `ui/`, dll.).
+- Verifikasi hasil capture memakai data live melalui pipeline nyata (service layer + komponen + `html-to-image` di Chrome headless, bukan hanya render statis): PNG terbit **1600 × 2000 px**, tidak blank, memuat work code, produk Sheen Pants/White/S/Brand Livou, tanggal 05-08-2026, Total Dibayar Rp 0, Sisa Rp 1.750.000, Status Belum Dibayar, dan placeholder rekening tersamarkan; nama file tersanitasi menjadi `INV_MP_LVU_050826_001`.
+- Tiga edge case diuji pada tinggi tetap: tanpa pembayaran, enam pembayaran/overpayment (baris terakhir berakhir tepat di batas padding bawah, tanpa overflow), dan work order tidak tersedia (semua field tak diketahui menjadi `—`). Database live saat verifikasi berisi 1 invoice dengan 0 payment, diverifikasi melalui Supabase MCP. Belum ada PDF/email, branding/logo resmi, atau perubahan skema.
+
+### 2026-09-04 — Invoicing payment entry restored and hardened
+
+- Wiring `PaymentModal` dipulihkan ke action tabel Invoicing. Modal kini memuat dan mengedit payment lama berbasis ID: cash dibatasi tepat satu baris, termin dapat ditambah berkali-kali, dan tiap payment wajib mempertahankan atau menambahkan minimal satu bukti pembayaran.
+- Save tidak lagi menghapus semua payment terlebih dahulu. Create/upload/update dijalankan sebelum operasi destruktif; payment dan bukti yang dikeluarkan dari draft baru dihapus sesudah fase non-destruktif berhasil. Kegagalan metadata upload membersihkan object Storage baru secara best-effort dan kegagalan parsial dilaporkan ke UI.
+- Tabel utama tetap satu row per invoice, tetapi sekarang memakai bulk fetch payment dan menampilkan **Total Dibayar**, **Sisa**, serta status agregat aktual. Field numerik dapat di-filter, di-sort, dan di-hide/show. Overpayment diizinkan dengan warning; total aktual tetap tampil, Sisa di-clamp Rp0, dan status menjadi Paid.
+- Render off-screen `InvoiceImage` dipulihkan agar download PNG kembali mempunyai target, dan Work Code pada gambar dikoreksi agar memakai `invoice.workCode`.
+- Migration `2026-09-04-invoice-payment-proof-storage-policies.sql` menambahkan policy INSERT/DELETE khusus role `authenticated` pada bucket public `invoice-payment-proofs`; bucket dan kedua policy telah diverifikasi pada database live melalui Supabase MCP.
+- Penyesuaian hasil review internal sebelum final: urutan Save dipisah per fase (create row → upload bukti → update row existing → hapus bukti/payment → refetch dan sinkron status). Rollback hanya menghapus artefak yang dibuat pada percobaan yang sama, sehingga kegagalan upload tidak lagi meninggalkan payment tanpa bukti dan tidak menyentuh payment lama. Kegagalan destruktif atau refetch sekarang berhenti sebelum toast sukses/close.
+- Penghapusan bukti memindahkan object Storage terlebih dahulu; bila Storage gagal, metadata beserta `file_path` tetap ada sehingga cleanup dapat diulang. Refresh halaman memakai request generation guard agar refresh lama tidak menimpa total terbaru, dan lookup "Generate Missing Invoices" kini sepenuhnya melalui `backfillMissingInvoices` tanpa query Supabase langsung dari page.
+- Kolom Status memakai `computeFinanceValidation` sehingga Paid/Partial Paid/Collect Payment/Need Register Invoice tidak lagi runtuh menjadi dua nilai. Semua kontrol aksi di modal memakai shadcn `Button`, format rupiah mengikuti `Intl.NumberFormat` yang sama dengan dashboard, dan kontrak query payment dipusatkan agar modal dan tabel tidak bisa berbeda urutan/mapping.
+- Verifikasi: `npm run build` lulus; ESLint terfokus untuk lima file TS/TSX yang berubah lulus; `git diff --check` tidak menemukan whitespace error (hanya warning line-ending LF/CRLF). `npm run lint` seluruh repo masih gagal pada temuan pre-existing di file lain. Database live saat verifikasi berisi 1 invoice, 0 payment, dan 0 payment file; walkthrough transaksi UI belum dijalankan agar tidak membuat data bisnis uji.
 
 ### 2026-08-26 — Universal Excel Import: design approved
 
