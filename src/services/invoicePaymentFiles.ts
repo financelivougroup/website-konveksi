@@ -24,15 +24,15 @@ function mapRow(row: DbRow): InvoicePaymentFileRow {
   };
 }
 
-export async function fetchFilesByPaymentId(paymentId: string): Promise<{ data: InvoicePaymentFileRow[] | null; error: Error | null }> {
+export async function fetchFilesByPaymentIds(paymentIds: string[]): Promise<{ data: InvoicePaymentFileRow[] | null; error: Error | null }> {
+  if (paymentIds.length === 0) return { data: [], error: null };
   const { data, error } = await supabase
     .from(TABLE)
     .select('*')
-    .eq('payment_id', paymentId)
+    .in('payment_id', paymentIds)
     .order('uploaded_at', { ascending: true });
   if (error) return { data: null, error };
-  const rows = (data as DbRow[] | null)?.map(mapRow) ?? null;
-  return { data: rows, error: null };
+  return { data: (data as DbRow[] | null)?.map(mapRow) ?? [], error: null };
 }
 
 export interface UploadPaymentProofInput {
@@ -49,8 +49,8 @@ export interface UploadPaymentProofResult {
 }
 
 export async function uploadPaymentProof(input: UploadPaymentProofInput): Promise<UploadPaymentProofResult> {
-  const safeName = input.file.name.replace(/[^\w.\-]+/g, '_');
-  const filePath = `${input.invoiceId}/${input.paymentId}/${Date.now()}-${safeName}`;
+  const safeName = input.file.name.replace(/[^\w.-]+/g, '_');
+  const filePath = `${input.invoiceId}/${input.paymentId}/${Date.now()}-${crypto.randomUUID()}-${safeName}`;
   const { error: uploadError } = await supabase.storage
     .from(BUCKET)
     .upload(filePath, input.file, { upsert: false, contentType: input.file.type || undefined });
@@ -78,18 +78,39 @@ export async function createPaymentFileRecord(input: { paymentId: string; fileNa
   return { data: data ? mapRow(data as DbRow) : null, error: null };
 }
 
-export async function removePaymentFile(id: string): Promise<{ error: Error | null }> {
+export async function removePaymentProofObject(filePath: string): Promise<{ error: Error | null }> {
+  const { error } = await supabase.storage.from(BUCKET).remove([filePath]);
+  return { error };
+}
+
+export async function removePaymentProofObjects(filePaths: string[]): Promise<{ error: Error | null }> {
+  if (filePaths.length === 0) return { error: null };
+  const { error } = await supabase.storage.from(BUCKET).remove(filePaths);
+  return { error };
+}
+
+export async function removePaymentFile(id: string): Promise<{ error: Error | null; cleanupError: Error | null }> {
   const { data, error: fetchError } = await supabase
     .from(TABLE)
     .select('file_path')
     .eq('id', id)
     .maybeSingle();
-  if (fetchError) return { error: fetchError };
+  if (fetchError) return { error: fetchError, cleanupError: null };
   const filePath = (data as { file_path: string } | null)?.file_path;
-  const { error: deleteError } = await supabase.from(TABLE).delete().eq('id', id);
-  if (deleteError) return { error: deleteError };
-  if (filePath) {
-    await supabase.storage.from(BUCKET).remove([filePath]);
-  }
-  return { error: null };
+  if (!filePath) return { error: new Error('Bukti pembayaran tidak ditemukan.'), cleanupError: null };
+
+  // Hapus object terlebih dahulu. Jika Storage gagal, metadata tetap menyimpan
+  // filePath sehingga cleanup masih dapat dicoba ulang dari UI.
+  const { error: cleanupError } = await removePaymentProofObject(filePath);
+  if (cleanupError) return { error: null, cleanupError };
+
+  const { data: deleted, error: deleteError } = await supabase
+    .from(TABLE)
+    .delete()
+    .eq('id', id)
+    .select('id')
+    .maybeSingle();
+  if (deleteError) return { error: deleteError, cleanupError: null };
+  if (!deleted) return { error: new Error('Bukti pembayaran tidak ditemukan.'), cleanupError: null };
+  return { error: null, cleanupError: null };
 }
