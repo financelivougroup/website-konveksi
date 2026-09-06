@@ -44,6 +44,16 @@ export async function fetchById(id: string): Promise<{ data: WorkOrder | null; e
   return { data: data ? mapRow(data as Record<string, unknown>) : null, error }
 }
 
+// Bulk fetch untuk kebutuhan tampilan yang memakai banyak work order sekaligus
+// (mis. template invoice) tanpa query serial per baris.
+export async function fetchByIds(ids: string[]): Promise<{ data: WorkOrder[] | null; error: Error | null }> {
+  const uniqueIds = Array.from(new Set(ids.filter(Boolean)));
+  if (uniqueIds.length === 0) return { data: [], error: null };
+  const { data, error } = await supabase.from(TABLE).select('*').in('id', uniqueIds);
+  if (error) return { data: null, error };
+  return { data: (data as Record<string, unknown>[] | null)?.map(mapRow) ?? [], error: null };
+}
+
 export async function create(input: Omit<WorkOrder, 'id'>): Promise<{ data: WorkOrder | null; error: Error | null }> {
   const id = await generateId('WO', TABLE)
   const dbInput = {

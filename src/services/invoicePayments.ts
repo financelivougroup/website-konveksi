@@ -27,15 +27,27 @@ function mapRow(row: DbRow): InvoicePaymentRow {
   };
 }
 
-export async function fetchPaymentsByInvoiceId(invoiceId: string): Promise<{ data: InvoicePaymentRow[] | null; error: Error | null }> {
-  const { data, error } = await supabase
+// Kontrak query tunggal: selector, mapper, dan urutan dipakai bersama agar
+// modal dan tabel tidak bisa menampilkan set/urutan payment yang berbeda.
+function selectPayments() {
+  return supabase
     .from(TABLE)
     .select('*')
-    .eq('invoice_id', invoiceId)
-    .order('termin_no', { ascending: true });
+    .order('termin_no', { ascending: true, nullsFirst: true })
+    .order('created_at', { ascending: true });
+}
+
+export async function fetchPaymentsByInvoiceId(invoiceId: string): Promise<{ data: InvoicePaymentRow[] | null; error: Error | null }> {
+  const { data, error } = await selectPayments().eq('invoice_id', invoiceId);
   if (error) return { data: null, error };
-  const rows = (data as DbRow[] | null)?.map(mapRow) ?? null;
-  return { data: rows, error: null };
+  return { data: (data as DbRow[] | null)?.map(mapRow) ?? [], error: null };
+}
+
+export async function fetchPaymentsByInvoiceIds(invoiceIds: string[]): Promise<{ data: InvoicePaymentRow[] | null; error: Error | null }> {
+  if (invoiceIds.length === 0) return { data: [], error: null };
+  const { data, error } = await selectPayments().in('invoice_id', invoiceIds);
+  if (error) return { data: null, error };
+  return { data: (data as DbRow[] | null)?.map(mapRow) ?? [], error: null };
 }
 
 export async function createPayment(input: Omit<InvoicePaymentRow, 'id' | 'createdAt' | 'updatedAt'>): Promise<{ data: InvoicePaymentRow | null; error: Error | null }> {
@@ -51,22 +63,35 @@ export async function createPayment(input: Omit<InvoicePaymentRow, 'id' | 'creat
   return { data: data ? mapRow(data as DbRow) : null, error: null };
 }
 
-export async function updatePayment(id: string, updates: Partial<InvoicePaymentRow>): Promise<{ error: Error | null }> {
+export async function updatePayment(
+  id: string,
+  invoiceId: string,
+  updates: Partial<InvoicePaymentRow>,
+): Promise<{ error: Error | null }> {
   const dbUpdates: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (updates.paymentDate !== undefined) dbUpdates.payment_date = updates.paymentDate;
   if (updates.amount !== undefined) dbUpdates.amount = updates.amount;
   if (updates.paymentType !== undefined) dbUpdates.payment_type = updates.paymentType;
   if (updates.terminNo !== undefined) dbUpdates.termin_no = updates.terminNo;
-  const { error } = await supabase.from(TABLE).update(dbUpdates).eq('id', id);
-  return { error };
+  const { data, error } = await supabase
+    .from(TABLE)
+    .update(dbUpdates)
+    .eq('id', id)
+    .eq('invoice_id', invoiceId)
+    .select('id')
+    .maybeSingle();
+  if (error) return { error };
+  return { error: data ? null : new Error('Payment tidak ditemukan atau bukan milik invoice ini.') };
 }
 
-export async function removePayment(id: string): Promise<{ error: Error | null }> {
-  const { error } = await supabase.from(TABLE).delete().eq('id', id);
-  return { error };
-}
-
-export async function removePaymentsByInvoiceId(invoiceId: string): Promise<{ error: Error | null }> {
-  const { error } = await supabase.from(TABLE).delete().eq('invoice_id', invoiceId);
-  return { error };
+export async function removePayment(id: string, invoiceId: string): Promise<{ error: Error | null }> {
+  const { data, error } = await supabase
+    .from(TABLE)
+    .delete()
+    .eq('id', id)
+    .eq('invoice_id', invoiceId)
+    .select('id')
+    .maybeSingle();
+  if (error) return { error };
+  return { error: data ? null : new Error('Payment tidak ditemukan atau bukan milik invoice ini.') };
 }
