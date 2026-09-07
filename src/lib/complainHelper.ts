@@ -14,7 +14,7 @@ export const COMPLAIN_STATUS = {
   SOLVED: 'SOLVED',
 } as const;
 
-// posisi complain -> key komponen di register_po_components
+// posisi complain -> key komponen harga Order Entry
 export const POTONGAN_POSISI_KEY: Record<string, string> = {
   jahit: 'jahit',
   obras: 'obras',
@@ -70,22 +70,23 @@ export async function suggestPotongan(
   const compKey = POTONGAN_POSISI_KEY[posisi];
   if (!compKey) return null;
 
-  const { data: po, error: poError } = await supabase
-    .from('register_po')
+  const { data: price, error: priceError } = await supabase
+    .from('production_order_prices')
     .select('id')
     .eq('production_order_id', sourceOrderId)
     .maybeSingle();
 
-  if (poError || !po) return null;
+  if (priceError || !price) return null;
 
-  const { data: comp, error: compError } = await supabase
-    .from('register_po_components')
-    .select('value')
-    .eq('register_po_id', po.id)
-    .eq('key', compKey)
+  const { data: component, error: componentError } = await supabase
+    .from('production_order_price_components')
+    .select('amount_per_piece')
+    .eq('order_price_id', price.id)
+    .eq('component_key', compKey)
     .maybeSingle();
 
-  if (compError || !comp) return null;
+  if (componentError || !component) return null;
 
-  return Number(comp.value) || null;
+  const value = Number(component.amount_per_piece);
+  return Number.isFinite(value) ? value : null;
 }

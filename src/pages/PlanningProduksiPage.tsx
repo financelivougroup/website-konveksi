@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Plus, RefreshCw, Search, Sparkles, Trash2 } from 'lucide-react';
+import { Plus, RefreshCw, Search, Sparkles, Trash2, Upload } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatMonthYearFromYm } from '@/lib/monthYear';
-import { T_WRAP, T_TABLE, T_HEAD_ROW, T_TH, T_TD, rowClass } from '@/lib/tableStyles';
+import { T_WRAP, T_TABLE, T_HEAD_ROW, T_TH, T_TD, rowClass, T_TOOLBAR_BTN, T_TOOLBAR_BTN_IDLE } from '@/lib/tableStyles';
 import { FilterButton, SortButton, ExportButton } from '@/components/Table/TableTools';
 import { ColumnSettingsButton, HiddenColgroup } from '@/components/Table/ColumnSettings';
 import { useColumnSettings } from '@/lib/columnSettings';
@@ -20,6 +20,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 function currentMonth(): string {
   return new Date().toISOString().slice(0, 7); // 'YYYY-MM'
@@ -164,12 +165,33 @@ export function PlanningProduksiPage() {
   }
 
   const handleStatusChange = async (id: number, status: string) => {
+    const prev = items;
+    // Optimistic: badge berubah di layar saat itu juga.
+    setItems(p => p.map(r => (r.id === id ? { ...r, status } : r)));
     const { error } = await updatePlanning(id, { status });
     if (error) {
+      setItems(prev); // rollback tampilan
       setMessage(`❌ Error: ${error.message}`);
       setTimeout(() => setMessage(null), 3000);
     }
   };
+
+  // Bulk status: apply ke semua baris terpilih sekaligus, lalu sinkron state lokal.
+  const handleBulkStatus = useCallback(async (status: string) => {
+    const ids = [...selectedRows];
+    for (const id of ids) {
+      const { error } = await updatePlanning(Number(id), { status });
+      if (error) {
+        setMessage(`❌ Error: ${error.message}`);
+        setTimeout(() => setMessage(null), 3000);
+        return;
+      }
+    }
+    setItems(prev => prev.map(r => (selectedRows.has(r.id) ? { ...r, status } : r)));
+    setSelectedRows(new Set());
+    setMessage(`✅ ${ids.length} planning di-update ke "${status}"`);
+    setTimeout(() => setMessage(null), 3000);
+  }, [selectedRows]);
 
   // Generate Target handler.
   const handleGenerate = useCallback(async () => {
@@ -281,22 +303,29 @@ export function PlanningProduksiPage() {
           <SortButton fields={PLAN_FIELDS} value={sorts} onChange={setSorts} />
           <ColumnSettingsButton fields={PLAN_FIELDS} hidden={hiddenCols} onToggle={toggleCol} />
           <ExportButton onClick={handleExport} />
-          <Button onClick={handleImport} size="sm" className={cn(selectedRows.size > 0 ? 'bg-blue-500 hover:bg-blue-600' : 'border border-gray-200 text-slate-400')} disabled={selectedRows.size === 0}>📥 Import ({selectedRows.size})</Button>
+          <Button onClick={handleImport} size="sm" variant="outline" className={cn(T_TOOLBAR_BTN, T_TOOLBAR_BTN_IDLE)} disabled={selectedRows.size === 0}>
+            <Upload className="w-3 h-3" /> Import
+          </Button>
           {selectedRows.size > 0 && (
-            <Button onClick={handleBulkDelete} size="sm" className="h-8 px-2.5 bg-red-500 hover:bg-red-600">
-              <Trash2 className="w-3 h-3 mr-1.5" /> Delete ({selectedRows.size})
-            </Button>
+            <>
+              <Select onValueChange={(v) => void handleBulkStatus(v)}>
+                <SelectTrigger className="h-8 w-[170px] text-[11px] rounded-lg">
+                  <SelectValue placeholder={`Update status (${selectedRows.size})…`} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="draft">Draft</SelectItem>
+                  <SelectItem value="approved">Approved</SelectItem>
+                  <SelectItem value="rejected">Rejected</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button onClick={handleBulkDelete} size="sm" className="h-8 px-2.5 bg-red-500 hover:bg-red-600">
+                <Trash2 className="w-3 h-3 mr-1.5" /> Delete ({selectedRows.size})
+              </Button>
+            </>
           )}
-          <div className="flex items-center gap-1.5 ml-auto">
-            {Array.from(new Set(items.filter((r) => r.status === 'approved').map((r) => r.bulanTarget))).sort().map((m) => (
-              <button key={m} onClick={() => setGenMonth(m)} className={cn('h-8 px-2 text-xs font-medium rounded-lg border transition-colors', genMonth === m ? 'bg-violet-500 text-white border-violet-500' : 'bg-white text-slate-600 border-gray-200 hover:bg-violet-50')} title={`Ada planning approved di ${formatMonthYearFromYm(m)}`}>
-                {formatMonthYearFromYm(m)} ✓
-              </button>
-            ))}
-            <Label className="text-xs text-slate-500">Generate untuk bulan</Label>
-            <Input type="month" value={genMonth} onChange={(e) => setGenMonth(e.target.value)} className="h-8 px-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-violet-300" />
+          <div className="flex items-center ml-auto">
+            <input type="month" value={genMonth} onChange={(e) => setGenMonth(e.target.value)} title="Bulan generate target" className="h-8 px-2.5 text-[11px] rounded-lg border border-gray-200 bg-white text-slate-600 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100" />
           </div>
-          <span className="text-xs text-slate-400">{rows.length} planning produksi</span>
         </div>
 
         <div className={T_WRAP}>

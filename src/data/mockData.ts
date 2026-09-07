@@ -24,16 +24,6 @@ export const viewConfig: Record<ModuleId, ViewConfig> = {
       { key: 'financeValidation', label: 'Finance Validation', width: '150px', badge: true, icon: 'ShieldCheck' },
     ],
   },
-  'register-po': {
-    title: 'Register PO',
-    editable: true,
-    sync: false,
-    columns: [
-      { key: 'productionOrderId', label: 'PO ID', width: '220px', icon: 'FileText' },
-      { key: 'totalPerPcs', label: 'Total/PCS', width: '130px', align: 'right', format: 'currency', icon: 'CircleDollarSign' },
-      { key: 'createdAt', label: 'Created', width: '130px', icon: 'Calendar' },
-    ],
-  },
   'order-entry': {
     title: 'Order Entry',
     editable: false,
@@ -278,7 +268,6 @@ export const mockData: Record<ModuleId, Record<string, unknown>[]> = {
   'finishing-entry': [],
   'kancing-entry': [],
   'invoicing': [],
-  'register-po': [],
   'order-entry': [],
 };
 
@@ -344,7 +333,6 @@ export const navGroups = [
       { id: 'master-product' as const, label: 'Master Data Product', icon: 'Package', locked: true },
       { id: 'raw-monitoring' as const, label: 'Raw Product Monitoring', icon: 'Package', locked: true },
       { id: 'master-import' as const, label: 'Master Data Import', icon: 'Package', locked: true },
-      { id: 'register-po' as const, label: 'Register PO', icon: 'ClipboardList' },
       { id: 'target-jahit' as const, label: 'Target Jahit', icon: 'Target' },
       { id: 'planning-produksi' as const, label: 'Planning Produksi', icon: 'Target' },
       { id: 'register-penjahit' as const, label: 'Register Karyawan', icon: 'Users' },

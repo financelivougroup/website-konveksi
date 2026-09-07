@@ -275,6 +275,7 @@ export default function ProductionMonitoring({ onOpenSewingEntry, onOpenFinishin
   const { hidden: hiddenCols, toggle: toggleCol } = useColumnSettings('raw-data');
   const [showPullModal, setShowPullModal] = useState(false);
   const [pullMessage, setPullMessage] = useState<string | null>(null);
+  const [pullingOrderId, setPullingOrderId] = useState<string | null>(null);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -283,7 +284,7 @@ export default function ProductionMonitoring({ onOpenSewingEntry, onOpenFinishin
   const [sewingRecords, setSewingRecords] = useState<SewingRecord[]>([]);
   const [finishingRecords, setFinishingRecords] = useState<import('@/types/pipeline').FinishingRecord[]>([]);
   const [kancingRecords, setKancingRecords] = useState<KancingRecord[]>([]);
-  const [planningOrders, setPlanningOrders] = useState<import('@/types/pipeline').ProductionOrder[]>([]);
+  const [planningOrders, setPlanningOrders] = useState<import('@/types/pipeline').OrderEntryOverview[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedGroup, setSelectedGroup] = useState<KanbanGroup | null>(null);
 
@@ -411,7 +412,12 @@ export default function ProductionMonitoring({ onOpenSewingEntry, onOpenFinishin
   );
 
   // ===== SELECTION =====
-  const handleToggleRow = (woId: string) => setSelectedRows(prev => { const n = new Set(prev); n.has(woId) ? n.delete(woId) : n.add(woId); return n; });
+  const handleToggleRow = (woId: string) => setSelectedRows(prev => {
+    const next = new Set(prev);
+    if (next.has(woId)) next.delete(woId);
+    else next.add(woId);
+    return next;
+  });
   const handleToggleAll = () => { if (selectedRows.size === decoratedWO.length) setSelectedRows(new Set()); else setSelectedRows(new Set(decoratedWO.map(w => w.id))); };
 
   // ===== Filter & Sort (RAW master table) =====
@@ -460,23 +466,37 @@ export default function ProductionMonitoring({ onOpenSewingEntry, onOpenFinishin
   // ===== PULL =====
   const handlePullOrder = async (poId: string) => {
     const po = planningOrders.find(p => p.id === poId);
-    if (!po || po.status !== 'PLANNING') return;
-    const pid = `${po.brand.substring(0, 3).toUpperCase()}-${po.product.replace(/\s/g, '-').toUpperCase().substring(0, 5)}`;
-    const { data: newWO, error } = await workOrderSvc.create({
-      workCode: po.workCode, sourceOrderId: po.id, productNote: po.productNote,
-      product: po.product, productId: pid,
-      variationId: `${pid}-${po.warna.toUpperCase().substring(0, 3)}-${po.size}`,
-      informationVariation: po.informationVariation, warna: po.warna, size: po.size, brand: po.brand,
-      quantity: po.quantity, productionStatus: 'NEW', invoiceStatus: 'NONE',
-      createdBy: currentDisplayName, createdAt: po.createdAt, pulledAt: new Date().toISOString(),
-    });
-    if (error) { setPullMessage(`❌ ${error.message}`); return; }
-    await productionOrderSvc.pullToKonveksi(po.id, currentDisplayName);
-    if (newWO) setWorkOrders(prev => [...prev, newWO]);
-    setPlanningOrders(prev => prev.filter(p => p.id !== poId));
-    setPullMessage(`✅ "${po.product}" berhasil di-pull!`);
-    if (planningOrders.length <= 1) setShowPullModal(false);
-    setTimeout(() => setPullMessage(null), 3000);
+    if (!po || po.status !== 'PLANNING' || pullingOrderId) return;
+
+    setPullingOrderId(poId);
+    setPullMessage('⏳ Memproses Pull...');
+
+    try {
+      const { data: pulledWorkOrders, error } = await workOrderSvc.pullFromProductionOrder(
+        po.id,
+        currentDisplayName,
+      );
+
+      if (error || !pulledWorkOrders || pulledWorkOrders.length === 0) {
+        setPullMessage(`❌ Gagal pull order: ${error?.message ?? 'Work order tidak dikembalikan'}`);
+        return;
+      }
+
+      setWorkOrders(prev => {
+        const byId = new Map(prev.map(item => [item.id, item]));
+        for (const workOrder of pulledWorkOrders) byId.set(workOrder.id, workOrder);
+        return [...byId.values()];
+      });
+      setPlanningOrders(prev => prev.filter(p => p.id !== poId));
+      setPullMessage(`✅ "${po.product}" berhasil di-pull menjadi ${pulledWorkOrders.length} Work Order!`);
+      if (planningOrders.length <= 1) setShowPullModal(false);
+    } catch (error: unknown) {
+      const detail = error instanceof Error ? error.message : String(error);
+      setPullMessage(`❌ Gagal pull order: ${detail}`);
+    } finally {
+      setPullingOrderId(null);
+      setTimeout(() => setPullMessage(null), 3000);
+    }
   };
 
   // ===== SEWING =====
@@ -809,8 +829,8 @@ export default function ProductionMonitoring({ onOpenSewingEntry, onOpenFinishin
               <div className="flex-1 overflow-auto p-5">
                 {planningOrders.length === 0 ? <div className="py-8 text-center text-slate-400">✅ Semua sudah di-pull</div> :
                   <table className="w-full text-[11px]">
-                    <thead><tr className="bg-slate-50 border-b"><th className="text-left py-2 px-3 font-semibold">Product</th><th className="text-left py-2 px-3 font-semibold">Work Code</th><th className="text-left py-2 px-3 font-semibold">Brand</th><th className="text-right py-2 px-3 font-semibold">Qty</th><th className="text-center py-2 px-3 font-semibold">Action</th></tr></thead>
-                    <tbody>{planningOrders.map(po => <tr key={po.id} className="border-b hover:bg-blue-50/30"><td className="py-2 px-3 font-medium">{po.product}</td><td className="py-2 px-3 text-slate-500 max-w-[180px] truncate">{po.workCode}</td><td className="py-2 px-3 text-slate-600">{po.brand}</td><td className="py-2 px-3 text-right font-semibold">{po.quantity}</td><td className="py-2 px-3 text-center"><button onClick={() => handlePullOrder(po.id)} className="px-3 py-1 text-[10px] font-semibold bg-green-500 text-white rounded hover:bg-green-600 flex items-center gap-1 mx-auto"><ArrowRight className="w-3 h-3" /> Pull</button></td></tr>)}</tbody>
+                    <thead><tr className="bg-slate-50 border-b"><th className="text-left py-2 px-3 font-semibold">Product</th><th className="text-left py-2 px-3 font-semibold">Kode Produksi</th><th className="text-left py-2 px-3 font-semibold">Brand</th><th className="text-right py-2 px-3 font-semibold">Qty</th><th className="text-center py-2 px-3 font-semibold">Action</th></tr></thead>
+                    <tbody>{planningOrders.map(po => <tr key={po.id} className="border-b hover:bg-blue-50/30"><td className="py-2 px-3 font-medium">{po.product}</td><td className="py-2 px-3 text-slate-500 max-w-[180px] truncate">{po.productionCode}</td><td className="py-2 px-3 text-slate-600">{po.brand}</td><td className="py-2 px-3 text-right font-semibold">{po.totalQuantity}</td><td className="py-2 px-3 text-center"><button onClick={() => handlePullOrder(po.id)} disabled={pullingOrderId !== null || !po.priceComplete} title={po.priceComplete ? 'Pull ke produksi' : 'Harga Order Entry belum lengkap'} className="px-3 py-1 text-[10px] font-semibold bg-green-500 text-white rounded hover:bg-green-600 flex items-center gap-1 mx-auto disabled:cursor-not-allowed disabled:opacity-50"><ArrowRight className="w-3 h-3" /> {pullingOrderId === po.id ? 'Pulling…' : 'Pull'}</button></td></tr>)}</tbody>
                   </table>}
               </div>
             </div>

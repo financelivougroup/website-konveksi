@@ -30,9 +30,9 @@ Each work order carries two independent status axes: **production status** (phys
 
 ## Database
 
-Currently using **mock data** (`src/data/mockData.ts` and `src/data/pipelineData.ts`). Data is stored in-memory as typed arrays. All mutations (CRUD) modify these arrays directly.
+The operational pipeline uses a **local Supabase/PostgreSQL instance** for persistent storage, authentication, RLS, transactional RPCs, and production records. Persistent application data is accessed through the service layer in `src/services/`; `src/data/` is limited to static view configuration, fixtures, and shared reference data.
 
-**Planned:** Supabase integration for persistent storage, real-time sync, and authentication.
+Order intake is normalized as one `production_orders` parent per unique Product Note, with child rows in `production_order_variations` and shared per-piece pricing in `production_order_prices` / `production_order_price_components`. Each variation fans out to one scalar `work_orders` row when production starts.
 
 ## Folder Structure
 
@@ -128,10 +128,12 @@ Website Konveksi/
 - Auto-updates WO status to SEWING_COMPLETE when total reaches quantity
 
 ### Order Entry
-- Table of production orders with status filters (All / Planning / Pulled / Cancelled)
-- Create new order modal with product note, product, brand, warna, size, quantity
-- Pull-to-Konveksi action (creates WorkOrder with CUTTING_PENDING status)
-- Cancel order action (only while PLANNING)
+- Operational order list with search, lifecycle filters, compact order status, and row-click editing/viewing
+- Full-screen single-page shadcn Dialog containing identity, repeatable color–size–quantity variations, and eight per-piece price components with an automatic total
+- Product Note is the required normalized-unique production code; one order can contain multiple variations
+- Atomic, idempotent Pull creates exactly one scalar Work Order per variation from Production Monitoring
+- Planning rows open in Edit mode; pulled/locked rows open read-only. Server guards still lock variation structure after Pull and make the entire order view-only once production or invoice progress exists
+- Legacy production orders are retained as one variation each; incomplete pricing or variation review blocks production
 
 ### Data Modules (via sidebar)
 | Module | Status | Description |
@@ -215,75 +217,66 @@ Website Konveksi/
 - **Temuan 2**: `canSeeDebt` rupanya mengatur **kolom tabel**, bukan hanya kartu overlay — inventory hanya melihat kolom ber-flag `inv`. Jadi "Sisa Uang untuk semua role" tidak bisa dicapai sekadar membuka gate kartu; perbaikannya memberi flag `inv` pada dua kolom Sisa Uang.
 - **Isu terpisah yang belum diperbaiki (atas keputusan user: dilaporkan saja)**: metrik **"Pending Penalties"** pada `ProductionDashboard.tsx:47` membaca `selisih_accum` **langsung dari DB**, padahal kolom ini tidak pernah ditulis — nilainya selalu 0, sehingga metrik tersebut sudah lama tidak berfungsi. Perlu dikerjakan terpisah.
 - **Deviasi dari spec yang perlu dikonfirmasi user**: untuk **Nilai Rupiah per grup Product Note**, teks spec menyuruh memakai aturan yang sama dengan tarif (seragam/`Bervariasi`/`—`), tetapi implementasi `summarizeValue()` di `src/lib/sewingBacklog.ts` **menjumlahkan** nilai Rupiah antar Work Order dalam grup. Alasan: nilai Rupiah adalah besaran yang wajar diakumulasikan (total uang yang bisa dikejar dari grup itu), beda dengan tarif yang memang harus seragam agar bermakna. Jika user menghendaki perilaku persis sesuai teks spec, ini tinggal diubah.
-- **Belum ada keputusan soal integrasi**: branch ini (`feat/target-jahit`) belum di-merge atau di-push; menunggu user memilih opsi penggabungan.
+- **Integrasi**: perubahan ini sudah di-commit dan di-merge ke `main`.
 
 ---
 
+
+### 2026-09-06 — Revisi isi & tata letak template invoice PNG
+
+- Menindaklanjuti revisi user pada template PNG. Enam perubahan isi diterapkan di `src/components/Invoice/InvoiceImage.tsx`: baris **"Kode Client"** dihapus; header tabel **"Deskripsi" → "Item"**; work code (yang memuat prefix fase internal **"Produksi - Awal"**) tidak lagi dicetak di dokumen; paragraf **"Terima kasih atas kepercayaan Anda. Mohon cantumkan nomor invoice…"** dihapus; blok **"Riwayat Pembayaran"** dihapus; dan ringkasan **Total Dibayar / Sisa / Status** dihapus.
+- Tata letak diselaraskan ke `contoh invoice.png`: serif Georgia sebagai font dasar dokumen (sans hanya untuk kolom angka), monogram **LK** kini berupa lingkaran berbatas seperti referensi, judul **INVOICE** diperbesar ke 50 px dengan letter-spacing 9, blok **Kepada** dan **Dari** berdampingan di bawah baris "Tanggal / No. Invoice / Periode", tabel dipangkas ke 4 kolom (Item / Kuantitas / Harga / Total), ringkasan kanan hanya Subtotal dan Total, lalu footer kiri **"Metode Pembayaran"** dan footer kanan **"Hormat Kami,"** dengan garis tanda tangan.
+- Tinggi lembar diturunkan **1000 → 880 px** karena riwayat pembayaran dan blok status tidak lagi dicetak, sehingga tidak ada blok kosong besar di tengah. Ukuran halaman dipusatkan di `src/lib/invoicePage.ts` dan dipakai bersama oleh komponen dan `downloadInvoicePng.ts`, supaya ukuran kanvas tidak bisa bergeser dari ukuran template.
+- Prop `payments`, `totalPayment`, dan `outstanding` dihapus dari `InvoiceImage`; render template tidak lagi bergantung pada bundle pembayaran (`paymentLoadError`) sehingga invoice tetap dapat di-download walau fetch payment gagal. `computeOutstanding` dan `paymentLoadError` tetap dipakai tabel dan modal, jadi tidak ada kode mati.
+- Batasan data tetap dipegang: tidak ada alamat, kontak, NPWP, atau tanda tangan rekaan; rekening tetap placeholder tersamarkan; `totalIncomeManpower`/`totalIncomeOperational` tidak ditampilkan; produk diambil dari work order, bukan `clientName`. Ongkos kirim dan diskon tidak ditulis karena tidak ada field-nya di model.
+- Verifikasi: `tsc -b --noEmit` lulus (exit 0); ESLint terfokus pada empat file yang diubah lulus (exit 0); modul yang disajikan dev server sudah memuat `Item`/`Kuantitas`/`Harga`/`Total` dan tidak lagi memuat "Kode Client", "Deskripsi", "Riwayat Pembayaran", "Total Dibayar", "Mohon cantumkan", `workCode`, "Produksi - Awal", atau `totalIncome*`. Direktori sementara `.tmp-verify`, `.tmp-diag`, `.tmp-diag2` dan `public/__invoice-debug.html` dibersihkan; `package.json`/`package-lock.json` tidak tersentuh.
 
 ### 2026-09-03 — Target Jahit: tab Belum Jahit, Sisa Uang bulanan, dan ringkasan backlog
 
-- **Tab baru "Belum Jahit"** (tersedia untuk **semua role**, tanpa gate): daftar global seluruh Work Order dengan sisa jahit > 0, dikelompokkan per Product Note dan bisa di-expand sampai rincian Work Order (Work Code, Product, Warna, Size, Qty Order, Qty Jahit, Total Belum Jahit, tarif). Kolom grup: Product Note | Product | Total Qty Order | Qty Jahit | Total Belum Jahit | Tarif Jahit + Obras. Grup diurutkan Total Belum Jahit turun lalu Product Note naik; WO di dalam grup Total Belum Jahit turun lalu Work Code naik. Pencarian mencakup Product Note, Product, Work Code, Warna, Size. Fitur **baca-saja** — tidak ada input, rekomendasi, atau pemindahan alokasi.
-- **Sisa Uang yang Harus Dikejar** (`max(0, salary − realisasiCostPosisi)` bulan tersebut) ditambahkan sebagai kartu kelima pada overlay detail Target, **hanya owner/finance** — digate di render lewat `canSeeDebt`, sehingga Inventory tidak pernah menerima nilainya sama sekali.
-- **Ringkasan "Product Note Belum Jahit"** pada overlay: 5 grup teratas + tombol "Lihat Semua Belum Jahit" yang menutup overlay dan membuka tab Belum Jahit.
-- **Tarif**: ringkasan per grup menampilkan nominal seragam, `Bervariasi` (beda nilai atau sebagian hilang), atau `—` (tidak ada tarif). Tarif diambil **eksak** per `work_orders.source_order_id`, bukan `buildPriceMap()` (latest-price-by-product) sesuai constraint plan.
-- Helper murni `src/lib/sewingBacklog.ts` (`buildSewingBacklog`, `calculateMonthlyRemainingMoney`) tanpa fetch dan tanpa impor supabase; dilindungi **12 tes Node** di `tests/sewingBacklog.test.ts`.
-- **Koreksi terhadap plan (terverifikasi via Supabase MCP)**: tabel `register_po` / `register_po_components` **sudah tidak ada** di schema live (migration `remove_register_po`, 2026-09-01). Karena itu Task 2 membuat service baru `src/services/productionOrderPrices.ts` dengan jalur `work_orders.source_order_id → production_order_prices.production_order_id → production_order_price_components(component_key IN ['jahit','obras'])`, alih-alih menambah fungsi ke `src/services/registerPo.ts` (file itu tidak disentuh agar modul Register PO di branch lain tidak terganggu).
-- **Verifikasi**: **23/23 tes Node lulus**; `npm run build` **exit 0** (1954 modul, 2m38s; satu peringatan chunk >500 kB pre-existing dan satu peringatan dynamic-import pada `invoiceCode.ts`, keduanya bukan kegagalan); lint pada `sewingBacklog.ts`, `productionOrderPrices.ts`, dan `TargetJahitPage.tsx` **bersih** (0 temuan — lebih baik dari catatan baseline sebelumnya yang menyebut 4 temuan pre-existing, karena baseline HEAD untuk file ini juga terbukti bersih saat diuji). `list_migrations` mengonfirmasi **tidak ada migration/DDL baru**; migrasi terakhir tetap `20260901134016`. Smoke test terhadap data live (4 WO: WO-6b268a24 selesai tersaring, 2 grup tersisa @ 100 pcs dengan tarif Rp10.000 dan Rp12.000) sesuai ekspektasi helper.
-- Commit: `caa5eb5`. Working tree menyisipkan WIP `src/data/mockData.ts` di `git stash@{0}` (di luar cakupan plan ini, sengaja dipertahankan).
+### 2026-09-04 — Redesain template invoice PNG (portrait cream)
 
----
+- `src/components/Invoice/InvoiceImage.tsx` dibangun ulang sebagai lembar portrait ukuran tetap **800 × 1000 px** dengan latar cream `#FAF6EF` yang dicat eksplisit. Hierarki mengikuti referensi: monogram tipografis **LK** + identitas "Livou Konveksi" kiri atas, judul **INVOICE** serif kanan atas, "Billed To" (nama + kode client) kiri, metadata kanan (Invoice No, Tanggal, Periode, Jenis Tagihan), tabel satu item bergaris horizontal, ringkasan Subtotal/Total rata kanan, ucapan "Thank you!", lalu footer kiri berisi Payment Information + Riwayat Pembayaran dan footer kanan berisi Total Dibayar/Sisa/Status + identitas penutup.
+- Data item kini berasal dari work order nyata, bukan nama client. `src/services/workOrders.ts` menambah bulk fetch `fetchByIds` (menghindari N+1), dan `src/pages/InvoicingPage.tsx` membentuk `workOrdersById` yang dilindungi `refreshRequestRef`. Produk/warna/size diambil dari work order, quantity fallback ke `invoice.pcsLinked`, dan field yang tidak tersedia ditampilkan sebagai `—` (bukan data salah).
+- Baris pajak dihilangkan karena model tidak memiliki data pajak. Seluruh output client-facing untuk `totalIncomeManpower` dan `totalIncomeOperational` dihapus. Status untuk dokumen klien hanya menyatakan kondisi pelunasan (Lunas / Belum Lunas / Belum Dibayar) tanpa label workflow internal.
+- Rekening memakai **placeholder tersamarkan** (`Bank: BCA`, `No. Rekening: •••• •••• ••••`, `Atas Nama: ••••••••`) menggantikan data rekening atas nama pribadi sebelumnya. Tidak ada alamat, kontak, tanda tangan, atau identitas bank resmi yang direka.
+- Daftar termin dibatasi `MAX_PAYMENT_ROWS = 4` agar lembar berukuran tetap tidak overflow; kelebihan pembayaran diringkas satu baris "+N pembayaran lainnya (total …)" tanpa mengubah total. Overpayment tetap ditampilkan apa adanya di Total Dibayar, sementara Sisa memakai nilai yang sudah di-clamp ke Rp0.
+- `src/lib/downloadInvoicePng.ts` menyamakan `backgroundColor` fallback dengan warna cream template. `pixelRatio: 2`, `cacheBust`, Blob download, dan sanitasi nama file dipertahankan. Tidak ada web font atau asset remote, sehingga hasil capture konsisten.
+- Spacer vertikal memakai `alignItems: 'center'` (sebelumnya `flex-end`) dan tinggi halaman diturunkan 1131 → 1000 px; ini menghilangkan blok kosong ~389 px di tengah lembar sehingga "Thank you!" terdistribusi seimbang (~135 px atas, ~130 px bawah).
+- Verifikasi: `tsc --noEmit` bersih; ESLint terfokus pada empat file yang diubah lulus; `npm run build` lulus; `git diff --check` hanya menghasilkan warning line-ending LF/CRLF. `npm run lint` seluruh repo masih gagal pada 42 temuan pre-existing di file yang tidak tersentuh (`App.tsx`, `ProductionMonitoring.tsx`, `TargetJahitPage.tsx`, komponen `ui/`, dll.).
+- Verifikasi hasil capture memakai data live melalui pipeline nyata (service layer + komponen + `html-to-image` di Chrome headless, bukan hanya render statis): PNG terbit **1600 × 2000 px**, tidak blank, memuat work code, produk Sheen Pants/White/S/Brand Livou, tanggal 05-08-2026, Total Dibayar Rp 0, Sisa Rp 1.750.000, Status Belum Dibayar, dan placeholder rekening tersamarkan; nama file tersanitasi menjadi `INV_MP_LVU_050826_001`.
+- Tiga edge case diuji pada tinggi tetap: tanpa pembayaran, enam pembayaran/overpayment (baris terakhir berakhir tepat di batas padding bawah, tanpa overflow), dan work order tidak tersedia (semua field tak diketahui menjadi `—`). Database live saat verifikasi berisi 1 invoice dengan 0 payment, diverifikasi melalui Supabase MCP. Belum ada PDF/email, branding/logo resmi, atau perubahan skema.
 
-### 2026-09-02 — Target Jahit: kolom hari kerja disembunyikan dari UI (logika tetap di backend)
+### 2026-09-04 — Invoicing payment entry restored and hardened
 
-- **Hari Kerja Efektif** (`totalHariKerja`) dan **Hari Kerja Hari Ini** (`hariKerjaHariIni`) dihapus dari tampilan Target Jahit atas permintaan user; perhitungannya **tetap hidup** di `src/lib/targetCompute.ts` karena masih menjadi dasar kolom lain.
-- Commit `8a164ba`: kedua kolom dibuang dari `viewConfig['target-jahit']` (`src/data/mockData.ts`) dan dari `TARGET_COLUMNS` (`src/pages/TargetJahitPage.tsx`); komponen khusus `WorkdaysWithTooltip` beserta import `holidayHelpers` / `getNationalHolidaysInMonth` di halaman ikut dihapus.
-- Commit `a22de6f`: baris contoh `mockData['target-jahit']` dibersihkan dari sisa field `totalHariKerja` & `hariKerjaHariIni` agar sejalan dengan tampilan.
-- **Yang sengaja dipertahankan**: `countWorkdays()` masih dipakai untuk `Target | Daily` (`target_monthly ÷ totalHariKerja`); `elapsedWorkdays()` tetap diekspor meski outputnya kini tak dirender; `sisaHari` (turunan dari perhitungan hari kerja yang sama) **tetap ditampilkan** sesuai keputusan user.
-- `src/lib/holidayHelpers.ts` kini tidak lagi dipakai dari halaman Target Jahit (masih ada sebagai modul helper; belum dihapus).
-- Verifikasi: **23/23 tes Node lulus** (12 sewingBacklog, 3 staffDebtEligibility, 8 targetDetailIdentity), build produksi hijau (**1952 modul**), lint `mockData.ts` bersih.
-- **Catatan state kerja**: worktree ini menyimpan WIP tab **Belum Jahit** yang belum selesai di `src/pages/TargetJahitPage.tsx` (tipe `TabKey` sudah punya `'belum-jahit'`, tetapi tombol tab dan blok render-nya belum ada) — `npm run build` gagal dengan 16 error TS6133 "declared but never read". Ini status WIP, bukan regresi. Pekerjaan hari ini dilakukan dengan WIP tersebut di-`git stash` sementara, lalu dikembalikan.
+- Wiring `PaymentModal` dipulihkan ke action tabel Invoicing. Modal kini memuat dan mengedit payment lama berbasis ID: cash dibatasi tepat satu baris, termin dapat ditambah berkali-kali, dan tiap payment wajib mempertahankan atau menambahkan minimal satu bukti pembayaran.
+- Save tidak lagi menghapus semua payment terlebih dahulu. Create/upload/update dijalankan sebelum operasi destruktif; payment dan bukti yang dikeluarkan dari draft baru dihapus sesudah fase non-destruktif berhasil. Kegagalan metadata upload membersihkan object Storage baru secara best-effort dan kegagalan parsial dilaporkan ke UI.
+- Tabel utama tetap satu row per invoice, tetapi sekarang memakai bulk fetch payment dan menampilkan **Total Dibayar**, **Sisa**, serta status agregat aktual. Field numerik dapat di-filter, di-sort, dan di-hide/show. Overpayment diizinkan dengan warning; total aktual tetap tampil, Sisa di-clamp Rp0, dan status menjadi Paid.
+- Render off-screen `InvoiceImage` dipulihkan agar download PNG kembali mempunyai target, dan Work Code pada gambar dikoreksi agar memakai `invoice.workCode`.
+- Migration `2026-09-04-invoice-payment-proof-storage-policies.sql` menambahkan policy INSERT/DELETE khusus role `authenticated` pada bucket public `invoice-payment-proofs`; bucket dan kedua policy telah diverifikasi pada database live melalui Supabase MCP.
+- Penyesuaian hasil review internal sebelum final: urutan Save dipisah per fase (create row → upload bukti → update row existing → hapus bukti/payment → refetch dan sinkron status). Rollback hanya menghapus artefak yang dibuat pada percobaan yang sama, sehingga kegagalan upload tidak lagi meninggalkan payment tanpa bukti dan tidak menyentuh payment lama. Kegagalan destruktif atau refetch sekarang berhenti sebelum toast sukses/close.
+- Penghapusan bukti memindahkan object Storage terlebih dahulu; bila Storage gagal, metadata beserta `file_path` tetap ada sehingga cleanup dapat diulang. Refresh halaman memakai request generation guard agar refresh lama tidak menimpa total terbaru, dan lookup "Generate Missing Invoices" kini sepenuhnya melalui `backfillMissingInvoices` tanpa query Supabase langsung dari page.
+- Kolom Status memakai `computeFinanceValidation` sehingga Paid/Partial Paid/Collect Payment/Need Register Invoice tidak lagi runtuh menjadi dua nilai. Semua kontrol aksi di modal memakai shadcn `Button`, format rupiah mengikuti `Intl.NumberFormat` yang sama dengan dashboard, dan kontrak query payment dipusatkan agar modal dan tabel tidak bisa berbeda urutan/mapping.
+- Verifikasi: `npm run build` lulus; ESLint terfokus untuk lima file TS/TSX yang berubah lulus; `git diff --check` tidak menemukan whitespace error (hanya warning line-ending LF/CRLF). `npm run lint` seluruh repo masih gagal pada temuan pre-existing di file lain. Database live saat verifikasi berisi 1 invoice, 0 payment, dan 0 payment file; walkthrough transaksi UI belum dijalankan agar tidak membuat data bisnis uji.
 
----
+### 2026-08-26 — Universal Excel Import: design approved
 
-### 2026-08-27 — Target Jahit: Product Note menjadi identitas produksi
+- Desain fitur Import Excel nyata disetujui untuk enam modul: RAW DATA, Planning Produksi, Register Karyawan, Register PO, Complain & Penalti, dan Target Jahit. Tombol Import mock berbasis checkbox akan diganti dialog upload nyata.
+- Arsitektur: satu mesin import bersama + adapter per modul; dukung `.xlsx`, `.xls`, `.csv`; template terpisah per modul dengan sheet Data + Petunjuk; batas 2.000 baris; preview Valid/Duplikat/Error sebelum konfirmasi; baris valid tetap diproses walau sebagian error; duplikat dilewati tanpa overwrite; tersedia laporan error untuk download.
+- Status hasil import mengikuti default aman sistem. Referensi yang belum terdaftar menolak baris. RAW DATA mempertahankan Work Code/Product ID/Variation ID dari Excel dan secara atomik membuat Production Order PULLED + Work Order NEW. Register PO memakai satu baris per PO dengan delapan komponen biaya dan transaksi parent/child atomik. Complain diimpor tanpa foto. Target Jahit mengimpor Planning draft, bukan menulis target langsung.
+- Skema live untuk seluruh tabel terkait sudah diverifikasi via Supabase MCP sebelum desain transaksi. Spec: `docs/superpowers/specs/2026-08-26-universal-excel-import-design.md`. Tahap berikutnya: implementation plan rinci setelah review spec.
 
-- Planning Produksi menyimpan dan mewajibkan Product Note untuk data baru/edit; Product Note ikut tersedia pada tabel, pencarian, filter, sort, pengaturan kolom, dan export CSV.
-- `planning_produksi` dan `target_jahit_detail` mendapat kolom nullable `product_note` melalui migration `2026-08-27-target-jahit-product-note.sql` yang telah diterapkan via Supabase MCP; verifikasi live terakhir mengonfirmasi keduanya bertipe `text` dan nullable.
-- Generate Target memisahkan detail berdasarkan tuple **Product Note + Product + Warna**; tuple identik tetap mengakumulasi Qty Target.
-- Rincian Realisasi per Desain menampilkan **Product Note sebelum Product** dan menghitung Qty Realisasi/nominal berdasarkan identitas Work Order yang sama.
-- Data legacy tanpa Product Note tetap tampil `—` dengan fallback Product yang tidak menghitung ulang sewing yang sudah cocok ke detail beridentitas; alokasi duplicate detail memakai largest-remainder agar total realisasi tetap sama dengan sumber.
-- Rumus induk Target, Benefit, Utang Staf, realisasi bulanan, dan role-gating nominal tidak berubah.
-- Verifikasi final: **11/11 tes Node lulus** (termasuk regresi bulan kosong agar tidak menghitung seluruh riwayat jahit), build produksi lulus (**1.953 modul**), stale Product-only map tidak tersisa, dan `git diff --check` bersih. Focused lint tetap melaporkan **4 error pre-existing** yang identik dengan baseline: 1 `no-explicit-any` di Planning Produksi serta 2 conditional-hooks + 1 `no-explicit-any` di Target Jahit; tidak ada temuan lint baru dari fitur ini.
+### 2026-08-22 — InvoicingPage: font seragam + header layout standar shadcn
 
----
+**Font kolom data diseragamkan dengan tabel lain:**
+- Sel **Work Code** dan **Kode Invoice** menghapus override `font-mono text-sm` (14px monospace) → kini **13px sans reguler `text-gray-700`**, identik dengan semua sel data lain dan RAW DATA Production Monitoring (yang memang merender work code polos).
+- Kolom Bulan, Client, dll. tidak berubah; kolom numerik tetap `tabular-nums` rata kanan; badge Status tetap pill solid.
 
-### 2026-08-26 — Target Jahit: Utang Staf mengikuti kekurangan akumulatif terbaru
-
-- Nominal utang **tetap memakai rumus lama**: `max(0, Total Gaji − Total Nilai PCS)` melalui `computeDebt`.
-- Syarat tampil diperketat: staf hanya masuk tab **Utang Staf** bila baris target bulan terbarunya memiliki **Selisih Akumulasi < 0** dan nominal utang masih lebih dari Rp0.
-- Kekurangan bulan lama yang sudah tertutup oleh kelebihan produksi bulan berikutnya otomatis mengeluarkan staf dari daftar; staf tanpa snapshot target tidak ditampilkan.
-- Enrichment lengkap dipisahkan dari hasil pencarian tab Target agar isi Utang Staf tidak berubah saat pengguna mengetik pencarian.
-- Helper murni baru `src/lib/staffDebtEligibility.ts` memilih snapshot terbaru per staf dan menerapkan eligibility; dilindungi 3 tes Node di `tests/staffDebtEligibility.test.ts`.
-- Tidak ada perubahan database/schema. Verifikasi: 3/3 tes hijau, `npm run build` hijau (1952 modul), helper lint bersih; halaman tetap memiliki 3 temuan lint pre-existing yang identik dengan baseline.
-
----
-
-### 2026-08-22 — Target Jahit: 3 Tampilan (Target · Utang Staf · Benefit)
-
-**Tab bar Target Jahit kini 3 tampilan** (semua keputusan produk disepakati via brainstorming):
-
-1. **Target** — tidak berubah, tetap tampilan induk & default.
-2. **Utang Staf** (perilaku diubah): kini **hanya menampilkan staf dengan utang > 0** — yang Lunas tidak muncul sama sekali. Kolom badge Status (Utang/Lunas) dihapus karena redundan (semua baris pasti berutang). Empty state baru: "🎉 Semua staf sudah lunas" saat semua bernilai 0.
-3. **Benefit** (tab baru): daftar baris target dengan **realisasi bulanan > target bulanan** (`extraProduction > 0`, syarat persis dapat bonus) — siapa yang layak dibayar bonus bulan ini. Kolom: Nama | Bulan | Target | Realisasi | Extra Production (+N, emerald) | Benefit Rate /Pcs | Benefit Amount. Ditampilkan apa adanya sesuai permintaan user: rate yang belum diisi tetap masuk daftar dengan amount Rp 0 (tampil "-"). Urutan: bulan terbaru dulu, lalu nama.
-
-**Detail implementasi:**
-- Data tab Benefit 100% turunan dari enrichment yang sudah ada (`enrichTargetRows` di `targetCompute.ts`) — **tanpa perubahan database/schema sama sekali**.
-- Klik baris di tab Benefit membuka overlay detail full-screen yang sama dengan tab Target (konsistensi interaksi, affordance chevron ›).
-- Tab Benefit gated owner/finance seperti Utang Staf (isinya nominal uang); inventory melihat tombol disabled 🔒.
-- Field `status` dibuang dari interface `DebtRow` internal karena kolomnya sudah tidak ada.
-- Verifikasi: `npm run build` hijau (~35s); lint file = identik baseline HEAD (3 temuan pre-existing, 0 temuan baru).
-
----
+**Layout header disamakan dengan Target Jahit / halaman lain:**
+- Tambah blok header standar (`px-8 pt-4 pb-0`): judul **"Invoicing"** 17px semibold tracking-tight + tombol kanan **Refresh** (putih border, pola Target Jahit) dan **Generate Missing Invoices** (violet-500, ikon Sparkles — pola Generate Target Planning Produksi; ikon lama Zap/amber diganti agar konsisten dengan tombol generate lainnya).
+- Konten pindah ke area `px-8 pt-5 pb-6`; toolbar kini **satu baris** seperti RAW DATA/Target Jahit: Search ("Cari invoice...") + **FilterButton + SortButton** (baru terpasang — fields sudah didefinisikan sebelumnya tapi belum dipakai; pipeline filter→sort→search via `applyFilters`/`applySorts`) + Kolom + Export + counter "N invoice" di ujung kanan.
+- Empty state dibedakan: "Belum ada invoice" vs "Tidak ada hasil yang cocok dengan filter". Checkbox header/baris diseragamkan `w-4 h-4 align-middle`. Pagination dipertahankan.
+- `HiddenColgroup` dirapikan: key checkbox `'status'`→`'__sel'` dan `'actions'`→`'action'` agar cocok dengan daftar field Kolom (key action tidak lagi ada di daftar hide ganda).
+- **Verifikasi**: `npm run build` hijau (2×); lint `InvoicingPage.tsx` = 5 error `no-explicit-any` pre-existing di `handleBackfill` (identik dengan baseline HEAD, diverifikasi via stash A/B) — **0 temuan baru**.
 
 ### 2026-08-21 — Target Jahit: Benefit Per Pcs & Automatic Holiday Calculator
 
@@ -350,6 +343,364 @@ Sisa Hari (22-31): 7 ✅  (31 days - today(21) - minggu(23,30) - libur(25)) = 31
 ```
 
 **Build Verification**: ✅ TypeScript compilation successful, ~19s build time
+
+---
+
+### 2026-09-03 — Target Jahit: tab Belum Jahit, Sisa Uang bulanan, dan ringkasan backlog
+
+- **Tab baru "Belum Jahit"** (tersedia untuk **semua role**, tanpa gate): daftar global seluruh Work Order dengan sisa jahit > 0, dikelompokkan per Product Note dan bisa di-expand sampai rincian Work Order (Work Code, Product, Warna, Size, Qty Order, Qty Jahit, Total Belum Jahit, tarif). Kolom grup: Product Note | Product | Total Qty Order | Qty Jahit | Total Belum Jahit | Tarif Jahit + Obras. Grup diurutkan Total Belum Jahit turun lalu Product Note naik; WO di dalam grup Total Belum Jahit turun lalu Work Code naik. Pencarian mencakup Product Note, Product, Work Code, Warna, Size. Fitur **baca-saja** — tidak ada input, rekomendasi, atau pemindahan alokasi.
+- **Sisa Uang yang Harus Dikejar** (`max(0, salary − realisasiCostPosisi)` bulan tersebut) ditambahkan sebagai kartu kelima pada overlay detail Target, **hanya owner/finance** — digate di render lewat `canSeeDebt`, sehingga Inventory tidak pernah menerima nilainya sama sekali.
+- **Ringkasan "Product Note Belum Jahit"** pada overlay: 5 grup teratas + tombol "Lihat Semua Belum Jahit" yang menutup overlay dan membuka tab Belum Jahit.
+- **Tarif**: ringkasan per grup menampilkan nominal seragam, `Bervariasi` (beda nilai atau sebagian hilang), atau `—` (tidak ada tarif). Tarif diambil **eksak** per `work_orders.source_order_id`, bukan `buildPriceMap()` (latest-price-by-product) sesuai constraint plan.
+- Helper murni `src/lib/sewingBacklog.ts` (`buildSewingBacklog`, `calculateMonthlyRemainingMoney`) tanpa fetch dan tanpa impor supabase; dilindungi **12 tes Node** di `tests/sewingBacklog.test.ts`.
+- **Koreksi terhadap plan (terverifikasi via Supabase MCP)**: tabel `register_po` / `register_po_components` **sudah tidak ada** di schema live (migration `remove_register_po`, 2026-09-01). Karena itu Task 2 membuat service baru `src/services/productionOrderPrices.ts` dengan jalur `work_orders.source_order_id → production_order_prices.production_order_id → production_order_price_components(component_key IN ['jahit','obras'])`, alih-alih menambah fungsi ke `src/services/registerPo.ts` (file itu tidak disentuh agar modul Register PO di branch lain tidak terganggu).
+- **Verifikasi**: **23/23 tes Node lulus**; `npm run build` **exit 0** (1954 modul, 2m38s; satu peringatan chunk >500 kB pre-existing dan satu peringatan dynamic-import pada `invoiceCode.ts`, keduanya bukan kegagalan); lint pada `sewingBacklog.ts`, `productionOrderPrices.ts`, dan `TargetJahitPage.tsx` **bersih** (0 temuan — lebih baik dari catatan baseline sebelumnya yang menyebut 4 temuan pre-existing, karena baseline HEAD untuk file ini juga terbukti bersih saat diuji). `list_migrations` mengonfirmasi **tidak ada migration/DDL baru**; migrasi terakhir tetap `20260901134016`. Smoke test terhadap data live (4 WO: WO-6b268a24 selesai tersaring, 2 grup tersisa @ 100 pcs dengan tarif Rp10.000 dan Rp12.000) sesuai ekspektasi helper.
+- Commit: `caa5eb5`. Working tree menyisipkan WIP `src/data/mockData.ts` di `git stash@{0}` (di luar cakupan plan ini, sengaja dipertahankan).
+
+---
+
+### 2026-09-02 — Target Jahit: kolom hari kerja disembunyikan dari UI (logika tetap di backend)
+
+- **Hari Kerja Efektif** (`totalHariKerja`) dan **Hari Kerja Hari Ini** (`hariKerjaHariIni`) dihapus dari tampilan Target Jahit atas permintaan user; perhitungannya **tetap hidup** di `src/lib/targetCompute.ts` karena masih menjadi dasar kolom lain.
+- Commit `8a164ba`: kedua kolom dibuang dari `viewConfig['target-jahit']` (`src/data/mockData.ts`) dan dari `TARGET_COLUMNS` (`src/pages/TargetJahitPage.tsx`); komponen khusus `WorkdaysWithTooltip` beserta import `holidayHelpers` / `getNationalHolidaysInMonth` di halaman ikut dihapus.
+- Commit `a22de6f`: baris contoh `mockData['target-jahit']` dibersihkan dari sisa field `totalHariKerja` & `hariKerjaHariIni` agar sejalan dengan tampilan.
+- **Yang sengaja dipertahankan**: `countWorkdays()` masih dipakai untuk `Target | Daily` (`target_monthly ÷ totalHariKerja`); `elapsedWorkdays()` tetap diekspor meski outputnya kini tak dirender; `sisaHari` (turunan dari perhitungan hari kerja yang sama) **tetap ditampilkan** sesuai keputusan user.
+- `src/lib/holidayHelpers.ts` kini tidak lagi dipakai dari halaman Target Jahit (masih ada sebagai modul helper; belum dihapus).
+- Verifikasi: **23/23 tes Node lulus** (12 sewingBacklog, 3 staffDebtEligibility, 8 targetDetailIdentity), build produksi hijau (**1952 modul**), lint `mockData.ts` bersih.
+- **Catatan state kerja (selesai 2026-09-03)**: WIP tab **Belum Jahit** yang sempat membuat `npm run build` gagal dengan 16 error TS6133 kini sudah lengkap; kelanjutannya dicatat pada entri 2026-09-03 di atas.
+
+---
+
+### 2026-09-01 — Order Entry multi-variasi, harga terpadu, dan penghapusan Register PO
+
+- Halaman Order Entry kini berfokus pada **Create New Order** dan daftar operasional. Create, View, dan Edit memakai Dialog shadcn layar penuh satu halaman yang memuat identitas order, baris kombinasi warna–size–qty, delapan komponen harga per potong, serta ringkasan total otomatis. Tabel memakai label ringkas Customer/Product, menampilkan status Order Entry di kolom tersendiri, dan membuka Edit atau read-only lewat klik baris tanpa deretan action yang berlebihan.
+- Product Note menjadi kode produksi parent yang wajib dan unik setelah `trim` + case-fold. Model data dinormalisasi menjadi `production_orders`, `production_order_variations`, `production_order_prices`, dan `production_order_price_components`; setiap kombinasi variasi menghasilkan satu Work Order scalar agar modul produksi downstream tetap kompatibel.
+- RPC server-authoritative menangani save/cancel/Pull secara transaksional. Pull bersifat atomik dan idempotent per `source_variation_id`; harga yang belum lengkap atau variasi legacy yang perlu review tidak dapat memulai produksi. Setelah Pull struktur variasi dikunci, sedangkan adanya record Cutting/Sewing/Finishing/Kancing/Invoice membuat seluruh order view-only.
+- Data lama dipertahankan dan dibackfill menjadi satu variasi per order. Dua set Register PO lama beserta 16 komponennya dipindahkan dengan parity assertion ke harga Order Entry, lalu konsumen harga Auto Invoice, invoice persistence, Staff Debt, Target Jahit, dan saran potongan Complain dipindahkan ke harga exact source order/Product Note.
+- Invoice lama tetap menyimpan snapshot `unit_price = 35.000` dan `total_amount = 1.750.000` walaupun harga order saat ini 40.000. Delapan snapshot Target Jahit juga tetap utuh (`harga_jahit` total 20.000 dan `harga_obras` total 20.000).
+- Modul Register PO telah dihapus dari sidebar/rendering, source page/service/type, relasi invoice lama, trigger/function/policy/index/constraint, serta tabel `register_po_components` dan `register_po`. Kolom variasi scalar lama pada `production_orders`, overload Pull empat argumen, dan halaman seed orphan yang memakai schema lama juga dihapus; cleanup dilakukan eksplisit tanpa `CASCADE` setelah parity terverifikasi.
+- Migration yang diterapkan via Supabase MCP: `order_entry_normalized_additive` (`20260901023329`), `remove_register_po` (`20260901132618`), dan forward fix `fix_order_entry_variation_ordinality`. Probe integrasi `BEGIN ... ROLLBACK` memverifikasi create tiga variasi, unique Product Note, exact-order pricing, incomplete-price gate, fan-out/retry Pull, edit metadata/harga setelah Pull, variation lock, serta progress edit guard.
+- Verifikasi final repository: **22/22 tes Node lulus**, build produksi lulus (**2.044 modul**), focused ESLint **0 error / 2 warning** (React Hook Form compiler warning dan dependency warning lama di Production Monitoring), serta `git diff --check` bersih selain notice normalisasi LF/CRLF. Build tetap mencatat warning non-blocking Browserslist lama, mixed static/dynamic import `invoiceCode`, dan ukuran main chunk di atas 500 KB.
+
+---
+
+### 2026-08-27 — Target Jahit: Product Note menjadi identitas produksi
+
+- Planning Produksi menyimpan dan mewajibkan Product Note untuk data baru/edit; Product Note ikut tersedia pada tabel, pencarian, filter, sort, pengaturan kolom, dan export CSV.
+- `planning_produksi` dan `target_jahit_detail` mendapat kolom nullable `product_note` melalui migration `2026-08-27-target-jahit-product-note.sql` yang telah diterapkan via Supabase MCP; verifikasi live terakhir mengonfirmasi keduanya bertipe `text` dan nullable.
+- Generate Target memisahkan detail berdasarkan tuple **Product Note + Product + Warna**; tuple identik tetap mengakumulasi Qty Target.
+- Rincian Realisasi per Desain menampilkan **Product Note sebelum Product** dan menghitung Qty Realisasi/nominal berdasarkan identitas Work Order yang sama.
+- Data legacy tanpa Product Note tetap tampil `—` dengan fallback Product yang tidak menghitung ulang sewing yang sudah cocok ke detail beridentitas; alokasi duplicate detail memakai largest-remainder agar total realisasi tetap sama dengan sumber.
+- Rumus induk Target, Benefit, Utang Staf, realisasi bulanan, dan role-gating nominal tidak berubah.
+- Verifikasi final: **11/11 tes Node lulus** (termasuk regresi bulan kosong agar tidak menghitung seluruh riwayat jahit), build produksi lulus (**1.953 modul**), stale Product-only map tidak tersisa, dan `git diff --check` bersih. Focused lint tetap melaporkan **4 error pre-existing** yang identik dengan baseline: 1 `no-explicit-any` di Planning Produksi serta 2 conditional-hooks + 1 `no-explicit-any` di Target Jahit; tidak ada temuan lint baru dari fitur ini.
+
+---
+
+### 2026-08-26 — Pull Order Entry → Production Monitoring atomik dan retry-safe
+
+- Root cause status Sheen Pants yang tertinggal di `PLANNING` terkonfirmasi pada database live: RLS `production_orders` belum mengizinkan UPDATE authenticated, sedangkan Production Monitoring sebelumnya membuat Work Order terlebih dahulu lalu mengabaikan kegagalan update Production Order.
+- Migration `atomic_pull_production_order` menambah policy UPDATE khusus `authenticated`, partial unique index `work_orders(source_order_id)` non-null, dan RPC `pull_production_order_to_konveksi` berjenis `SECURITY INVOKER` dengan execute hanya untuk authenticated.
+- Pull dari **Order Entry** dan **Production Monitoring** kini memakai satu RPC transaksional: sukses selalu menghasilkan PO `PULLED` beserta metadata pull dan tepat satu WO; retry mengembalikan WO yang sama; kegagalan tidak mengubah state UI seolah sukses.
+- Pembentukan Product ID/Variation ID disatukan di `src/lib/workOrderIdentity.ts`, termasuk aturan baku `White → WHT`, dan dilindungi 4 tes regresi Node.
+- Record `PO-785cd71b` (`Produksi - Awal | Sheen Pants | White | S`) direkonsiliasi secara sempit menjadi `PULLED`; metadata cocok dengan `WO-6b268a24`, dan WO tersebut tetap `FINISHED`. Record legacy lain tidak diubah.
+- Verifikasi Supabase MCP: migration/policy/index/privilege sesuai, tidak ada duplikat `source_order_id`, serta probe transaksi membuktikan first pull, retry idempotent, penolakan PO cancelled, dan rollback tanpa data sisa.
+- Verifikasi repository: 7/7 tes hijau, `npm run build` hijau (1957 modul), focused ESLint 0 error dengan 1 warning hook dependency pre-existing di `ProductionMonitoring.tsx`.
+
+### 2026-08-26 — Register PO: kolom Product Note menggantikan PO ID
+
+- Kolom pertama tabel **Register PO** kini berlabel **Product Note** dan hanya menampilkan `productionOrder.productNote` (contoh: `PDFF_LVU-TOP-02_B-00_PRDN`), bukan lagi gabungan Work Code, Brand, dan Product.
+- Search, Filter/Sort metadata, Column Settings, serta export CSV ikut menggunakan key/label **Product Note**.
+- Relasi internal `productionOrderId`, modal create/edit, service, dan database tidak berubah.
+- Verifikasi: `npm run build` hijau (1956 modul).
+
+### 2026-08-26 — Target Jahit: Utang Staf mengikuti kekurangan akumulatif terbaru
+
+- Nominal utang **tetap memakai rumus lama**: `max(0, Total Gaji − Total Nilai PCS)` melalui `computeDebt`.
+- Syarat tampil diperketat: staf hanya masuk tab **Utang Staf** bila baris target bulan terbarunya memiliki **Selisih Akumulasi < 0** dan nominal utang masih lebih dari Rp0.
+- Kekurangan bulan lama yang sudah tertutup oleh kelebihan produksi bulan berikutnya otomatis mengeluarkan staf dari daftar; staf tanpa snapshot target tidak ditampilkan.
+- Enrichment lengkap dipisahkan dari hasil pencarian tab Target agar isi Utang Staf tidak berubah saat pengguna mengetik pencarian.
+- Helper murni baru `src/lib/staffDebtEligibility.ts` memilih snapshot terbaru per staf dan menerapkan eligibility; dilindungi 3 tes Node di `tests/staffDebtEligibility.test.ts`.
+- Tidak ada perubahan database/schema. Verifikasi: 3/3 tes hijau, `npm run build` hijau (1952 modul), helper lint bersih; halaman tetap memiliki 3 temuan lint pre-existing yang identik dengan baseline.
+
+---
+
+### 2026-08-22 — Planning Produksi: Top Bar Cleanup + Bulk Status + Fix Real-Time Status
+
+**Top bar dirapikan:**
+- Tombol **Import** kini pakai ikon lucide `Upload`, gaya persis tombol Export (`T_TOOLBAR_BTN` + `T_TOOLBAR_BTN_IDLE`) — tidak lagi emoji 📥 dan tidak menyala biru saat baris dicentang (selalu idle, tetap disabled saat 0 terpilih).
+- **Dihapus**: deretan pill bulan violet ("Agustus 2026 ✓"), label "Generate untuk bulan", dan count "N planning produksi" di kanan toolbar.
+- Input bulan (genMonth) tetap ada di kanan, direstyle seragam dengan toolbar lain: `h-8 px-2.5 text-[11px] border-gray-200 text-slate-600 focus:border-blue-300`.
+
+**Fitur baru — bulk update status:**
+- Centang 1+ baris → muncul dropdown shadcn `Select` "Update status (n)…" di sebelah tombol Delete.
+- Pilih draft/approved/rejected → semua baris terpilih di-update ke Supabase sekaligus, state lokal disinkronkan, seleksi dibersihkan.
+
+**Fix bug real-time status per-baris:**
+- Sebelumnya ganti status via dropdown satu baris hanya menulis ke DB tanpa update state lokal, sehingga badge lama tampil sampai pindah halaman balik.
+- Kini optimistic update: `setItems` langsung saat dropdown diganti; rollback kalau Supabase error.
+
+**File**: `src/pages/PlanningProduksiPage.tsx` saja. Build ✅ (~10s).
+
+---
+
+### 2026-08-22 — Target Jahit: 3 Tampilan (Target · Utang Staf · Benefit)
+
+**Tab bar Target Jahit kini 3 tampilan** (semua keputusan produk disepakati via brainstorming):
+
+1. **Target** — tidak berubah, tetap tampilan induk & default.
+2. **Utang Staf** (perilaku diubah): kini **hanya menampilkan staf dengan utang > 0** — yang Lunas tidak muncul sama sekali. Kolom badge Status (Utang/Lunas) dihapus karena redundan (semua baris pasti berutang). Empty state baru: "🎉 Semua staf sudah lunas" saat semua bernilai 0.
+3. **Benefit** (tab baru): daftar baris target dengan **realisasi bulanan > target bulanan** (`extraProduction > 0`, syarat persis dapat bonus) — siapa yang layak dibayar bonus bulan ini. Kolom: Nama | Bulan | Target | Realisasi | Extra Production (+N, emerald) | Benefit Rate /Pcs | Benefit Amount. Ditampilkan apa adanya sesuai permintaan user: rate yang belum diisi tetap masuk daftar dengan amount Rp 0 (tampil "-"). Urutan: bulan terbaru dulu, lalu nama.
+
+**Detail implementasi:**
+- Data tab Benefit 100% turunan dari enrichment yang sudah ada (`enrichTargetRows` di `targetCompute.ts`) — **tanpa perubahan database/schema sama sekali**.
+- Klik baris di tab Benefit membuka overlay detail full-screen yang sama dengan tab Target (konsistensi interaksi, affordance chevron ›).
+- Tab Benefit gated owner/finance seperti Utang Staf (isinya nominal uang); inventory melihat tombol disabled 🔒.
+- Field `status` dibuang dari interface `DebtRow` internal karena kolomnya sudah tidak ada.
+- Verifikasi: `npm run build` hijau (~35s); lint file = identik baseline HEAD (3 temuan pre-existing, 0 temuan baru).
+
+---
+
+### 2026-08-22 — InvoicingPage: font seragam + header layout standar shadcn
+
+**Font kolom data diseragamkan dengan tabel lain:**
+- Sel **Work Code** dan **Kode Invoice** menghapus override `font-mono text-sm` (14px monospace) → kini **13px sans reguler `text-gray-700`**, identik dengan semua sel data lain dan RAW DATA Production Monitoring (yang memang merender work code polos).
+- Kolom Bulan, Client, dll. tidak berubah; kolom numerik tetap `tabular-nums` rata kanan; badge Status tetap pill solid.
+
+**Layout header disamakan dengan Target Jahit / halaman lain:**
+- Tambah blok header standar (`px-8 pt-4 pb-0`): judul **"Invoicing"** 17px semibold tracking-tight + tombol kanan **Refresh** (putih border, pola Target Jahit) dan **Generate Missing Invoices** (violet-500, ikon Sparkles — pola Generate Target Planning Produksi; ikon lama Zap/amber diganti agar konsisten dengan tombol generate lainnya).
+- Konten pindah ke area `px-8 pt-5 pb-6`; toolbar kini **satu baris** seperti RAW DATA/Target Jahit: Search ("Cari invoice...") + **FilterButton + SortButton** (baru terpasang — fields sudah didefinisikan sebelumnya tapi belum dipakai; pipeline filter→sort→search via `applyFilters`/`applySorts`) + Kolom + Export + counter "N invoice" di ujung kanan.
+- Empty state dibedakan: "Belum ada invoice" vs "Tidak ada hasil yang cocok dengan filter". Checkbox header/baris diseragamkan `w-4 h-4 align-middle`. Pagination dipertahankan.
+- `HiddenColgroup` dirapikan: key checkbox `'status'`→`'__sel'` dan `'actions'`→`'action'` agar cocok dengan daftar field Kolom (key action tidak lagi ada di daftar hide ganda).
+- **Verifikasi**: `npm run build` hijau (2×); lint `InvoicingPage.tsx` = 5 error `no-explicit-any` pre-existing di `handleBackfill` (identik dengan baseline HEAD, diverifikasi via stash A/B) — **0 temuan baru**.
+
+### 2026-08-21 — Target Jahit: Benefit Per Pcs & Automatic Holiday Calculator
+
+**Part A: Benefit Per Pcs Feature**
+
+**Added bonus calculation for production above monthly target:**
+
+**Database Schema**:
+- Column `benefit_per_pcs` (DECIMAL 10,2) added to `target_jahit` table via migration
+- Default NULL, editable by owner/finance only
+
+**New Columns in Target Jahit Table** (after Status Final Akumulasi):
+- **Benefit Rate /Pcs** → shows nominal bonus per extra piece (currency format), inline editable button
+- **Extra Production** → pcs above target = MAX(0, realisasi - target)
+- **Benefit Amount** → total bonus = extra_production × benefit_rate (currency format)
+
+**Computation Logic** (`src/lib/targetCompute.ts`):
+- Added `benefitRate`, `extraProduction`, `benefitAmount` fields to `EnrichedTargetRow` interface
+- Auto-calculated during enrichment: `extraProduction = max(0, realisasiMonthly - targetMonthly)`, `benefitAmount = extraProduction × benefitRate`
+
+**Inline Editing**:
+- Click Benefit Rate cell → input field appears (same pattern as salary editing)
+- Enter value (e.g., 25000) → save → auto-computes bonus amount
+- Only visible/editable for owner/finance roles
+
+**Part B: Automatic Holiday Detection (PERFORMANCE FIX)**
+
+**Fixed hari kerja efektif calculation with automatic Indonesian national holidays:**
+
+**Problem Solved**: Previously `countWorkdays()` only subtracted Sundays from manual `daftar_libur`. For Agustus 2026 should be 24 hari kerja (31 days - 5 Minggu - 2 nasional - cuti bersama), but was showing wrong number.
+
+**Solution Implemented**:
+1. **Static Holiday Reference**: Created `src/data/nationalHolidays.ts` with all Indonesian national holidays 2024-2030 (fixed-date + pre-computed Islamic dates like Idul Fitri, Idul Adha, Maulid, Isra Mi'raj, Muharram)
+2. **Auto-Detection**: `countWorkdays(ym)` now automatically combines:
+   - National holidays (from static reference based on month/year)
+   - Manual holidays from `daftar_libur` database
+3. **Tooltip Breakdown**: Added interactive "?" tooltip on "Hari Kerja Efektif" column showing:
+   - Total days in month
+   - Minus Sundays
+   - Minus National holidays (colored emerald)
+   - Minus Manual/Lokal holidays (colored amber)
+   - Expandable detail list of all holiday dates
+
+**New Files**:
+- `src/data/nationalHolidays.ts` - Static reference (2024-2030)
+- `src/lib/holidayHelpers.ts` - Helper functions (countSundays, generateHolidayTooltipInfo)
+- `WorkdaysWithTooltip` component in `src/pages/TargetJahitPage.tsx`
+
+**Updates**:
+- `src/lib/targetCompute.ts`: Enhanced `countWorkdays()` and `elapsedWorkdays()` signatures (now accept optional manualHolidays array, auto-merge with national holidays)
+- `src/pages/TargetJahitPage.tsx`: Added `WorkdaysWithTooltip` component replacing simple numeric display
+
+**Migration**: Added `is_national` boolean column to `daftar_libur` table for distinction between automatic vs manual holidays
+
+**Calculation Example (Agustus 2026)**:
+```
+Total hari:     31
+Min Minggu:     -5  (2, 9, 16, 23, 30)
+Min Nasional:   -2  (17 Agustus - HUT RI, 25 Agustus - cuti bersama)
+Min Manual:     -X  (optional local holidays)
+───────────────────────
+Hari Kerja:     24 ✅
+Sisa Hari (22-31): 7 ✅  (31 days - today(21) - minggu(23,30) - libur(25)) = 31-1-3 = 27 remaining workdays total, elapsed=20, sisa=7
+```
+
+**Build Verification**: ✅ TypeScript compilation successful, ~19s build time
+
+---
+
+### 2026-08-20 — RegisterPO Page Modernized to shadcn Patterns
+
+Updated **RegisterPoPage** to use shadcn/ui Dialog + Button + Input primitives for cost components modal:
+
+#### RegisterPoPage.tsx
+- **Modal refactor** from custom HTML overlay to shadcn Dialog primitive with proper accessible structure
+- **Header action buttons** converted to shadcn `<Button>` components (outline variant for Refresh, default for New PO)
+- **Form fields** now use shadcn `Input` with `Label` associations
+- **DialogFooter** standardizes button actions (Cancel, Save) with consistent spacing and disabled states
+- Cost component input list maintains existing functionality with unified focus states
+- Total/PCS calculation display preserved in blue info card style
+
+**Key imports added:**
+```tsx
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+```
+
+**Structure changes:**
+- Custom modal `fixed inset-0 z-50 bg-black/30` → `<Dialog open={modalOpen} onOpenChange={setModalOpen}>`
+- Overlay click handler removed (Dialog handles backdrop close natively)
+- Close `×` button removed (Dialog header footer pattern uses DialogFooter)
+- Select input upgraded with proper `Label` and focus ring styling
+- All numeric inputs converted to shadcn `Input type="number"`
+
+**Build verification:** ✓ Clean TypeScript compilation, 1949 modules transformed, built in 18.78s
+
+---
+
+### 2026-08-20 — UI Modernization Complete: All Core Pages Using shadcn Patterns
+
+Successfully modernized **ALL core dashboard pages** to use shadcn/ui design system standards:
+
+#### 1. OrderEntry.tsx ✅
+- Form inputs with consistent focus states (`focus:border-sky-300 focus:ring-2`)
+- Badge components standardized to pill-style solid coloring
+- Table uses standard Tailwind styling
+- Removed unused imports
+
+#### 2. PlanningProduksiPage.tsx ✅  
+- Modal from custom HTML overlay → shadcn Dialog primitive
+- Header buttons converted to Button variants (outline/sm, default)
+- Form fields use Input + Label primitives
+- Fixed TypeScript error in handleGenerate (result.data.installedCount → result.created)
+
+#### 3. RegisterPoPage.tsx ✅
+- Cost components modal → shadcn Dialog + Content + Header + Footer
+- Action buttons (Refresh, New PO) as shadcn Button
+- Numeric inputs with proper validation and focus rings
+- DialogFooter standardizes Cancel/Save spacing
+
+#### 4. ComplainPenaltiPage.tsx ✅
+- Header buttons (Refresh, Tambah Complain) → shadcn Button
+- Complain form modal → Dialog primitive with accessible structure
+- Custom searchable dropdowns preserved (product picker, FieldDropdown for PIC/posisi)
+- File upload grid with photo preview preserved
+
+#### 5. ProductionMonitoring.tsx ✅
+- Pull Order Entry button → shadcn Button variant
+- User display badge preserved (custom design element for user identity)
+- Tab bar navigation preserved (segmented control with icons)
+
+**Files updated:**
+- `src/pages/OrderEntry.tsx`
+- `src/pages/PlanningProduksiPage.tsx`
+- `src/pages/RegisterPoPage.tsx`
+- `src/pages/ComplainPenaltiPage.tsx`
+- `src/pages/ProductionMonitoring.tsx`
+
+**Build verification:** ✓ Clean TypeScript compilation, 1949 modules transformed, built in 37.85s
+
+---
+
+### 2026-08-20 — Additional Page Modernization (Planning & Order Entry)
+
+Updated **OrderEntry** and **PlanningProduksi** pages to use shadcn/ui primitives consistently:
+
+#### OrderEntry.tsx
+- Converted form inputs to use consistent styling with focus states (`focus:border-sky-300 focus:ring-2 focus:ring-sky-100`)
+- Badge components standardized to `inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold`
+- Table uses standard Tailwind styling with proper borders and divide-y
+- Input validation messaging improved
+
+#### PlanningProduksiPage.tsx
+- **Refactored modals** from custom dialogs to native shadcn Dialog + Content + Header + Footer pattern
+- **Form components** now use shadcn Button, Input, Label with proper variants
+- **Header buttons** converted to shadcn Button component with appropriate sizes and colors
+- Modal properly handles dialog lifecycle with `onOpenChange` for cleanup
+- Status dropdown badges preserved with pill-style solid coloring
+
+**Files updated:**
+- `src/pages/OrderEntry.tsx` - Form & table styling consistency
+- `src/pages/PlanningProduksiPage.tsx` - Dialog modal refactoring to shadcn primitives
+
+**Build verification:** ✓ Clean TypeScript compilation, 1949 modules transformed, built in 20s
+
+---
+
+### 2026-08-20 — Comprehensive UI Components Update Complete
+
+Successfully modernized Website Konveksi production monitoring dashboard to **shadcn/ui design system standards** across all major components:
+
+#### A. Sidebar Layout Redesign (shadcn/sidebar-07 Pattern)
+
+**Created new shadcn-based components:**
+- `src/components/Layout/AppSidebar.tsx` - Main collapsible sidebar with icon mode
+- `src/components/Layout/NavMain.tsx` - Navigation groups with active states & locked indicators
+- `src/components/Layout/NavUser.tsx` - User profile dropdown at sidebar footer
+- `src/components/Layout/TeamSwitcher.tsx` - Brand header (Konveksi Pro)
+
+**Layout structure implemented:**
+```tsx
+<SidebarProvider>
+  <AppSidebar currentView={currentView} onSwitchView={handleSwitchView} renames={sidebarRenames} />
+  <SidebarInset>
+    <header className="flex h-16">
+      <SidebarTrigger />
+      <Separator />
+      <Breadcrumb module → view hierarchy />
+    </header>
+    <div className="flex flex-1 flex-col gap-4 p-4 pt-0 overflow-auto">
+      {/* Page content */}
+    </div>
+  </SidebarInset>
+</SidebarProvider>
+```
+
+**Features preserved:** Collapsible icon mode, active highlighting, locked items, rename functionality, navigation state management
+
+#### B. Modal Components Refactoring
+
+**Refactored 8 modals from custom ModalShell wrapper to native Dialog primitives:**
+- `DateRangeModal.tsx` - Dialog + Input + date fields
+- `FilterModal.tsx` - Dialog with filter rules editor
+- `SortModal.tsx` - Dialog with sort rules editor
+- `GroupByModal.tsx` - Dialog with group-by controls
+- `RowHeightModal.tsx` - Dialog + Button grid selector
+- `ConditionalColorModal.tsx` - Dialog + Button + rule cards
+- `CustomizeFieldModal.tsx` - Dialog + Tabs + Switch
+- `AddViewModal.tsx` - Dialog + Input + Button
+
+**Pattern applied:** Consistent `<Dialog open={open} onOpenChange={onClose}>` structure throughout
+
+**Note:** Visual appearance remained consistent as styling was already aligned; improvements are architectural/API-level cleanup.
+
+#### C. Table Styling Standardization
+
+All pages now consistently use `tableStyles.ts` token system:
+- **TargetJahitPage** ✅
+- **RegisterKaryawanPage** ✅
+- **ComplainPenaltiPage** ✅
+- **RegisterPoPage** ✅
+- **PlanningProduksiPage** ✅
+- **OrderEntry** ✅
+- **InvoicingPage** ✅ (already completed earlier)
+- **ProductionMonitoring → RAW DATA tab** ✅ (source of truth)
+
+Token features: zebra striping, hover effects, sticky headers, uniform font sizing (13px data / 12px headers), border colors, status badge pills, row selection checkboxes.
 
 ---
 
@@ -882,169 +1233,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 ```
 
 **Build verification:** ✓ TypeScript compilation successful
-
----
-
-### 2026-08-20 — RegisterPO Page Modernized to shadcn Patterns
-
-Updated **RegisterPoPage** to use shadcn/ui Dialog + Button + Input primitives for cost components modal:
-
-#### RegisterPoPage.tsx
-- **Modal refactor** from custom HTML overlay to shadcn Dialog primitive with proper accessible structure
-- **Header action buttons** converted to shadcn `<Button>` components (outline variant for Refresh, default for New PO)
-- **Form fields** now use shadcn `Input` with `Label` associations
-- **DialogFooter** standardizes button actions (Cancel, Save) with consistent spacing and disabled states
-- Cost component input list maintains existing functionality with unified focus states
-- Total/PCS calculation display preserved in blue info card style
-
-**Key imports added:**
-```tsx
-import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-```
-
-**Structure changes:**
-- Custom modal `fixed inset-0 z-50 bg-black/30` → `<Dialog open={modalOpen} onOpenChange={setModalOpen}>`
-- Overlay click handler removed (Dialog handles backdrop close natively)
-- Close `×` button removed (Dialog header footer pattern uses DialogFooter)
-- Select input upgraded with proper `Label` and focus ring styling
-- All numeric inputs converted to shadcn `Input type="number"`
-
-**Build verification:** ✓ Clean TypeScript compilation, 1949 modules transformed, built in 18.78s
-
----
-
-### 2026-08-20 — UI Modernization Complete: All Core Pages Using shadcn Patterns
-
-Successfully modernized **ALL core dashboard pages** to use shadcn/ui design system standards:
-
-#### 1. OrderEntry.tsx ✅
-- Form inputs with consistent focus states (`focus:border-sky-300 focus:ring-2`)
-- Badge components standardized to pill-style solid coloring
-- Table uses standard Tailwind styling
-- Removed unused imports
-
-#### 2. PlanningProduksiPage.tsx ✅  
-- Modal from custom HTML overlay → shadcn Dialog primitive
-- Header buttons converted to Button variants (outline/sm, default)
-- Form fields use Input + Label primitives
-- Fixed TypeScript error in handleGenerate (result.data.installedCount → result.created)
-
-#### 3. RegisterPoPage.tsx ✅
-- Cost components modal → shadcn Dialog + Content + Header + Footer
-- Action buttons (Refresh, New PO) as shadcn Button
-- Numeric inputs with proper validation and focus rings
-- DialogFooter standardizes Cancel/Save spacing
-
-#### 4. ComplainPenaltiPage.tsx ✅
-- Header buttons (Refresh, Tambah Complain) → shadcn Button
-- Complain form modal → Dialog primitive with accessible structure
-- Custom searchable dropdowns preserved (product picker, FieldDropdown for PIC/posisi)
-- File upload grid with photo preview preserved
-
-#### 5. ProductionMonitoring.tsx ✅
-- Pull Order Entry button → shadcn Button variant
-- User display badge preserved (custom design element for user identity)
-- Tab bar navigation preserved (segmented control with icons)
-
-**Files updated:**
-- `src/pages/OrderEntry.tsx`
-- `src/pages/PlanningProduksiPage.tsx`
-- `src/pages/RegisterPoPage.tsx`
-- `src/pages/ComplainPenaltiPage.tsx`
-- `src/pages/ProductionMonitoring.tsx`
-
-**Build verification:** ✓ Clean TypeScript compilation, 1949 modules transformed, built in 37.85s
-
----
-
-### 2026-08-20 — Additional Page Modernization (Planning & Order Entry)
-
-Updated **OrderEntry** and **PlanningProduksi** pages to use shadcn/ui primitives consistently:
-
-#### OrderEntry.tsx
-- Converted form inputs to use consistent styling with focus states (`focus:border-sky-300 focus:ring-2 focus:ring-sky-100`)
-- Badge components standardized to `inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold`
-- Table uses standard Tailwind styling with proper borders and divide-y
-- Input validation messaging improved
-
-#### PlanningProduksiPage.tsx
-- **Refactored modals** from custom dialogs to native shadcn Dialog + Content + Header + Footer pattern
-- **Form components** now use shadcn Button, Input, Label with proper variants
-- **Header buttons** converted to shadcn Button component with appropriate sizes and colors
-- Modal properly handles dialog lifecycle with `onOpenChange` for cleanup
-- Status dropdown badges preserved with pill-style solid coloring
-
-**Files updated:**
-- `src/pages/OrderEntry.tsx` - Form & table styling consistency
-- `src/pages/PlanningProduksiPage.tsx` - Dialog modal refactoring to shadcn primitives
-
-**Build verification:** ✓ Clean TypeScript compilation, 1949 modules transformed, built in 20s
-
----
-
-### 2026-08-20 — Comprehensive UI Components Update Complete
-
-Successfully modernized Website Konveksi production monitoring dashboard to **shadcn/ui design system standards** across all major components:
-
-#### A. Sidebar Layout Redesign (shadcn/sidebar-07 Pattern)
-
-**Created new shadcn-based components:**
-- `src/components/Layout/AppSidebar.tsx` - Main collapsible sidebar with icon mode
-- `src/components/Layout/NavMain.tsx` - Navigation groups with active states & locked indicators
-- `src/components/Layout/NavUser.tsx` - User profile dropdown at sidebar footer
-- `src/components/Layout/TeamSwitcher.tsx` - Brand header (Konveksi Pro)
-
-**Layout structure implemented:**
-```tsx
-<SidebarProvider>
-  <AppSidebar currentView={currentView} onSwitchView={handleSwitchView} renames={sidebarRenames} />
-  <SidebarInset>
-    <header className="flex h-16">
-      <SidebarTrigger />
-      <Separator />
-      <Breadcrumb module → view hierarchy />
-    </header>
-    <div className="flex flex-1 flex-col gap-4 p-4 pt-0 overflow-auto">
-      {/* Page content */}
-    </div>
-  </SidebarInset>
-</SidebarProvider>
-```
-
-**Features preserved:** Collapsible icon mode, active highlighting, locked items, rename functionality, navigation state management
-
-#### B. Modal Components Refactoring
-
-**Refactored 8 modals from custom ModalShell wrapper to native Dialog primitives:**
-- `DateRangeModal.tsx` - Dialog + Input + date fields
-- `FilterModal.tsx` - Dialog with filter rules editor
-- `SortModal.tsx` - Dialog with sort rules editor
-- `GroupByModal.tsx` - Dialog with group-by controls
-- `RowHeightModal.tsx` - Dialog + Button grid selector
-- `ConditionalColorModal.tsx` - Dialog + Button + rule cards
-- `CustomizeFieldModal.tsx` - Dialog + Tabs + Switch
-- `AddViewModal.tsx` - Dialog + Input + Button
-
-**Pattern applied:** Consistent `<Dialog open={open} onOpenChange={onClose}>` structure throughout
-
-**Note:** Visual appearance remained consistent as styling was already aligned; improvements are architectural/API-level cleanup.
-
-#### C. Table Styling Standardization
-
-All pages now consistently use `tableStyles.ts` token system:
-- **TargetJahitPage** ✅
-- **RegisterKaryawanPage** ✅
-- **ComplainPenaltiPage** ✅
-- **RegisterPoPage** ✅
-- **PlanningProduksiPage** ✅
-- **OrderEntry** ✅
-- **InvoicingPage** ✅ (already completed earlier)
-- **ProductionMonitoring → RAW DATA tab** ✅ (source of truth)
-
-Token features: zebra striping, hover effects, sticky headers, uniform font sizing (13px data / 12px headers), border colors, status badge pills, row selection checkboxes.
 
 ---
 

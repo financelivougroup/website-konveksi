@@ -9,6 +9,7 @@ function mapRow(row: Record<string, unknown>): WorkOrder {
     id: row.id as string,
     workCode: row.work_code as string,
     sourceOrderId: row.source_order_id as string,
+    sourceVariationId: row.source_variation_id as string | undefined,
     productNote: row.product_note as string,
     product: row.product as string,
     productId: row.product_id as string,
@@ -43,12 +44,23 @@ export async function fetchById(id: string): Promise<{ data: WorkOrder | null; e
   return { data: data ? mapRow(data as Record<string, unknown>) : null, error }
 }
 
+// Bulk fetch untuk kebutuhan tampilan yang memakai banyak work order sekaligus
+// (mis. template invoice) tanpa query serial per baris.
+export async function fetchByIds(ids: string[]): Promise<{ data: WorkOrder[] | null; error: Error | null }> {
+  const uniqueIds = Array.from(new Set(ids.filter(Boolean)));
+  if (uniqueIds.length === 0) return { data: [], error: null };
+  const { data, error } = await supabase.from(TABLE).select('*').in('id', uniqueIds);
+  if (error) return { data: null, error };
+  return { data: (data as Record<string, unknown>[] | null)?.map(mapRow) ?? [], error: null };
+}
+
 export async function create(input: Omit<WorkOrder, 'id'>): Promise<{ data: WorkOrder | null; error: Error | null }> {
   const id = await generateId('WO', TABLE)
   const dbInput = {
     id,
     work_code: input.workCode,
     source_order_id: input.sourceOrderId,
+    source_variation_id: input.sourceVariationId,
     product_note: input.productNote,
     product: input.product,
     product_id: input.productId,
@@ -70,6 +82,26 @@ export async function create(input: Omit<WorkOrder, 'id'>): Promise<{ data: Work
     .select()
     .single()
   return { data: data ? mapRow(data as Record<string, unknown>) : null, error }
+}
+
+export async function pullFromProductionOrder(
+  productionOrderId: string,
+  pulledBy: string,
+): Promise<{ data: WorkOrder[] | null; error: Error | null }> {
+  const { data, error } = await supabase.rpc('pull_production_order_to_konveksi', {
+    p_production_order_id: productionOrderId,
+    p_pulled_by: pulledBy,
+  })
+
+  if (error) return { data: null, error }
+  if (!data || data.length === 0) {
+    return { data: null, error: new Error('Pull berhasil tanpa work order hasil') }
+  }
+
+  return {
+    data: (data as Record<string, unknown>[]).map(mapRow),
+    error: null,
+  }
 }
 
 export async function update(id: string, updates: Partial<WorkOrder>): Promise<{ error: Error | null }> {

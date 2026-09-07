@@ -1,70 +1,59 @@
 import { groupPlannedTargetDetails } from '@/lib/targetDetailIdentity'
+import { productionCodePriceKey, type PriceMap, type PriceMapValue } from '@/lib/productionCode'
 import { supabase } from '@/lib/supabase'
 
-export interface PriceMapValue {
-  jahit: number
-  obras: number
-}
-
-export type PriceMap = Record<string, PriceMapValue>
+// `PriceMapValue`, `PriceMap`, dan `productionCodePriceKey` kini berasal dari
+// `src/lib/productionCode` (modul murni, tanpa Supabase) agar helper di
+// `src/lib/` dapat memakainya tanpa menarik klien Supabase. Diekspor ulang di
+// sini supaya pemanggil yang sudah ada tidak perlu diubah.
+export type { PriceMap, PriceMapValue }
+export { productionCodePriceKey }
 
 /**
- * Build a price map per product from Register PO components.
- * Components keyed 'jahit' and 'obras' are read from register_po_components,
- * attached to a product via register_po.production_order_id -> production_orders.product.
- * If multiple POs exist for a product, the latest (by updated_at) wins.
+ * Build an exact-order price map keyed by normalized Product Note.
+ * Product Note is the unique production code, so two runs of the same product
+ * never borrow each other's jahit/obras price.
  */
 export async function buildPriceMap(): Promise<PriceMap> {
   const map: PriceMap = {}
 
-  const { data: poRows } = await supabase
-    .from('register_po')
-    .select('id, production_order_id, updated_at')
-    .order('updated_at', { ascending: false })
-  if (!poRows || poRows.length === 0) return map
+  const { data: priceRows } = await supabase
+    .from('production_order_prices')
+    .select('id, production_order_id')
+  if (!priceRows || priceRows.length === 0) return map
 
-  const poIds = poRows.map((p) => p.id as string)
-  const orderIds = poRows.map((p) => p.production_order_id as string)
-
-  // Resolve product per production order.
-  const orderToProduct = new Map<string, string>()
+  const orderIds = priceRows.map((price) => price.production_order_id as string)
   const { data: orderRows } = await supabase
     .from('production_orders')
-    .select('id, product')
+    .select('id, product_note')
     .in('id', orderIds)
-  if (orderRows) {
-    for (const o of orderRows) {
-      orderToProduct.set(o.id as string, o.product as string)
-    }
+
+  const orderToProductNote = new Map<string, string>()
+  for (const order of orderRows ?? []) {
+    const key = productionCodePriceKey(order.product_note as string | null)
+    if (key) orderToProductNote.set(order.id as string, key)
   }
 
-  // Read jahit + obras components for all POs in one go.
-  const { data: compRows } = await supabase
-    .from('register_po_components')
-    .select('register_po_id, key, value')
-    .in('register_po_id', poIds)
-    .in('key', ['jahit', 'obras'])
-  const compsByPo = new Map<string, { jahit: number; obras: number }>()
-  if (compRows) {
-    for (const c of compRows as Record<string, unknown>[]) {
-      const poId = c.register_po_id as string
-      const key = c.key as string
-      const value = c.value as number
-      if (!compsByPo.has(poId)) compsByPo.set(poId, { jahit: 0, obras: 0 })
-      const entry = compsByPo.get(poId)!
-      if (key === 'jahit') entry.jahit = value
-      else if (key === 'obras') entry.obras = value
-    }
+  const priceIds = priceRows.map((price) => price.id as string)
+  const { data: componentRows } = await supabase
+    .from('production_order_price_components')
+    .select('order_price_id, component_key, amount_per_piece')
+    .in('order_price_id', priceIds)
+    .in('component_key', ['jahit', 'obras'])
+
+  const componentsByPrice = new Map<string, PriceMapValue>()
+  for (const component of (componentRows ?? []) as Record<string, unknown>[]) {
+    const priceId = component.order_price_id as string
+    const current = componentsByPrice.get(priceId) ?? { jahit: 0, obras: 0 }
+    if (component.component_key === 'jahit') current.jahit = Number(component.amount_per_piece) || 0
+    if (component.component_key === 'obras') current.obras = Number(component.amount_per_piece) || 0
+    componentsByPrice.set(priceId, current)
   }
 
-  // Register_po is ordered updated_at desc -> first occurrence wins (latest).
-  for (const p of poRows) {
-    const product = orderToProduct.get(p.production_order_id as string)
-    if (!product) continue
-    if (map[product]) continue
-    const comp = compsByPo.get(p.id as string)
-    if (!comp) continue
-    map[product] = { jahit: comp.jahit, obras: comp.obras }
+  for (const price of priceRows) {
+    const productNote = orderToProductNote.get(price.production_order_id as string)
+    const components = componentsByPrice.get(price.id as string)
+    if (productNote && components) map[productNote] = components
   }
 
   return map
@@ -131,7 +120,8 @@ export async function generateTargetsFromPlanning(
     const product = r.product as string
     const qty = r.qty as number
     const warna = (r.warna as string | null) ?? null
-    const price = priceMap[product]
+    const productNote = (r.product_note as string | null) ?? null
+    const price = priceMap[productionCodePriceKey(productNote)]
     const pcsCost = (price ? price.jahit + price.obras : 0) * qty
 
     if (!byStaff.has(nama)) {
@@ -175,7 +165,7 @@ export async function generateTargetsFromPlanning(
 
     const groupedDetails = groupPlannedTargetDetails(staff.plans)
     const details = groupedDetails.map((p) => {
-      const price = priceMap[p.product]
+      const price = priceMap[productionCodePriceKey(p.productNote)]
       return {
         target_jahit_id: parent.id as number,
         product_note: p.productNote,

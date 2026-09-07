@@ -1,7 +1,7 @@
 import type { SewingRecord } from '@/types/pipeline';
 import type { TargetJahitRow } from '@/services/targetJahit';
 import type { TargetJahitDetailRow } from '@/services/targetJahitDetail';
-import type { PriceMap } from '@/services/staffDebt';
+import { productionCodePriceKey, type PriceMap } from '@/lib/productionCode';
 import { getNationalHolidaysInMonth } from '@/data/nationalHolidays';
 import {
   calculateDetailRealizations,
@@ -216,7 +216,8 @@ export function enrichTargetRows(
     let realisasiCostPosisi = 0;
     enrichedDetails.forEach((e, i) => {
       const d = myDetails[i];
-      const price = (d.hargaJahit || 0) + (d.hargaObras || 0) || ((prices[d.product] ? prices[d.product].jahit + prices[d.product].obras : 0));
+      const fallbackPrice = prices[productionCodePriceKey(d.productNote)];
+      const price = (d.hargaJahit || 0) + (d.hargaObras || 0) || (fallbackPrice ? fallbackPrice.jahit + fallbackPrice.obras : 0);
       realisasiCostPosisi += e.qtyRealisasi * price;
     });
 
