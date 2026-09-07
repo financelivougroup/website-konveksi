@@ -207,9 +207,6 @@ function TargetJahitForm({ row, readOnly }: { row: Record<string, unknown> | nul
             <option value="Finishing">Finishing</option>
           </select>
         </FormField>
-        <FormField label="Salary" required>
-          <input type="number" id="form-salary" className="form-input" defaultValue={row?.salary as number || ''} placeholder="Gaji bulanan" readOnly={readOnly} />
-        </FormField>
       </Section>
 
       <Section title="General (Auto-calculate)">
@@ -232,10 +229,11 @@ function TargetJahitForm({ row, readOnly }: { row: Record<string, unknown> | nul
       </Section>
 
       <Section title="Accumulation (Year-to-Date)">
-        <FormField label="Target Accumulation"><input type="text" className="form-input readonly" defaultValue={row?.targetAccum as number || ''} readOnly /></FormField>
-        <FormField label="Realisasi Accumulation"><input type="text" className="form-input readonly" defaultValue={row?.realisasiAccum as number || ''} readOnly /></FormField>
-        <FormField label="Selisih Accumulation"><input type="text" className="form-input readonly" defaultValue={row?.selisihAccum as number || ''} readOnly /></FormField>
-        <FormField label="Progress Accumulation"><input type="text" className="form-input readonly" defaultValue={row?.progressAccum ? `${row.progressAccum}%` : ''} readOnly /></FormField>
+        <FormField label="Target Cost Accumulation"><input type="text" className="form-input readonly" defaultValue={row?.targetCostAccum as number || ''} readOnly /></FormField>
+        <FormField label="Realisasi Cost Accumulation"><input type="text" className="form-input readonly" defaultValue={row?.realisasiCostAccum as number || ''} readOnly /></FormField>
+        <FormField label="Selisih Cost Accumulation"><input type="text" className="form-input readonly" defaultValue={row?.selisihCostAccum as number || ''} readOnly /></FormField>
+        <FormField label="Sisa Uang Accumulation"><input type="text" className="form-input readonly" defaultValue={row?.sisaUangAccum as number || ''} readOnly /></FormField>
+        <FormField label="Progress Biaya Accumulation"><input type="text" className="form-input readonly" defaultValue={row?.progressCostAccum ? `${row.progressCostAccum}%` : ''} readOnly /></FormField>
       </Section>
     </div>
   );

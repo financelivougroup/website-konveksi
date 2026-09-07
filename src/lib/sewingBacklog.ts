@@ -23,12 +23,19 @@ export interface WorkOrderBacklog {
   qtyJahit: number;
   totalBelumJahit: number;
   rate: number | null;
+  /** Nilai Rupiah sisa jahit = totalBelumJahit × rate. `null` bila tarif tidak
+   *  tersedia — sengaja bukan 0, agar UI dapat membedakan "belum ada tarif"
+   *  dari "bernilai Rp0". */
+  nilaiBacklog: number | null;
 }
 
 export type SummaryRate =
   | { kind: 'single'; value: number }
   | { kind: 'varied' }
   | { kind: 'missing' };
+
+/** Ringkasan nilai Rupiah: sama aturannya dengan `SummaryRate`. */
+export type SummaryValue = SummaryRate;
 
 export interface ProductNoteBacklog {
   key: string;
@@ -38,6 +45,7 @@ export interface ProductNoteBacklog {
   totalQtyJahit: number;
   totalBelumJahit: number;
   rate: SummaryRate;
+  nilaiBacklog: SummaryValue;
   workOrders: WorkOrderBacklog[];
   searchText: string;
 }
@@ -61,6 +69,19 @@ function summarizeRate(rates: (number | null)[]): SummaryRate {
     : { kind: 'varied' };
 }
 
+/**
+ * Ringkas nilai Rupiah per grup: jumlahkan bila seluruh anggota bertarif,
+ * `varied` bila sebagian hilang, `missing` bila tidak ada satupun.
+ * Menjumlahkan (beda dengan `summarizeRate` yang membandingkan) karena nilai
+ * grup memang total Rupiah seluruh Work Order di dalamnya.
+ */
+function summarizeValue(values: (number | null)[]): SummaryValue {
+  const present = values.filter((v): v is number => v != null);
+  if (present.length === 0) return { kind: 'missing' };
+  if (present.length !== values.length) return { kind: 'varied' };
+  return { kind: 'single', value: present.reduce((sum, v) => sum + v, 0) };
+}
+
 function summarizeProduct(products: string[]): string {
   const unique = Array.from(new Set(products.map((p) => p.trim()).filter((p) => p !== '')));
   if (unique.length === 0) return '—';
@@ -73,10 +94,10 @@ function summarizeProduct(products: string[]): string {
  * dan tidak mengubah rumus Utang Staf.
  */
 export function calculateMonthlyRemainingMoney(
-  salary: number,
+  targetCostPosisi: number,
   realisasiCostPosisi: number,
 ): number {
-  const s = Number(salary) || 0;
+  const s = Number(targetCostPosisi) || 0;
   const c = Number(realisasiCostPosisi) || 0;
   return Math.max(0, s - c);
 }
@@ -122,6 +143,7 @@ export function buildSewingBacklog(
       qtyJahit,
       totalBelumJahit,
       rate: rateEntry ? rateEntry.total : null,
+      nilaiBacklog: rateEntry ? totalBelumJahit * rateEntry.total : null,
     });
   }
 
@@ -154,6 +176,7 @@ export function buildSewingBacklog(
       totalQtyJahit: sortedMembers.reduce((sum, m) => sum + m.qtyJahit, 0),
       totalBelumJahit: sortedMembers.reduce((sum, m) => sum + m.totalBelumJahit, 0),
       rate: summarizeRate(sortedMembers.map((m) => m.rate)),
+      nilaiBacklog: summarizeValue(sortedMembers.map((m) => m.nilaiBacklog)),
       workOrders: sortedMembers,
       searchText: [
         ...sortedMembers.map((m) => m.productNote ?? ''),

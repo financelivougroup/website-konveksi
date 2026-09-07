@@ -105,15 +105,18 @@ export interface EnrichedTargetRow extends TargetJahitRow {
   targetNgebutHari: number;
   realisasiMonthly: number;
   sisaTargetMonthly: number;
-  progressMonthly: number; // 0..1
+  progressMonthly: number; // 0..1 (basis pcs; dipertahankan untuk DetailPanel)
   realisasiCostPosisi: number;
-  targetAccum: number;
-  realisasiAccum: number;
-  selisihAccum: number;
-  targetNgebutHariAkumulasi: number;
-  progressAccum: number; // 0..1
-  statusFinal: string;
-  statusFinalAkumulasi: string;
+  statusFinal: string; // basis pcs; dipertahankan untuk DetailPanel
+  // Basis biaya (Rupiah) — pengganti akumulasi berbasis pcs.
+  sisaUangMonthly: number;
+  targetCostAccum: number;
+  realisasiCostAccum: number;
+  selisihCostAccum: number;
+  sisaUangAccum: number;
+  progressCostAccum: number; // 0..1
+  statusFinalCost: string;
+  statusFinalCostAccum: string;
   benefitRate: number;        // normalized from benefit_per_pcs
   extraProduction: number;    // computed: max(0, realisasi - target)
   benefitAmount: number;      // computed: extra × rate
@@ -161,7 +164,8 @@ export function enrichTargetRows(
   today: Date,
 ): EnrichedTargetRow[] {
   const sorted = [...rows].sort((a, b) => String(a.bulan_tahun ?? '').localeCompare(String(b.bulan_tahun ?? '')));
-  const accumByPerson = new Map<string, { target: number; realisasi: number }>();
+  // Akumulasi lintas bulan per penjahit, kini dalam Rupiah (basis biaya).
+  const accumByPerson = new Map<string, { targetCost: number; realisasiCost: number }>();
 
   return sorted.map((row) => {
     const ym = String(row.bulan_tahun ?? '');
@@ -220,18 +224,36 @@ export function enrichTargetRows(
     const isPast = monthIsPast(ym, today);
     const statusFinal = finalStatus(realisasiMonthly, targetMonthly, isCurrent, isPast);
 
-    // Accumulation across this person's months up to this row.
-    const acc = accumByPerson.get(person) ?? { target: 0, realisasi: 0 };
-    acc.target += targetMonthly;
-    acc.realisasi += realisasiMonthly;
+    // ===== Basis biaya (Rupiah) =====
+    // Patokan pencapaian adalah uang, bukan pcs: target adalah penghasilan
+    // penjahit, dan realisasi bertambah sebesar tarif per pcs x pcs dijahit.
+    const targetCostPosisi = Number(row.target_cost_posisi) || 0;
+    const sisaUangMonthly = Math.max(0, targetCostPosisi - realisasiCostPosisi);
+    const statusFinalCost = finalStatus(
+      realisasiCostPosisi,
+      targetCostPosisi,
+      isCurrent,
+      isPast,
+    );
+
+    // Accumulation across this person's months up to this row — dalam Rupiah.
+    const acc = accumByPerson.get(person) ?? { targetCost: 0, realisasiCost: 0 };
+    acc.targetCost += targetCostPosisi;
+    acc.realisasiCost += realisasiCostPosisi;
     accumByPerson.set(person, acc);
-    const targetAccum = acc.target;
-    const realisasiAccum = acc.realisasi;
-    const selisihAccum = realisasiAccum - targetAccum;
-    const progressAccum = targetAccum > 0 ? realisasiAccum / targetAccum : 0;
-    const statusFinalAkumulasi = finalStatus(realisasiAccum, targetAccum, isCurrent, isPast);
-    // 'Ngebut' for the accumulation only makes sense in the current month.
-    const targetNgebutHariAkumulasi = isCurrent && sisaHari > 0 ? Math.ceil(Math.max(0, targetAccum - realisasiAccum) / sisaHari) : 0;
+    const targetCostAccum = acc.targetCost;
+    const realisasiCostAccum = acc.realisasiCost;
+    // Tanda negatif berarti "masih kurang" — dipakai staffDebtEligibility.
+    const selisihCostAccum = realisasiCostAccum - targetCostAccum;
+    const sisaUangAccum = Math.max(0, targetCostAccum - realisasiCostAccum);
+    const progressCostAccum =
+      targetCostAccum > 0 ? realisasiCostAccum / targetCostAccum : 0;
+    const statusFinalCostAccum = finalStatus(
+      realisasiCostAccum,
+      targetCostAccum,
+      isCurrent,
+      isPast,
+    );
 
     // Benefit calculation: per-piece bonus for production above monthly target
     const benefitRate = Number(row.benefit_per_pcs) || 0;
@@ -249,13 +271,15 @@ export function enrichTargetRows(
       sisaTargetMonthly,
       progressMonthly,
       realisasiCostPosisi,
-      targetAccum,
-      realisasiAccum,
-      selisihAccum,
-      targetNgebutHariAkumulasi,
-      progressAccum,
       statusFinal,
-      statusFinalAkumulasi,
+      sisaUangMonthly,
+      targetCostAccum,
+      realisasiCostAccum,
+      selisihCostAccum,
+      sisaUangAccum,
+      progressCostAccum,
+      statusFinalCost,
+      statusFinalCostAccum,
       benefitRate,
       extraProduction,
       benefitAmount,

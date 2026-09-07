@@ -68,7 +68,7 @@ test('sewing melebihi Qty Order dijepit ke nol dan tidak tampil', () => {
   assert.deepEqual(result, []);
 });
 
-test('Sisa Uang bulanan adalah max(0, salary - realisasiCostPosisi)', () => {
+test('Sisa Uang bulanan adalah max(0, targetCostPosisi - realisasiCostPosisi)', () => {
   assert.equal(calculateMonthlyRemainingMoney(5_000_000, 3_500_000), 1_500_000);
   assert.equal(calculateMonthlyRemainingMoney(5_000_000, 6_000_000), 0);
 });
@@ -158,4 +158,57 @@ test('grup diurutkan berdasarkan Total Belum Jahit turun lalu Product Note naik'
     result.map((g) => g.productNote),
     ['Alpha', 'Beta', 'Zeta'],
   );
+});
+
+// ===== Nilai Rupiah backlog =====
+
+test('nilai Work Order = Total Belum Jahit x tarif', () => {
+  const result = buildSewingBacklog([wo()], [sw('wo-1', 30)], rates);
+
+  // qty order 100, sudah dijahit 30 -> sisa 70; tarif 1500
+  assert.equal(result[0].workOrders[0].totalBelumJahit, 70);
+  assert.equal(result[0].workOrders[0].nilaiBacklog, 105_000);
+});
+
+test('nilai Work Order null bila tarif tidak tersedia', () => {
+  const result = buildSewingBacklog(
+    [wo({ id: 'wo-1', sourceOrderId: 'po-unknown' })],
+    [sw('wo-1', 10)],
+    rates,
+  );
+
+  assert.equal(result[0].workOrders[0].nilaiBacklog, null);
+  assert.deepEqual(result[0].nilaiBacklog, { kind: 'missing' });
+});
+
+test('nilai grup menjumlahkan seluruh Work Order bertarif', () => {
+  const result = buildSewingBacklog(
+    [
+      wo({ id: 'wo-1', quantity: 100 }),
+      wo({ id: 'wo-2', quantity: 50, workCode: 'WC-2' }),
+    ],
+    [],
+    rates,
+  );
+
+  // 100 x 1500 + 50 x 1500
+  assert.deepEqual(result[0].nilaiBacklog, { kind: 'single', value: 225_000 });
+});
+
+test('nilai grup Bervariasi bila sebagian Work Order tidak bertarif', () => {
+  const result = buildSewingBacklog(
+    [
+      wo({ id: 'wo-1', quantity: 100 }),
+      wo({ id: 'wo-2', quantity: 50, workCode: 'WC-2', sourceOrderId: 'po-unknown' }),
+    ],
+    [],
+    rates,
+  );
+
+  assert.deepEqual(result[0].nilaiBacklog, { kind: 'varied' });
+});
+
+test('Sisa Uang bulanan = max(0, target cost - realisasi cost)', () => {
+  assert.equal(calculateMonthlyRemainingMoney(1_500_000, 900_000), 600_000);
+  assert.equal(calculateMonthlyRemainingMoney(1_000_000, 1_400_000), 0);
 });

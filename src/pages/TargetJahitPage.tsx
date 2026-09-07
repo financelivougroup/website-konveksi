@@ -8,17 +8,24 @@ import { ColumnSettingsButton } from '@/components/Table/ColumnSettings';
 import { useColumnSettings } from '@/lib/columnSettings';
 import { applyFilters, applySorts, type FieldOption, type FilterRule, type SortRule } from '@/lib/tableQuery';
 import { fetchAll as fetchAllTarget, update as updateTarget, remove as removeTarget, type TargetJahitRow } from '@/services/targetJahit';
-import { fetchAll as fetchAllRegister, type RegisterPenjahitRow } from '@/services/registerPenjahit';
-import { computeDebt, buildPriceMap, type DebtSummary } from '@/services/staffDebt';
+import { buildPriceMap } from '@/services/staffDebt';
 import * as daftarLiburSvc from '@/services/daftarLibur';
 import * as sewingRecordSvc from '@/services/sewingRecords';
 import * as workOrderSvc from '@/services/workOrders';
 import * as targetJahitDetailSvc from '@/services/targetJahitDetail';
 import { enrichTargetRows, enrichDetails } from '@/lib/targetCompute';
-import { buildSewingBacklog, calculateMonthlyRemainingMoney, type SummaryRate } from '@/lib/sewingBacklog';
+import {
+  buildSewingBacklog,
+  calculateMonthlyRemainingMoney,
+  type SummaryRate,
+  type SummaryValue,
+} from '@/lib/sewingBacklog';
 import { fetchSewingRatesByProductionOrder, type SewingRateByProductionOrder } from '@/services/productionOrderPrices';
 import type { WorkOrderDesignIdentity } from '@/lib/targetDetailIdentity';
-import { filterDebtRowsByLatestAccum } from '@/lib/staffDebtEligibility';
+import {
+  filterDebtRowsByLatestAccum,
+  computeDebtFromRows,
+} from '@/lib/staffDebtEligibility';
 import type { SewingRecord, WorkOrder } from '@/types/pipeline';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -37,12 +44,6 @@ const TARGET_COLUMN_ALIAS: Record<string, string> = {
   status_final: 'statusFinal',
   target_cost_posisi: 'targetCostPosisi',
   realisasi_cost_posisi: 'realisasiCostPosisi',
-  target_accum: 'targetAccum',
-  realisasi_accum: 'realisasiAccum',
-  selisih_accum: 'selisihAccum',
-  target_ngebut_hari_akumulasi: 'targetNgebutHariAkumulasi',
-  progress_accum: 'progressAccum',
-  status_final_akumulasi: 'statusFinalAkumulasi',
   benefit_per_pcs: 'benefitRate',
 };
 
@@ -61,7 +62,6 @@ const TARGET_COLUMNS: ColDef[] = [
   { key: 'bulanTahun', label: 'Bulan Tahun' },
   { key: 'nama', label: 'Nama' },
   { key: 'posisi', label: 'Posisi', badge: true, inv: true },
-  { key: 'salary', label: 'Salary', align: 'right', format: 'currency' },
   { key: 'sisaHari', label: 'Sisa Hari', align: 'right', inv: true },
   { key: 'targetDaily', label: 'Target | Daily', align: 'right' },
   { key: 'targetNgebutHari', label: 'Target Ngebut | Daily', align: 'right' },
@@ -72,12 +72,13 @@ const TARGET_COLUMNS: ColDef[] = [
   { key: 'statusFinal', label: 'Status Final | Monthly', badge: true, inv: true },
   { key: 'targetCostPosisi', label: 'Target Cost / Posisi', align: 'right', format: 'currency' },
   { key: 'realisasiCostPosisi', label: 'Realisasi Cost / Posisi', align: 'right', format: 'currency' },
-  { key: 'targetAccum', label: 'Target Akumulasi', align: 'right' },
-  { key: 'realisasiAccum', label: 'Realisasi Akumulasi', align: 'right' },
-  { key: 'selisihAccum', label: 'Selisih Akumulasi', align: 'right' },
-  { key: 'targetNgebutHariAkumulasi', label: 'Target Ngebut | Akumulasi', align: 'right' },
-  { key: 'progressAccum', label: 'Progress Akumulasi', align: 'right', format: 'percent' },
-  { key: 'statusFinalAkumulasi', label: 'Status Final | Akumulasi', badge: true },
+  { key: 'sisaUangMonthly', label: 'Sisa Uang | Monthly', align: 'right', format: 'currency', inv: true },
+  { key: 'targetCostAccum', label: 'Target Cost Akumulasi', align: 'right', format: 'currency' },
+  { key: 'realisasiCostAccum', label: 'Realisasi Cost Akumulasi', align: 'right', format: 'currency' },
+  { key: 'selisihCostAccum', label: 'Selisih Cost Akumulasi', align: 'right', format: 'currency' },
+  { key: 'sisaUangAccum', label: 'Sisa Uang | Akumulasi', align: 'right', format: 'currency', inv: true },
+  { key: 'progressCostAccum', label: 'Progress Biaya Akumulasi', align: 'right', format: 'percent' },
+  { key: 'statusFinalCostAccum', label: 'Status Biaya | Akumulasi', badge: true },
   { key: 'benefitRate', label: 'Benefit Rate /Pcs', align: 'right', format: 'currency' },
   { key: 'extraProduction', label: 'Extra Production', align: 'right' },
   { key: 'benefitAmount', label: 'Benefit Amount', align: 'right', format: 'currency' },
@@ -98,10 +99,18 @@ function formatRateValue(rate: number | null): ReactNode {
   return rate == null ? <span className="text-gray-300">—</span> : formatCurrency(rate);
 }
 
+// Nilai Rupiah backlog: jumlahkan bila seluruh Work Order bertarif,
+// 'Bervariasi' bila sebagian tarif tidak tersedia, '—' bila tidak ada tarif.
+function formatValue(value: SummaryValue): ReactNode {
+  if (value.kind === 'single') return formatCurrency(value.value);
+  if (value.kind === 'varied') return 'Bervariasi';
+  return <span className="text-gray-300">—</span>;
+}
+
 interface DebtRow {
   nama: string;
-  totalGaji: number;
-  totalNilai: number;
+  totalTargetCost: number;
+  totalRealisasiCost: number;
   utang: number;
 }
 
@@ -133,7 +142,7 @@ function renderCell(col: ColDef, row: Record<string, unknown>) {
     const s = String(v ?? '').trim();
     if (!s) return <span className="text-gray-300">—</span>;
     let cls = 'bg-slate-100 text-slate-600';
-    if (col.key === 'statusFinal' || col.key === 'statusFinalAkumulasi') {
+    if (col.key === 'statusFinal' || col.key === 'statusFinalCostAccum') {
       if (s === 'Tercapai') cls = 'bg-emerald-100 text-emerald-700';
       else if (s === 'Tidak Tercapai') cls = 'bg-rose-100 text-rose-700';
       else cls = 'bg-blue-100 text-blue-700'; // 'Berjalan' (atau nilai lain)
@@ -160,8 +169,6 @@ export function TargetJahitPage() {
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
   const [filters, setFilters] = useState<FilterRule[]>([]);
   const [sorts, setSorts] = useState<SortRule[]>([]);
-  const [editingSalaryId, setEditingSalaryId] = useState<number | null>(null);
-  const [salaryDraft, setSalaryDraft] = useState('');
   const [editingBenefitId, setEditingBenefitId] = useState<number | null>(null);
   const [benefitDraft, setBenefitDraft] = useState('');
   const [message, setMessage] = useState<string | null>(null);
@@ -182,9 +189,6 @@ export function TargetJahitPage() {
   const [backlogSearch, setBacklogSearch] = useState('');
   const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set());
 
-  // Utang Staf state.
-  const [debtRows, setDebtRows] = useState<DebtRow[]>([]);
-  const [debtLoading, setDebtLoading] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -221,40 +225,6 @@ export function TargetJahitPage() {
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  const loadDebt = useCallback(async () => {
-    if (!canSeeDebt) return; // owner/finance only — never query debt for other roles
-    setDebtLoading(true);
-    try {
-      // Penjahit names: register_penjahit first, fall back to distinct nama in target_jahit.
-      const { data: registerRows } = await fetchAllRegister();
-      let names: string[] = [];
-      if (registerRows && registerRows.length > 0) {
-        names = registerRows.map((r: RegisterPenjahitRow) => r.picPenjahit);
-      } else {
-        names = Array.from(new Set(items.map((r) => r.nama).filter(Boolean))) as string[];
-      }
-
-      const results = await Promise.all(names.map((n) => computeDebt(n)));
-      const combined: DebtRow[] = names.map((nama, i) => {
-        const d: DebtSummary = results[i];
-        return {
-          nama,
-          totalGaji: d.totalGaji,
-          totalNilai: d.totalNilai,
-          utang: d.utang,
-        };
-      });
-      setDebtRows(combined);
-    } finally {
-      setDebtLoading(false);
-    }
-  }, [canSeeDebt, items]);
-
-  useEffect(() => {
-    if (canSeeDebt && tab === 'utang-staf') {
-      loadDebt();
-    }
-  }, [tab, canSeeDebt, loadDebt]);
 
   // Live enrichment: all 22 columns computed from source data at render time
   // (workdays, realization from sewing_records, accumulation, status).
@@ -284,12 +254,21 @@ export function TargetJahitPage() {
         d.bulan_tahun,
         d.nama,
         d.posisi ?? '',
-        String(d.salary),
         d.statusFinal,
-        d.statusFinalAkumulasi,
+        d.statusFinalCostAccum,
       ].some((v) => String(v).toLowerCase().includes(q)),
     );
   }, [allEnriched, search]);
+
+  // Utang Staf: kumulatif, dihitung murni dari baris Target yang sudah
+  // di-enrich. Sumber harganya identik dengan Sisa Uang
+  // (`target cost - realisasi cost`) dan TIDAK mengurangi potongan complain.
+  // Sebelumnya `computeDebt()` membaca `realisasi_cost_posisi` dari DB, tetapi
+  // kolom itu tidak pernah ditulis dan selalu 0.
+  const debtRows = useMemo<DebtRow[]>(() => {
+    if (!canSeeDebt) return [];
+    return computeDebtFromRows(allEnriched);
+  }, [allEnriched, canSeeDebt]);
 
   const visibleDebtRows = useMemo(
     () => filterDebtRowsByLatestAccum(debtRows, allEnriched),
@@ -301,8 +280,10 @@ export function TargetJahitPage() {
     [enriched, filters, sorts],
   );
 
-  // Access matrix (spec): inventory may see production data but NOT salary,
-  // target/cost, or akumulasi columns. Owner/finance see everything.
+  // Access matrix (spec): inventory may see production data but NOT target/cost
+  // or akumulasi columns. Owner/finance see everything.
+  // Kolom `salary` sudah dihapus dari DB (`target_jahit`), jadi tidak lagi
+  // termasuk dalam matriks ini.
   const roleColumns = useMemo(
     () => (canSeeDebt ? TARGET_COLUMNS : TARGET_COLUMNS.filter((c) => c.inv)),
     [canSeeDebt],
@@ -334,25 +315,6 @@ export function TargetJahitPage() {
       }))
       .sort((a, b) => (b.bulan || '').localeCompare(a.bulan || '') || a.nama.localeCompare(b.nama));
   }, [enriched, canSeeDebt]);
-
-  // Edit salary inline (owner/finance only) — satu-satunya kolom yang bisa diedit.
-  async function handleSaveSalary(id: number) {
-    const value = Number(salaryDraft);
-    if (Number.isNaN(value) || value < 0 || salaryDraft.trim() === '') {
-      setMessage('❌ Salary harus angka ≥ 0.');
-      setTimeout(() => setMessage(null), 3000);
-      return;
-    }
-    const { error } = await updateTarget(id, { salary: value });
-    if (error) {
-      setMessage(`❌ Error: ${error.message}`);
-    } else {
-      setItems(prev => prev.map(r => (r.id === id ? { ...r, salary: value } : r)));
-      setMessage('✅ Salary disimpan.');
-      setEditingSalaryId(null);
-    }
-    setTimeout(() => setMessage(null), 3000);
-  }
 
   // Edit benefit rate inline (owner/finance only)
   async function handleSaveBenefit(id: number) {
@@ -537,21 +499,7 @@ export function TargetJahitPage() {
                         <td className={cn(T_TD, 'text-center')} onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={selected} onChange={() => handleToggleRow(Number(row.id))} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 align-middle" /></td>
                         {visibleColumns.map((c) => (
                           <td key={c.key} className={cn(T_TD, c.align === 'right' ? 'text-right tabular-nums text-gray-700' : 'text-gray-700')}>
-                            {c.key === 'salary' && canSeeDebt ? (
-                              editingSalaryId === Number(row.id) ? (
-                                <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-                                  <input type="number" min={0} value={salaryDraft} onChange={(e) => setSalaryDraft(e.target.value)} autoFocus
-                                    onKeyDown={(e) => { if (e.key === 'Enter') void handleSaveSalary(Number(row.id)); if (e.key === 'Escape') setEditingSalaryId(null); }}
-                                    className="h-7 w-24 px-2 text-[11px] text-right border border-blue-300 rounded-md outline-none focus:ring-2 focus:ring-blue-100" />
-                                  <button onClick={() => void handleSaveSalary(Number(row.id))} className="h-7 px-2 text-[10px] font-semibold bg-blue-600 text-white rounded-md hover:bg-blue-700">Simpan</button>
-                                  <button onClick={() => setEditingSalaryId(null)} className="h-7 px-2 text-[10px] text-slate-500 border border-gray-200 rounded-md hover:bg-gray-50">✕</button>
-                                </div>
-                              ) : (
-                                <button onClick={(e) => { e.stopPropagation(); setEditingSalaryId(Number(row.id)); setSalaryDraft(String(row.salary ?? 0)); }} className="underline decoration-dotted decoration-slate-300 underline-offset-2 hover:text-blue-600 cursor-text" title="Klik untuk edit salary">
-                                  {formatCurrency(row.salary as number)}
-                                </button>
-                              )
-                            ) : c.key === 'benefitRate' && canSeeDebt ? (
+                            {c.key === 'benefitRate' && canSeeDebt ? (
                               editingBenefitId === Number(row.id) ? (
                                 <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
                                   <input type="number" min={0} value={benefitDraft} onChange={(e) => setBenefitDraft(e.target.value)} autoFocus
@@ -627,6 +575,7 @@ export function TargetJahitPage() {
                     <th className={cn(T_TH, 'text-right')}>Qty Jahit</th>
                     <th className={cn(T_TH, 'text-right')}>Total Belum Jahit</th>
                     <th className={cn(T_TH, 'text-right')}>Tarif Jahit + Obras</th>
+                    <th className={cn(T_TH, 'text-right')}>Nilai Rupiah</th>
                   </tr></thead>
                   <tbody>
                     {visibleBacklogGroups.map((g, gi) => {
@@ -647,10 +596,11 @@ export function TargetJahitPage() {
                             <td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>{g.totalQtyJahit}</td>
                             <td className={cn(T_TD, 'text-right tabular-nums font-semibold text-rose-600')}>{g.totalBelumJahit}</td>
                             <td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>{formatRate(g.rate)}</td>
+                            <td className={cn(T_TD, 'text-right tabular-nums font-medium text-gray-900')}>{formatValue(g.nilaiBacklog)}</td>
                           </tr>
                           {expanded && (
                             <tr className="bg-slate-50 border-b border-[#E5E7EB]">
-                              <td colSpan={7} className="px-4 py-3">
+                              <td colSpan={8} className="px-4 py-3">
                                 <table className={cn(T_TABLE, 'w-auto min-w-full whitespace-nowrap')}>
                                   <thead><tr>
                                     <th className={cn(T_TH, 'text-left')}>Work Code</th>
@@ -661,6 +611,7 @@ export function TargetJahitPage() {
                                     <th className={cn(T_TH, 'text-right')}>Qty Jahit</th>
                                     <th className={cn(T_TH, 'text-right')}>Total Belum Jahit</th>
                                     <th className={cn(T_TH, 'text-right')}>Tarif Jahit + Obras</th>
+                                    <th className={cn(T_TH, 'text-right')}>Nilai Rupiah</th>
                                   </tr></thead>
                                   <tbody>
                                     {g.workOrders.map((w, wi) => (
@@ -673,6 +624,7 @@ export function TargetJahitPage() {
                                         <td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>{w.qtyJahit}</td>
                                         <td className={cn(T_TD, 'text-right tabular-nums font-semibold text-rose-600')}>{w.totalBelumJahit}</td>
                                         <td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>{formatRateValue(w.rate)}</td>
+                                        <td className={cn(T_TD, 'text-right tabular-nums font-medium text-gray-900')}>{formatRateValue(w.nilaiBacklog)}</td>
                                       </tr>
                                     ))}
                                   </tbody>
@@ -695,9 +647,7 @@ export function TargetJahitPage() {
 
         {tab === 'utang-staf' && (
           <>
-            {debtLoading ? (
-              <p className="text-slate-400 text-sm">Menghitung utang staf...</p>
-            ) : visibleDebtRows.length === 0 ? (
+            {visibleDebtRows.length === 0 ? (
               <p className="text-slate-400 text-sm">
                 {debtRows.length === 0 ? 'Belum ada data utang staf.' : '🎉 Tidak ada staf dengan kekurangan target akumulasi dan utang jahit.'}
               </p>
@@ -706,16 +656,16 @@ export function TargetJahitPage() {
                 <table className={cn(T_TABLE, 'w-auto min-w-full whitespace-nowrap')}>
                   <thead><tr className={T_HEAD_ROW}>
                     <th className={cn(T_TH, 'text-left')}>Nama</th>
-                    <th className={cn(T_TH, 'text-right')}>Total Gaji</th>
-                    <th className={cn(T_TH, 'text-right')}>Total Nilai PCS</th>
+                    <th className={cn(T_TH, 'text-right')}>Total Target Cost</th>
+                    <th className={cn(T_TH, 'text-right')}>Total Realisasi Cost</th>
                     <th className={cn(T_TH, 'text-right')}>Utang</th>
                   </tr></thead>
                   <tbody>
                     {visibleDebtRows.map((r, i) => (
                       <tr key={r.nama} className={rowClass(i)}>
                         <td className={cn(T_TD, 'font-medium text-gray-900')}>{r.nama}</td>
-                        <td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>{formatCurrency(r.totalGaji)}</td>
-                        <td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>{formatCurrency(r.totalNilai)}</td>
+                        <td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>{formatCurrency(r.totalTargetCost)}</td>
+                        <td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>{formatCurrency(r.totalRealisasiCost)}</td>
                         <td className={cn(T_TD, 'text-right tabular-nums font-semibold text-rose-600')}>{formatCurrency(r.utang)}</td>
                       </tr>
                     ))}
@@ -724,7 +674,7 @@ export function TargetJahitPage() {
               </div>
             )}
             <p className="text-[11px] text-slate-400 mt-3">
-              Utang = Total Gaji − Total Nilai PCS (hasil kerja berharga). Ditampilkan bila Selisih Akumulasi bulan terbaru masih negatif dan nominal utang lebih dari Rp0.
+              Utang = Total Target Cost − Total Realisasi Cost (kumulatif, tanpa potongan complain). Sumber harganya sama dengan Sisa Uang. Ditampilkan bila Selisih Cost Akumulasi bulan terbaru masih negatif dan nominal utang lebih dari Rp0.
             </p>
           </>
         )}
@@ -784,11 +734,11 @@ export function TargetJahitPage() {
         const myDetails = details.filter((d) => d.targetJahitId === overlayId);
         const enrichedD = enrichDetails(myDetails, sewing, src.nama, src.bulan_tahun, workOrderDesign);
         const progressPct = src.progressMonthly * 100;
-        // Sisa Uang bersifat bulanan dan hanya untuk owner/finance (role gating
-        // dilakukan di render, bukan sekadar disembunyikan).
-        const remainingMoney = canSeeDebt
-          ? calculateMonthlyRemainingMoney(src.salary, src.realisasiCostPosisi)
-          : null;
+        // Sisa Uang kini tampil untuk SEMUA role (konsisten dengan kolom tabel).
+        const remainingMoney = calculateMonthlyRemainingMoney(
+          src.target_cost_posisi,
+          src.realisasiCostPosisi,
+        );
         return (
           <div className="fixed inset-0 z-[100] bg-slate-900/40 backdrop-blur-[2px] flex items-center justify-center p-4" onClick={() => setOverlayId(null)}>
             <div
@@ -809,9 +759,7 @@ export function TargetJahitPage() {
 
               <div className="flex-1 overflow-y-auto px-6 py-5">
                 {/* Stat cards */}
-                <div className={cn('grid gap-3 mb-5', canSeeDebt
-                  ? 'grid-cols-2 md:grid-cols-3 lg:grid-cols-5'
-                  : 'grid-cols-2 md:grid-cols-4')}>
+                <div className={cn('grid gap-3 mb-5', 'grid-cols-2 md:grid-cols-3 lg:grid-cols-5')}>
                   <div className="rounded-xl border border-gray-200 p-3">
                     <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">Target Bulanan</p>
                     <p className="text-[15px] font-semibold text-slate-800 mt-0.5 tabular-nums">{src.target_monthly} pcs</p>
@@ -830,12 +778,10 @@ export function TargetJahitPage() {
                       <span className={cn('inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap', src.statusFinal === 'Tercapai' ? 'bg-emerald-100 text-emerald-700' : src.statusFinal === 'Tidak Tercapai' ? 'bg-rose-100 text-rose-700' : 'bg-blue-100 text-blue-700')}>{src.statusFinal}</span>
                     </p>
                   </div>
-                  {remainingMoney != null && (
-                    <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3">
-                      <p className="text-[10px] text-amber-700 font-semibold uppercase tracking-wider">Sisa Uang yang Harus Dikejar</p>
-                      <p className="text-[15px] font-semibold text-amber-800 mt-0.5 tabular-nums">{formatCurrency(remainingMoney)}</p>
-                    </div>
-                  )}
+                  <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3">
+                    <p className="text-[10px] text-amber-700 font-semibold uppercase tracking-wider">Sisa Uang yang Harus Dikejar</p>
+                    <p className="text-[15px] font-semibold text-amber-800 mt-0.5 tabular-nums">{formatCurrency(remainingMoney)}</p>
+                  </div>
                 </div>
 
                 {/* Progress bar */}

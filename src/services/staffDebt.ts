@@ -74,94 +74,12 @@ function round0(n: number): number {
   return Math.round(n)
 }
 
-export interface DebtSummary {
-  totalGaji: number
-  totalNilai: number
-  utang: number
-  status: 'Utang' | 'Tidak Utang'
-}
-
-/**
- * Compute a staff member's debt for the month: salary earned minus nil out
- * from sewing records priced by the product they worked on.
- */
-export async function computeDebt(staffName: string): Promise<DebtSummary> {
-  // Salary from target_jahit rows for this staff.
-  const { data: targetRows } = await supabase
-    .from('target_jahit')
-    .select('salary')
-    .eq('nama', staffName)
-  const totalGaji = (targetRows ?? []).reduce(
-    (sum, r) => sum + (r.salary as number),
-    0,
-  )
-
-  const priceMap = await buildPriceMap()
-
-  // All sewing records linked to this staff.
-  const { data: sewingRows } = await supabase
-    .from('sewing_records')
-    .select('work_order_id, qty_selesai')
-    .eq('pic_penjahit', staffName)
-  const records = (sewingRows ?? []) as Record<string, unknown>[]
-  if (records.length === 0) {
-    const utang = round0(totalGaji)
-    return {
-      totalGaji,
-      totalNilai: 0,
-      utang,
-      status: utang > 0 ? 'Utang' : 'Tidak Utang',
-    }
-  }
-
-  // Resolve product per work order.
-  const workOrderIds = records.map((r) => r.work_order_id as string)
-  const { data: workRows } = await supabase
-    .from('work_orders')
-    .select('id, product')
-    .in('id', workOrderIds)
-  const workProduct = new Map<string, string>()
-  if (workRows) {
-    for (const w of workRows) {
-      workProduct.set(w.id as string, w.product as string)
-    }
-  }
-
-  let totalNilai = 0
-  for (const r of records) {
-    const product = workProduct.get(r.work_order_id as string)
-    if (!product) continue
-    const price = priceMap[product]
-    if (!price) continue
-    const qty = r.qty_selesai as number
-    totalNilai += qty * (price.jahit + price.obras)
-  }
-
-  // Nilai bersih = total nilai pcs − potongan valid. A valid potongan is a
-  // complain_penalti row for this staff whose posisi is jahit/obras (the only
-  // positions that owned this penjahit's output). Potongan finishing/kancing
-  // do not affect penjahit.
-  let potongan = 0
-  const { data: complainRows } = await supabase
-    .from('complain_penalti')
-    .select('potongan_per_pcs, pcs')
-    .eq('pic', staffName)
-    .in('posisi', ['jahit', 'obras'])
-  for (const c of (complainRows ?? []) as Record<string, unknown>[]) {
-    const rate = c.potongan_per_pcs as number
-    const count = c.pcs as number
-    potongan += rate * count
-  }
-  const nilaiBersih = totalNilai - potongan
-
-  const utang = round0(totalGaji - nilaiBersih)
-  return {
-    totalGaji,
-    totalNilai: nilaiBersih,
-    utang,
-    status: utang > 0 ? 'Utang' : 'Tidak Utang',
-  }
-}
+// Catatan: `computeDebt()` dihapus. Ia membaca `target_jahit.realisasi_cost_posisi`
+// (kolom yang tidak pernah ditulis, selalu 0) dan `salary` (sudah dihapus
+// migration 2026-09-04). Utang kini dihitung murni di
+// `computeDebtFromRows()` (`src/lib/staffDebtEligibility.ts`) dari baris Target
+// yang sudah di-enrich, dengan sumber harga identik seperti Sisa Uang dan tanpa
+// potongan complain.
 
 export interface GenerateTargetsResult {
   created: number

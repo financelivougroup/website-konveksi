@@ -7,7 +7,6 @@ export interface TargetJahitRow {
   bulan_tahun: string
   nama: string
   posisi: string | null
-  salary: number
   total_hari_kerja: number
   hari_kerja_hari_ini: number
   sisa_hari: number
