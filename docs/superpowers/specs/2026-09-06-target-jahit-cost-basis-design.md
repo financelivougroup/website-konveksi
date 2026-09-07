@@ -39,7 +39,7 @@ Kekurangan nilai (utang) tidak ditanggung sistem. Penjahit menutupnya sendiri de
 4. **Utang Staf hanya kumulatif**, tanpa varian per bulan.
 5. **Sisa Uang tampil untuk semua role.**
 6. **Generate ke bulan yang sama tidak membuat baris baru** dan tidak mengubah `target_cost_posisi`.
-7. **Nilai Rupiah pada Belum Jahit** = `Total Belum Jahit × (tarif jahit + tarif obras)`.
+7. **Nilai Rupiah pada Belum Jahit** = `Total Belum Jahit × (tarif jahit + tarif obras)`. Ringkasan per grup **dijumlahkan** (bukan "Bervariasi" seperti tarif) — lihat bagian 5.
 8. **Kolom pcs-akumulasi diganti**, bukan ditambahkan berdampingan (Opsi 1).
 9. Realisasi biaya per desain memakai `harga_jahit + harga_obras` pada `target_jahit_detail`, dengan fallback price map bila kosong.
 10. Fitur tetap baca-saja.
@@ -159,7 +159,11 @@ Ini sekaligus membuat Sisa Uang dan Utang Staf **benar-benar satu sumber harga**
 nilaiBacklog = totalBelumJahit × (tarif jahit + tarif obras)
 ```
 
-Tarif per Work Order sudah ada pada `WorkOrderBacklog.rate`. Ringkasan grup memakai aturan yang sama dengan tarif: nilai tunggal bila seragam, `Bervariasi` bila berbeda atau sebagian hilang, `—` bila tidak ada tarif.
+Tarif per Work Order sudah ada pada `WorkOrderBacklog.rate`.
+
+**Ringkasan grup dijumlahkan, tidak mengikuti aturan tarif.** Ini menyimpang dari rancangan awal (yang menyamakan ringkasan nilai dengan ringkasan tarif) atas keputusan user. Alasannya: alur utama kolom ini adalah penjahit yang melihat Belum Jahit untuk menghitung "kalau aku jahit grup ini, cukup nggak menutup kekurangan targetku?" — pertanyaan itu hanya bisa dijawab oleh satu angka total, sehingga `Bervariasi` membuat kolomnya tidak dapat dipakai. Tarif adalah harga satuan (wajar diringkas `Bervariasi` bila berbeda), sedangkan Nilai Rupiah adalah total uang, yang wajar diakumulasikan — seperti halnya Total Belum Jahit.
+
+Konsekuensinya, `Bervariasi` pada kolom Nilai Rupiah **tidak lagi berarti "tarifnya beda-beda"**, melainkan **"sebagian Work Order belum punya tarif"** (data Register PO belum lengkap). Karena itu ia tetap berguna: sebagai peringatan bahwa total yang ditampilkan belum tentu penuh. `—` muncul bila tidak ada satu pun Work Order bertarif.
 
 Karena tarif bisa `null`, `WorkOrderBacklog` perlu field `nilaiBacklog: number | null` — bukan `0`, agar `—` tidak berubah menjadi "Rp0" yang seolah-olah berarti "tidak bernilai".
 
