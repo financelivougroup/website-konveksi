@@ -1,0 +1,21 @@
+{
+  "name": "konveksi-r2-signer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Cloudflare Worker: memverifikasi sesi Supabase lalu menandatangani unggah/hapus objek di Cloudflare R2.",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "aws4fetch": "^1.0.20",
+    "jose": "^6.2.4"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250109.0",
+    "typescript": "^5.6.0",
+    "wrangler": "^3.99.0"
+  }
+}

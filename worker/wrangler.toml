@@ -1,0 +1,22 @@
+name = "konveksi-r2-signer"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+
+# Worker ini adalah satu-satunya penjaga pintu penyimpanan lampiran:
+# ia memverifikasi sesi Supabase, lalu menandatangani unggah/hapus objek R2.
+# R2 tidak punya RLS, jadi TIDAK ada lapisan kedua di belakangnya.
+
+[vars]
+R2_BUCKET = "konveksi-attachments"
+SIGN_EXPIRY_SECONDS = "900"
+SUPABASE_URL = "https://ihmhxacmvvsqtnylnwrs.supabase.co"
+# Origin aplikasi yang diizinkan memanggil Worker, dipisah koma.
+# Tambahkan origin produksi saat sudah ada.
+ALLOWED_ORIGINS = "http://localhost:3000"
+
+# Rahasia — JANGAN ditulis di berkas ini. Pasang dengan:
+#   npx wrangler secret put R2_ACCOUNT_ID
+#   npx wrangler secret put R2_ACCESS_KEY_ID
+#   npx wrangler secret put R2_SECRET_ACCESS_KEY
+#
+# Untuk `wrangler dev` lokal, taruh nilainya di worker/.dev.vars (gitignored).
