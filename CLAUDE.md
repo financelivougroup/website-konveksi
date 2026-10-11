@@ -20,7 +20,7 @@ This project is a **Production Monitoring Dashboard** for a garment manufacturin
 
 ## Architecture Rules
 
-- **Follow the existing architecture** — the project has a clear pattern: pages in `src/pages/`, reusable layout components in `src/components/Layout/`, modals in `src/components/Modals/`, shadcn/ui primitives in `src/components/ui/`, types in `src/types/`, static view configuration and fixtures in `src/data/`, and Supabase data access in `src/services/`.
+- **Follow the existing architecture** — mirror the pattern of whichever sibling module already does the same kind of thing; don't introduce a parallel structure.
 - **Reuse existing components** — check `src/components/` before creating anything new. The project has 50+ shadcn/ui components, modals (FilterModal, SortModal, etc.), a DataTable, Sidebar, TopBar, Toolbar, etc.
 - **Keep modals inline or use ModalShell** — modal patterns should match existing ones in `src/components/Modals/ModalShell.tsx`.
 - **Use the existing type system** — types are in `src/types/index.ts` (view config, filters, etc.) and `src/types/pipeline.ts` (production pipeline types).
@@ -50,11 +50,11 @@ This project is a **Production Monitoring Dashboard** for a garment manufacturin
 - Treat this product primarily as a **SaaS operations dashboard**, not as a marketing landing-page project. Prioritize information hierarchy, operational clarity, compact data presentation, predictable interactions, and consistency with the existing dashboard.
 - Do not invoke or apply skills, rules, or styling guidance made specifically for landing pages or marketing sites when designing dashboard screens. Only use landing-page-specific guidance when the user explicitly asks to work on a marketing or landing page.
 
-## Session Memory — supermemory (LOCAL)
+## Session Memory — supermemory SUDAH DIHAPUS (2026-09-07)
 
-- Session memory uses **supermemory** (supermemoryai/supermemory) in **LOCAL / self-hosted mode only** (`http://localhost:6767`). The cloud version (mcp.supermemory.ai / paid) must NEVER be used.
-- The model provider is **Gemini** via a Google AI Studio API key (https://aistudio.google.com/), configured through the local base URL + API key.
-- If memory/MCP tools are missing or unresponsive, check the local server (`supermemory-server`) before assuming anything; never redirect memory to a cloud endpoint.
+- **supermemory telah di-uninstall seluruhnya atas permintaan user**: plugin `supermemory@supermemory-plugins`, marketplace-nya, dua env (`SUPERMEMORY_CC_API_KEY`, `SUPERMEMORY_API_URL`), dan folder data `.supermemory/` (263 MB) semuanya sudah dihapus.
+- **Jangan pasang kembali tanpa diminta.** Bila sesi lain masih melihat perangkat memori supermemory, itu sisa proses lama — bukan tanda harus dipasang ulang.
+- Catatan lama di bawah ini ("cloud version must NEVER be used") sudah tidak berlaku karena tidak ada lagi supermemory di proyek ini. Bila kelak dipasang lagi, aturan **LOCAL / self-hosted saja** (`http://localhost:6767`) dan larangan memakai `mcp.supermemory.ai` berlaku kembali.
 
 ## Agent skills
 
@@ -68,14 +68,9 @@ This repository uses a single-context domain documentation layout. See `docs/age
 
 ### Default feature-delivery workflow
 
-When the user invokes `/grill-with-docs`, treat it as authorization to continue the same feature through the complete delivery sequence:
-
-1. Finish `/grill-with-docs`, including both its grilling and domain-modeling stages.
-2. Invoke `/to-spec` using the decisions and domain documentation produced by the grilling stage.
-3. After the spec is published, invoke `/to-tickets` (plural) against that spec.
-4. After the approved tickets are published, invoke `/implement` and work the unblocked ticket frontier until the scoped feature is complete.
-
-Do not stop merely to ask whether to invoke the next skill in this sequence. Preserve and pass forward the same feature scope, decisions, glossary terms, ADRs, spec reference, and ticket references. Still honor every required checkpoint inside each skill, including test-seam confirmation in `/to-spec`, ticket-breakdown approval in `/to-tickets`, and any permission or product decision that genuinely requires the user. If a stage is blocked, ambiguous, fails verification, or would expand the approved scope, stop at that point, explain the blocker, and wait for the user instead of guessing or silently skipping a stage.
+Invoking `/grill-with-docs` authorizes continuing that feature through the whole
+delivery sequence — grill → spec → tickets → implement. Invoke the
+`feature-delivery` skill for the sequence and its checkpoints.
 
 ## At the End of Every Completed Task
 

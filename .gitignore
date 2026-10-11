@@ -37,3 +37,21 @@ public/test-supabase.html
 
 # Claude Code worktrees
 .claude/worktrees/
+
+# Agent/editor tooling & scratch (bukan bagian aplikasi)
+# Catatan: .claude/skills/feature-delivery SENGAJA ikut karena dirujuk CLAUDE.md.
+.claude/skills/reui/
+.claude/settings.local.json
+.cursor/
+.opencode/
+.agents/
+.scratch/
+
+# Supabase CLI local cache
+supabase/.temp/
+
+# Skrip patch sekali-pakai
+patch2.mjs
+
+# Konfigurasi editor agent lain
+opencode.json

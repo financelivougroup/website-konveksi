@@ -10,6 +10,10 @@
     "supabase": {
       "type": "http",
       "url": "https://mcp.supabase.com/mcp?project_ref=ihmhxacmvvsqtnylnwrs&features=database"
+    },
+    "reui": {
+      "type": "http",
+      "url": "https://mcp.reui.io/api/mcp"
     }
   }
 }
