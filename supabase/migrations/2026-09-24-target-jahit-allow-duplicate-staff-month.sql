@@ -1,0 +1,44 @@
+-- 2026-09-24 — Generate Target Jahit mengikuti checkbox: satu penjahit boleh
+-- punya lebih dari satu baris target di bulan yang sama.
+--
+-- ⚠️ SUDAH DIBATALKAN OLEH USER PADA HARI YANG SAMA.
+--    Migrasi ini hanya catatan sejarah; JANGAN dijadikan rujukan aturan berlaku.
+--    User mengoreksi arah: "sorry buat target jahit. harusnya ga kebuat row baru.
+--    tapi jumlah targetnya aja yg nambah". Aturan yang berlaku sekarang ada di
+--    supabase/migrations/2026-09-24-target-jahit-merge-and-restore-unique.sql,
+--    yang menggabungkan duplikat dan MEMASANG KEMBALI index yang dilepas di sini.
+--
+--    Berkas ini sengaja tidak dihapus supaya riwayat keputusannya tetap terbaca.
+--
+-- Permintaan user saat itu (verbatim):
+--   "oke next buat planning produksi harusnya cara generatenya itu dengan cara:
+--    klik checkboxnya baru generate. jadi meskipun di bulan yg sama dan nama
+--    penjahitnya sama, ga masalah"
+--
+-- Sebelumnya Generate Target memproses SELURUH baris approved di satu bulan, dan
+-- `generateTargetsFromPlanning` (src/services/staffDebt.ts) melewati penjahit yang
+-- sudah punya baris target di bulan itu ("if (existing) continue"). Aturan itu
+-- ditegakkan dua kali: di aplikasi DAN di database, lewat unique index
+--
+--   idx_target_jahit_unique ON public.target_jahit ("bulanTahun", nama)
+--
+-- Karena user secara eksplisit menyatakan penjahit+bulan yang sama BOLEH muncul
+-- lagi, index itulah yang harus dilepas — bukan hanya pemeriksaan di aplikasi.
+-- Kalau index dibiarkan, insert baris kedua akan gagal dengan 23505 dan generate
+-- akan tampak "tidak jalan" tanpa sebab yang jelas di UI.
+--
+-- Aman: `target_jahit` hanya punya PRIMARY KEY (id) — sudah diperiksa lewat
+-- pg_constraint sebelum migrasi ini. Index ini tidak menopang constraint apa pun,
+-- tidak direferensikan fungsi/prosedur mana pun (diperiksa lewat pg_proc.prosrc),
+-- dan tidak ada `onConflict`/upsert di kode yang bergantung padanya.
+--
+-- Index terpisah (bulanTahun) dan (nama) TETAP ADA, jadi pencarian per penjahit
+-- (dipakai computeDebt) dan per bulan tidak kehilangan jalur index.
+DROP INDEX IF EXISTS public.idx_target_jahit_unique;
+
+-- KONSEKUENSI YANG PERLU DIKETAHUI (bukan bug, tapi efek samping yang disengaja):
+-- computeDebt() menjumlahkan target_cost_posisi SELURUH baris bernama sama tanpa
+-- memandang bulan, dan enrichTargetRows() mengakumulasi target_monthly per orang.
+-- Jadi bila satu penjahit punya dua baris target di bulan yang sama, "Utang Staf"
+-- dan "Akumulasi" akan menjumlahkan keduanya. Ini konsekuensi langsung dari
+-- keputusan "buat baris target baru" yang dipilih user.
