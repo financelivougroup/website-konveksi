@@ -1,10 +1,13 @@
 import type { SewingRecord } from '@/types/pipeline';
 import type { TargetJahitRow } from '@/services/targetJahit';
 import type { TargetJahitDetailRow } from '@/services/targetJahitDetail';
-import { productionCodePriceKey, type PriceMap } from '@/services/staffDebt';
+import type { PriceMap } from '@/services/staffDebt';
+import { calculateDesignBenefits, effectiveDetailRate } from '@/lib/targetBenefit';
 import { getNationalHolidaysInMonth } from '@/data/nationalHolidays';
+import { emptySalaryLookup, type SalaryLookup } from '@/lib/staffSalary';
 import {
   calculateDetailRealizations,
+  type DetailRealization,
   type WorkOrderDesignIdentity,
 } from '@/lib/targetDetailIdentity';
 
@@ -114,9 +117,17 @@ export interface EnrichedTargetRow extends TargetJahitRow {
   progressAccum: number; // 0..1
   statusFinal: string;
   statusFinalAkumulasi: string;
-  benefitRate: number;        // normalized from benefit_per_pcs
-  extraProduction: number;    // computed: max(0, realisasi - target)
-  benefitAmount: number;      // computed: extra × rate
+  /** Jumlah kelebihan per desain (hanya desain yang melebihi targetnya). */
+  extraProduction: number;
+  /** Total benefit bulanan = Σ (extra desain × tarif desain). */
+  benefitAmount: number;
+  /**
+   * GAJI bulan itu, dibaca dari `expense_entries` (MANPOWER › SALARY).
+   *
+   * `null` berarti gajinya BELUM DIINPUT — dibedakan dari 0 supaya halaman bisa
+   * menampilkan "—" dan badge, bukan "Rp 0" yang terbaca seolah gajinya nol.
+   */
+  salaryAmount: number | null;
 }
 
 function monthlyRealisasi(sewing: SewingRecord[], person: string, ym: string): number {
@@ -136,7 +147,7 @@ export function enrichDetails(
   person: string,
   ym: string,
   workOrderDesign: Map<string, WorkOrderDesignIdentity>,
-): { qtyRealisasi: number; nilai: number }[] {
+): DetailRealization[] {
   return calculateDetailRealizations(
     details,
     sewing,
@@ -150,6 +161,11 @@ export function enrichDetails(
  * Enrich all rows of ONE person at a time is handled internally: this function
  * processes every row, computing accumulation across that person's months
  * (rows sorted by bulan_tahun ascending for accumulation ordering).
+ *
+ * `salaries` adalah pencarian gaji per (nama, bulan). Parameter ini OPSIONAL
+ * supaya pemanggil lama (dan tes) tetap bisa memanggil tanpa data gaji — nilai
+ * default-nya adalah pencarian kosong, yang berarti setiap baris tampil sebagai
+ * "belum diinput", bukan error.
  */
 export function enrichTargetRows(
   rows: TargetJahitRow[],
@@ -159,6 +175,7 @@ export function enrichTargetRows(
   details: TargetJahitDetailRow[],
   holidays: string[],
   today: Date,
+  salaries: SalaryLookup = emptySalaryLookup(),
 ): EnrichedTargetRow[] {
   const sorted = [...rows].sort((a, b) => String(a.bulan_tahun ?? '').localeCompare(String(b.bulan_tahun ?? '')));
   const accumByPerson = new Map<string, { target: number; realisasi: number }>();
@@ -206,15 +223,13 @@ export function enrichTargetRows(
     const progressMonthly = targetMonthly > 0 ? realisasiMonthly / targetMonthly : 0;
     const targetNgebutHari = sisaHari > 0 ? Math.ceil(sisaTargetMonthly / sisaHari) : 0;
 
-    // Realization cost: prefer detail prices, fall back to price map.
+    // Realization cost & benefit share one rate per design (`effectiveDetailRate`),
+    // so the money shown for a design never disagrees between the two.
     const myDetails = details.filter((d) => d.targetJahitId === row.id);
     const enrichedDetails = enrichDetails(myDetails, sewing, person, ym, workOrderDesign);
     let realisasiCostPosisi = 0;
     enrichedDetails.forEach((e, i) => {
-      const d = myDetails[i];
-      const fallbackPrice = prices[productionCodePriceKey(d.productNote)];
-      const price = (d.hargaJahit || 0) + (d.hargaObras || 0) || (fallbackPrice ? fallbackPrice.jahit + fallbackPrice.obras : 0);
-      realisasiCostPosisi += e.qtyRealisasi * price;
+      realisasiCostPosisi += e.qtyRealisasi * effectiveDetailRate(myDetails[i], prices);
     });
 
     const isCurrent = monthIsCurrent(ym, today);
@@ -234,13 +249,33 @@ export function enrichTargetRows(
     // 'Ngebut' for the accumulation only makes sense in the current month.
     const targetNgebutHariAkumulasi = isCurrent && sisaHari > 0 ? Math.ceil(Math.max(0, targetAccum - realisasiAccum) / sisaHari) : 0;
 
-    // Benefit calculation: per-piece bonus for production above monthly target
-    const benefitRate = Number(row.benefit_per_pcs) || 0;
-    const extraProduction = Math.max(0, realisasiMonthly - targetMonthly);
-    const benefitAmount = extraProduction * benefitRate;
+    // Benefit is per design, not per month: rates differ by production code, so
+    // each design's surplus is multiplied by its own rate. `extraProduction` is
+    // the summed surplus across designs that actually beat their own target.
+    const designBenefits = calculateDesignBenefits(
+      myDetails,
+      enrichedDetails.map((e) => e.qtyRealisasi),
+      prices,
+    );
+    const extraProduction = designBenefits.reduce((sum, b) => sum + b.extraProduction, 0);
+    const benefitAmount = designBenefits.reduce((sum, b) => sum + b.benefitAmount, 0);
+
+    // GAJI bulan ini = `Target Cost / Posisi`. Dibaca dari expense_entries,
+    // bukan dari kolom `target_cost_posisi` (kolom itu tidak lagi ditulis).
+    //
+    // Inilah SATU-SATUNYA titik suntiknya: seluruh pembaca hilir — tabel Target
+    // Jahit, Laporan, kedua chart biaya, dan Sisa Uang — membaca
+    // `target_cost_posisi` dari baris HASIL fungsi ini, jadi menimpanya di sini
+    // sudah cukup. Yang perlu diubah terpisah hanya `computeDebt` dan
+    // `generateTargetsFromPlanning`, karena keduanya menyentuh DB langsung.
+    const salaryAmount = salaries.amountFor(person, ym) ?? null;
 
     return {
       ...row,
+      // Ditimpa dengan gaji; `null` (belum diinput) menjadi 0 supaya seluruh
+      // perhitungan uang di hilir tetap menerima angka, bukan null.
+      target_cost_posisi: salaryAmount ?? 0,
+      salaryAmount,
       totalHariKerja,
       hariKerjaHariIni,
       sisaHari,
@@ -257,7 +292,6 @@ export function enrichTargetRows(
       progressAccum,
       statusFinal,
       statusFinalAkumulasi,
-      benefitRate,
       extraProduction,
       benefitAmount,
     };

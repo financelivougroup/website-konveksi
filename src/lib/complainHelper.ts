@@ -1,4 +1,11 @@
 import { supabase } from '@/lib/supabase';
+import {
+  buildClientVariants,
+  buildComplainOptions,
+  type ClientVariant,
+  type ComplainOptionRow,
+  type ComplainProductionOption,
+} from './complainCascade.ts';
 
 export const TINGKAT_OPTIONS = [
   { key: 'ringan', label: 'Ringan', poin: 1 },
@@ -22,44 +29,65 @@ export const POTONGAN_POSISI_KEY: Record<string, string> = {
   kancing: 'jasa_pasang_kancing',
 };
 
-export interface ComplainOption {
-  product: string;
-  warna: string;
-  workCode: string;
-  sourceOrderId: string | null;
-}
-
-export async function fetchComplainOptions(): Promise<ComplainOption[]> {
+/**
+ * Pasangan kode produksi dari `work_orders` — **mentah, satu query**.
+ *
+ * Sengaja mengembalikan barisnya apa adanya, bukan salah satu bentuk turunan,
+ * karena dua halaman membutuhkannya dalam bentuk berbeda dan keduanya harus
+ * melihat data yang sama persis:
+ *
+ * - **Complain & Penalti** memakai `buildComplainOptions` (per produk+warna+kode;
+ *   size sengaja dibuang karena kolomnya tidak menyimpan size).
+ * - **Planning Produksi** memakai `buildClientVariants` (warna **dan** size
+ *   dipertahankan, untuk dropdown Warna/Size yang mengikuti kode client).
+ *
+ * Dua fungsi query terpisah akan menggandakan request yang sama dan membuka
+ * peluang keduanya berbeda; satu query + dua pembentuk lebih aman. `size` ikut
+ * di-select justru karena Planning membutuhkannya.
+ *
+ * `work_code` tidak diambil: sejak 2026-09-22 form memisahkan Kode Produksi
+ * Konveksi (`product_note`) dari Kode Produksi Client (`client_production_code`),
+ * sama seperti halaman produksi lain.
+ */
+export async function fetchProductionCodeRows(): Promise<ComplainOptionRow[]> {
   const { data, error } = await supabase
     .from('work_orders')
-    .select('product, warna, work_code, source_order_id');
+    .select('product, warna, size, client_production_code, product_note, source_order_id');
 
   if (error || !data || data.length === 0) {
     return [];
   }
 
-  const seen = new Set<string>();
-  const options: ComplainOption[] = [];
-
-  for (const row of data) {
-    const product = row.product ?? '';
-    const warna = row.warna ?? '';
-    const workCode = row.work_code ?? '';
-    const key = `${product}|${warna ?? ''}|${workCode}`;
-
-    if (seen.has(key)) continue;
-    seen.add(key);
-
-    options.push({
-      product,
-      warna,
-      workCode,
-      sourceOrderId: row.source_order_id ?? null,
-    });
-  }
-
-  return options;
+  return data as ComplainOptionRow[];
 }
+
+/** Opsi cascade Complain — per produk + warna + kode client. */
+export async function fetchProductionCodeOptions(): Promise<ComplainProductionOption[]> {
+  return buildComplainOptions(await fetchProductionCodeRows());
+}
+
+/**
+ * **Kedua** bentuk turunan sekaligus, dari satu query.
+ *
+ * Dipakai Planning Produksi, yang butuh keduanya untuk halaman yang sama:
+ * `options` mengisi dropdown Kode Produksi Client (lewat `clientCodeChoices`),
+ * `variants` mengisi dropdown Warna/Size. Memanggil dua loader terpisah akan
+ * menembak `work_orders` dua kali dan membuka peluang keduanya melihat snapshot
+ * berbeda di tengah pemuatan.
+ */
+export async function fetchProductionCodeData(): Promise<{
+  options: ComplainProductionOption[];
+  variants: ClientVariant[];
+}> {
+  const rows = await fetchProductionCodeRows();
+  return {
+    options: buildComplainOptions(rows),
+    variants: buildClientVariants(rows),
+  };
+}
+
+/** Nama yang dipakai halaman Complain & Penalti untuk query yang sama. */
+export const fetchComplainOptions = fetchProductionCodeOptions;
 
 export async function suggestPotongan(
   sourceOrderId: string | null,

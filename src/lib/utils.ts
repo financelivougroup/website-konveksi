@@ -63,10 +63,17 @@ function toNum(value: unknown): number {
  *   IF ISNULL([Total Cutting]) -> ""
  *   ELSE IF (Quantity = Total Selesai Jahit) AND (Total Selesai Jahit = Total Cutting) -> "LENGKAP"
  *   ELSE -> "ON PROGRESS"
+ *
+ * **`quantity > 0` adalah penjaga wajib** sejak input qty manual dihapus dari
+ * Order Entry: order baru ber-qty 0 sampai POS client mengisinya. Tanpa
+ * penjaga ini, baris yang cutting dan jahitnya sama-sama 0 akan memenuhi
+ * `0 === 0 === 0` dan terbaca "LENGKAP" — padahal belum ada pekerjaan apa pun.
+ * Qty 0 diperlakukan sama seperti cutting kosong: belum bisa dinilai.
  */
 export function computeCutVsUpload(row: Record<string, unknown>): string {
   if (isBlank(row.totalCutting)) return '';
   const quantity = toNum(row.quantity);
+  if (quantity <= 0) return '';
   const totalSelesaiJahit = toNum(row.totalSelesaiJahit);
   const totalCutting = toNum(row.totalCutting);
   if (quantity === totalSelesaiJahit && totalSelesaiJahit === totalCutting) {

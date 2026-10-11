@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { findClientByBrand, tallyClientUsage } from '../src/lib/clientCode.ts';
+import {
+  findClientByBrand,
+  isValidClientCode,
+  tallyClientUsage,
+} from '../src/lib/clientCode.ts';
 
 const clients = [
   { namaClient: 'Livou', kodeClient: 'LVU' },
@@ -46,6 +50,21 @@ test('mengembalikan baris pertama ketika ada nama kembar', () => {
     namaClient: 'Livou',
     kodeClient: 'LVU',
   });
+});
+
+test('menerima kode client berupa huruf dan angka', () => {
+  assert.equal(isValidClientCode('LVU'), true);
+  assert.equal(isValidClientCode('CSC2'), true);
+  assert.equal(isValidClientCode('lvu'), true, 'huruf kecil diterima, diseragamkan saat disimpan');
+  assert.equal(isValidClientCode('  LVU  '), true, 'spasi di pinggir diabaikan');
+});
+
+test('menolak kode client yang mengandung karakter di luar huruf dan angka', () => {
+  assert.equal(isValidClientCode('LV-U'), false, 'tanda hubung tidak sah');
+  assert.equal(isValidClientCode('LVU!'), false);
+  assert.equal(isValidClientCode('LV U'), false, 'spasi di tengah tidak sah');
+  assert.equal(isValidClientCode(''), false, 'kode wajib diisi');
+  assert.equal(isValidClientCode('   '), false);
 });
 
 test('menghitung Work Order tanpa invoice dan snapshot invoice per client', () => {

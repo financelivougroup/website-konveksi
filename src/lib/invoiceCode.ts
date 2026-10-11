@@ -1,5 +1,5 @@
 // Kode client tidak lagi dipetakan secara hardcoded di sini — sumbernya adalah
-// tabel `register_client` (menu Master Data → Register Client), diterjemahkan
+// tabel `register_client` (menu Contact → tab Client), diterjemahkan
 // lewat `findClientByBrand` di src/lib/clientCode.ts. Nilai `clientCode` yang
 // diteruskan ke buildInvoiceCode sudah merupakan hasil resolusi tersebut.
 

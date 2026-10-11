@@ -97,6 +97,11 @@ export type ModuleId =
   | 'daftar-libur'
   | 'register-penjahit'
   | 'register-client'
+  | 'register-harga'
+  | 'kategori-biaya'
+  | 'expense'
+  | 'vendor'
+  | 'contact'
   | 'master-product'
   | 'raw-monitoring'
   | 'master-import'
@@ -106,11 +111,38 @@ export type ModuleId =
   | 'sewing-entry'
   | 'finishing-entry'
   | 'kancing-entry'
-  | 'invoicing';
+  | 'invoicing'
+  | 'laporan-target-jahit'
+  | 'stock-monitoring'
+  | 'profit-loss';
 
 export interface NavGroup {
   label: string;
   items: NavItem[];
+}
+
+/**
+ * Muatan lompatan antar-halaman yang dipicu dari nomor PO.
+ *
+ * Dipakai Register Harga untuk membuka Production Order / Invoicing / Order
+ * Entry dengan hasil sudah tersaring ke satu PO — seperti klik nomor dokumen di
+ * software akuntansi.
+ *
+ * Dua-duanya dibawa karena **kuncinya berbeda** dan masing-masing tidak cukup
+ * sendiri:
+ *
+ * - `orderId` — primary key `production_orders.id`, berbentuk `PO-9fdfe041`.
+ *   Ini kunci join yang andal: `work_orders.source_order_id` dan
+ *   `invoices.production_order_id` sama-sama menunjuk ke sini.
+ * - `code` — nomor yang DILIHAT user, berbentuk `PO/001-LVU/09/2026/002`.
+ *   Diperlukan sebagai cadangan karena invoice lama bisa punya
+ *   `production_order_id` NULL sehingga hanya bisa ditemukan lewat nomor PO di
+ *   `work_code`. Tanpa ini, invoice lama tidak akan ikut tersaring.
+ */
+export interface PoJump {
+  orderId: string;
+  /** Nomor PO yang tampil ke user; `null` bila barisnya tidak punya nomor. */
+  code: string | null;
 }
 
 export interface NavItem {

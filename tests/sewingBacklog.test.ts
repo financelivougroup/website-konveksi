@@ -68,7 +68,7 @@ test('sewing melebihi Qty Order dijepit ke nol dan tidak tampil', () => {
   assert.deepEqual(result, []);
 });
 
-test('Sisa Uang bulanan adalah max(0, salary - realisasiCostPosisi)', () => {
+test('Sisa Uang bulanan adalah max(0, targetCostPosisi - realisasiCostPosisi)', () => {
   assert.equal(calculateMonthlyRemainingMoney(5_000_000, 3_500_000), 1_500_000);
   assert.equal(calculateMonthlyRemainingMoney(5_000_000, 6_000_000), 0);
 });

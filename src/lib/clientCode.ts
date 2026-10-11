@@ -20,6 +20,17 @@ function normalize(value: string): string {
 }
 
 /**
+ * Kode client yang sah: huruf dan angka kapital saja, minimal satu karakter.
+ *
+ * Satu-satunya sumber aturan ini — dipakai popup tambah client di Order Entry
+ * maupun halaman Register Client, supaya keduanya tidak pernah berbeda
+ * pendapat tentang kode yang boleh disimpan.
+ */
+export function isValidClientCode(code: string): boolean {
+  return /^[A-Z0-9]+$/.test(code.trim().toUpperCase());
+}
+
+/**
  * Cari client berdasarkan nama brand Work Order.
  *
  * Pencocokan case-insensitive dan mengabaikan spasi di pinggir, sama dengan

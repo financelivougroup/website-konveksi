@@ -71,14 +71,17 @@ function summarizeProduct(products: string[]): string {
  * Sisa Uang yang Harus Dikejar untuk satu baris Target bulanan.
  * Bulanan dan tidak kumulatif; hasil minimum Rp0; tidak memasukkan penalti
  * dan tidak mengubah rumus Utang Staf.
+ *
+ * Basisnya `targetCostPosisi` (nilai uang target bulanan), bukan kolom
+ * `salary` yang sudah dihapus.
  */
 export function calculateMonthlyRemainingMoney(
-  salary: number,
+  targetCostPosisi: number,
   realisasiCostPosisi: number,
 ): number {
-  const s = Number(salary) || 0;
+  const t = Number(targetCostPosisi) || 0;
   const c = Number(realisasiCostPosisi) || 0;
-  return Math.max(0, s - c);
+  return Math.max(0, t - c);
 }
 
 /**
