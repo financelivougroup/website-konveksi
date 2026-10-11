@@ -7,7 +7,6 @@ export interface TargetJahitRow {
   bulan_tahun: string
   nama: string
   posisi: string | null
-  salary: number
   total_hari_kerja: number
   hari_kerja_hari_ini: number
   sisa_hari: number
@@ -18,6 +17,15 @@ export interface TargetJahitRow {
   sisa_target_monthly: number
   progress_monthly: number
   status_final: string | null
+  /**
+   * @deprecated Kolom ini TIDAK LAGI DITULIS. Nilainya kini adalah GAJI bulan itu,
+   * yang dibaca dari `expense_entries` (kategori MANPOWER › SALARY) dan disuntikkan
+   * oleh `enrichTargetRows` — lihat `src/lib/staffSalary.ts`.
+   *
+   * Kolom DB-nya sengaja dibiarkan ada dan sudah di-NULL-kan (permintaan user:
+   * "di null kan saja"), jadi jangan membaca nilainya langsung dari sini; bacalah
+   * `EnrichedTargetRow.target_cost_posisi` / `salaryAmount` sebagai gantinya.
+   */
   target_cost_posisi: number
   realisasi_cost_posisi: number
   target_accum: number
@@ -26,6 +34,12 @@ export interface TargetJahitRow {
   target_ngebut_hari_akumulasi: number
   progress_accum: number
   status_final_akumulasi: string | null
+  /**
+   * @deprecated Tidak dipakai lagi. Tarif benefit sekarang per DESAIN dan
+   * diambil dari Register Harga (harga jahit + obras) — lihat
+   * `src/lib/targetBenefit.ts`. Kolom DB-nya sengaja dibiarkan ada; `fetchAll`
+   * memakai `select('*')` sehingga nilainya tetap ikut terbaca.
+   */
   benefit_per_pcs: number | null
 }
 

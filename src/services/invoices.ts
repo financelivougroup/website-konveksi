@@ -1,4 +1,6 @@
 import { supabase } from '@/lib/supabase';
+import { fetchPaymentsByInvoiceId } from '@/services/invoicePayments';
+import { fetchFilesByPaymentIds, removePaymentProofObjects } from '@/services/invoicePaymentFiles';
 import type { InvoiceRow, BillingType } from '@/types/pipeline';
 
 const TABLE = 'invoices';
@@ -7,6 +9,8 @@ const WO_TABLE = 'work_orders';
 interface DbInvoiceRow {
   id: string;
   work_order_id: string;
+  production_order_id: string | null;
+  client_production_code: string | null;
   order_price_id: string | null;
   auto_created: boolean;
   work_code: string;
@@ -32,6 +36,8 @@ function mapRow(row: DbInvoiceRow): InvoiceRow {
   return {
     id: row.id,
     workOrderId: row.work_order_id,
+    productionOrderId: row.production_order_id ?? null,
+    clientProductionCode: row.client_production_code ?? null,
     orderPriceId: row.order_price_id ?? undefined,
     autoCreated: row.auto_created,
     workCode: row.work_code,
@@ -84,6 +90,57 @@ export async function fetchInvoiceByWorkOrderId(workOrderId: string): Promise<{ 
   return { data: data ? mapRow(data as DbInvoiceRow) : null, error: null };
 }
 
+/**
+ * Invoice milik satu Kode Produksi Konveksi.
+ *
+ * Sejak invoice dibuat per kode produksi (bukan per variasi), inilah
+ * pencarian yang dipakai untuk mencegah invoice kedua bagi kode yang sama.
+ *
+ * **Invoice lama harus ikut ditemukan.** Sebelum migrasi
+ * `invoices_per_production_code`, invoice dibuat per work order sehingga
+ * `production_order_id`-nya NULL — dan data live memang masih punya baris
+ * seperti itu. Kalau pencarian ini hanya melihat `production_order_id`, baris
+ * lama tidak terlihat, `ensureInvoiceForProductionOrder` mengira kode itu belum
+ * ditagih, lalu menerbitkan **invoice kedua untuk kode yang sama** — klien
+ * tertagih dua kali. Karena itu pencarian diperluas lewat WO wakil: id work
+ * order yang ber-`source_order_id` kode tersebut.
+ *
+ * `work_order_id` UNIQUE + `production_order_id` tidak, jadi penggabungan
+ * dilakukan di klien dan hasil pertama yang menang — bukan `maybeSingle()`
+ * yang akan melempar bila dua baris cocok.
+ */
+export async function fetchInvoiceByProductionOrderId(
+  productionOrderId: string,
+): Promise<{ data: InvoiceRow | null; error: Error | null }> {
+  const direct = await supabase
+    .from(TABLE)
+    .select('*')
+    .eq('production_order_id', productionOrderId)
+    .limit(1);
+  if (direct.error) return { data: null, error: direct.error };
+  const directRow = (direct.data ?? [])[0];
+  if (directRow) return { data: mapRow(directRow as DbInvoiceRow), error: null };
+
+  // Belum ketemu → kemungkinan invoice lama (production_order_id NULL). Telusuri
+  // lewat work order grup.
+  const groupWos = await supabase
+    .from(WO_TABLE)
+    .select('id')
+    .eq('source_order_id', productionOrderId);
+  if (groupWos.error) return { data: null, error: groupWos.error };
+  const ids = ((groupWos.data ?? []) as Array<{ id: string }>).map((row) => row.id);
+  if (ids.length === 0) return { data: null, error: null };
+
+  const legacy = await supabase
+    .from(TABLE)
+    .select('*')
+    .in('work_order_id', ids)
+    .limit(1);
+  if (legacy.error) return { data: null, error: legacy.error };
+  const legacyRow = (legacy.data ?? [])[0];
+  return { data: legacyRow ? mapRow(legacyRow as DbInvoiceRow) : null, error: null };
+}
+
 export async function fetchMaxSequenceNumber(): Promise<{ sequence: number; error: Error | null }> {
   const { data, error } = await supabase
     .from(TABLE)
@@ -105,6 +162,8 @@ export async function fetchMaxSequenceNumber(): Promise<{ sequence: number; erro
 export async function createInvoiceAuto(input: Omit<InvoiceRow, 'id' | 'createdAt' | 'updatedAt'>): Promise<{ data: InvoiceRow | null; error: Error | null }> {
   const dbInput = {
     work_order_id: input.workOrderId,
+    production_order_id: input.productionOrderId ?? null,
+    client_production_code: input.clientProductionCode ?? null,
     order_price_id: input.orderPriceId ?? null,
     auto_created: input.autoCreated,
     work_code: input.workCode,
@@ -151,21 +210,136 @@ export async function updateInvoice(id: string, updates: Partial<InvoiceRow>): P
 }
 
 export async function removeInvoice(id: string): Promise<{ error: Error | null }> {
-  const { error } = await supabase.from(TABLE).delete().eq('id', id);
-  return { error };
+  const { data, error } = await supabase
+    .from(TABLE)
+    .delete()
+    .eq('id', id)
+    .select('id')
+    .maybeSingle();
+  if (error) return { error };
+  // Tanpa pemeriksaan ini, penghapusan yang tidak mengenai baris apa pun akan
+  // dilaporkan sukses — idiom yang sama dipakai `removePayment`.
+  return { error: data ? null : new Error('Invoice tidak ditemukan.') };
 }
 
+/**
+ * Kembalikan SELURUH work order satu Kode Produksi ke antrean tagihan setelah
+ * invoice-nya dibatalkan.
+ *
+ * Kenapa seluruh grup, bukan satu WO: invoice kini milik satu **Kode Produksi
+ * Konveksi**, sedangkan `invoices.work_order_id` hanya menunjuk satu variasi
+ * sebagai wakil (skema masih NOT NULL + UNIQUE). `order_entry_list` menghitung
+ * status produksi order dari jumlah WO yang ber-invoice di grup
+ * (`invoice_count = work_order_count`), jadi mengembalikan satu WO saja akan
+ * membuat order tampak "sebagian sudah ditagih" padahal invoice-nya sudah
+ * dibatalkan seluruhnya.
+ *
+ * Terpisah dari `updateWorkOrderInvoiceStatus` karena fungsi itu hanya menerima
+ * status maju (`INVOICED`/`PARTIAL_PAID`/`PAID`) dan tidak pernah menurunkan
+ * `prod_status`. Di sini `prod_status` memang harus turun: produksinya sudah
+ * selesai, yang dibatalkan hanya tagihannya.
+ */
+export async function resetWorkOrderInvoiceStatus(
+  workOrderId: string,
+  productionOrderId?: string | null,
+): Promise<{ error: Error | null }> {
+  const next = { invoice_status: 'WAITING_INVOICE', prod_status: 'FINISHED' };
+
+  // Rantai: invoice → grup WO. Tanpa productionOrderId (invoice lama sebelum
+  // migrasi invoices_per_production_code) hanya WO wakil yang bisa dikembalikan.
+  let query = supabase.from(WO_TABLE).update(next).select('id');
+  query = productionOrderId
+    ? query.eq('source_order_id', productionOrderId)
+    : query.eq('id', workOrderId);
+
+  const { data, error } = await query;
+  if (error) return { error };
+  return { error: data && data.length > 0 ? null : new Error('Work order tidak ditemukan.') };
+}
+
+export interface DeleteInvoiceResult {
+  /** Operasi gagal dan tidak ada yang berubah — invoice masih ada. */
+  error: Error | null;
+  /** Invoice sudah terhapus, tetapi ada sisa yang gagal dirapikan. */
+  cleanupError: Error | null;
+}
+
+/**
+ * Hapus satu invoice beserta seluruh jejaknya.
+ *
+ * Urutannya penting dan sengaja: path bukti bayar dibaca dan objeknya dihapus
+ * **sebelum** baris invoice dihapus. Cascade menghapus baris
+ * `invoice_payment_files`, jadi setelah invoice hilang path-nya tidak bisa
+ * dipulihkan lagi dan file di Storage jadi yatim permanen.
+ *
+ * Kalau Storage gagal, seluruh operasi dibatalkan: lebih baik invoice utuh
+ * daripada hilang separuh jalan dengan bukti bayar yang sudah lenyap.
+ */
+export async function deleteInvoice(invoiceId: string): Promise<DeleteInvoiceResult> {
+  const invoice = await fetchInvoiceById(invoiceId);
+  if (invoice.error) return { error: invoice.error, cleanupError: null };
+  if (!invoice.data) return { error: new Error('Invoice tidak ditemukan.'), cleanupError: null };
+
+  // 1. Kumpulkan path bukti bayar selagi metadatanya masih ada.
+  const payments = await fetchPaymentsByInvoiceId(invoiceId);
+  if (payments.error) return { error: payments.error, cleanupError: null };
+  const files = await fetchFilesByPaymentIds((payments.data ?? []).map((payment) => payment.id));
+  if (files.error) return { error: files.error, cleanupError: null };
+  const filePaths = (files.data ?? []).map((file) => file.filePath);
+
+  // 2. Objek Storage dulu; gagal di sini berarti batalkan tanpa menyentuh database.
+  if (filePaths.length > 0) {
+    const { error: storageError } = await removePaymentProofObjects(filePaths);
+    if (storageError) {
+      return {
+        error: new Error(`Bukti bayar gagal dihapus dari Storage — invoice dibatalkan: ${storageError.message}`),
+        cleanupError: null,
+      };
+    }
+  }
+
+  // 3. Baris invoice. Cascade membawa invoice_payments + invoice_payment_files.
+  const removed = await removeInvoice(invoiceId);
+  if (removed.error) return { error: removed.error, cleanupError: null };
+
+  // 4. Invoice sudah hilang, jadi kegagalan di sini tidak bisa di-rollback —
+  //    dilaporkan sebagai sisa yang belum dirapikan, bukan disembunyikan.
+  //    Seluruh grup dikembalikan, bukan hanya WO wakil — lihat alasannya di
+  //    `resetWorkOrderInvoiceStatus`.
+  const status = await resetWorkOrderInvoiceStatus(
+    invoice.data.workOrderId,
+    invoice.data.productionOrderId,
+  );
+  return { error: null, cleanupError: status.error };
+}
+
+/**
+ * Tandai status tagihan pada SELURUH work order satu Kode Produksi Konveksi.
+ *
+ * Sama seperti `resetWorkOrderInvoiceStatus`, cakupannya grup — bukan satu WO.
+ * Alasannya konsisten: `invoices.work_order_id` hanya menunjuk satu variasi
+ * sebagai wakil, sedangkan `order_entry_list` membaca status produksi order
+ * dari `invoice_count = work_order_count` di grup. Kalau hanya WO wakil yang
+ * ditandai, order dengan 4 variasi akan selamanya tampak belum lunas walau
+ * invoice-nya sudah PAID.
+ *
+ * Tanpa `productionOrderId` (invoice lama) hanya WO wakil yang ditandai —
+ * perilaku lama dipertahankan agar invoice pra-migrasi tidak ikut mengubah
+ * variasi lain yang mungkin memang belum ditagih.
+ */
 export async function updateWorkOrderInvoiceStatus(
   workOrderId: string,
   status: 'INVOICED' | 'PARTIAL_PAID' | 'PAID',
+  productionOrderId?: string | null,
 ): Promise<{ error: Error | null }> {
   const update: Record<string, unknown> = { invoice_status: status };
   if (status === 'INVOICED' || status === 'PAID') {
     update.prod_status = 'INVOICED';
   }
-  const { error } = await supabase
-    .from(WO_TABLE)
-    .update(update)
-    .eq('id', workOrderId);
+  let query = supabase.from(WO_TABLE).update(update);
+  query = productionOrderId
+    ? query.eq('source_order_id', productionOrderId)
+    : query.eq('id', workOrderId);
+  const { error } = await query;
   return { error };
 }

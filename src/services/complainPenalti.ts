@@ -7,7 +7,13 @@ export interface ComplainPenaltiRow {
   tanggal: string
   product: string
   warna: string | null
+  /**
+   * Kode Produksi CLIENT. Nama kolom DB-nya `work_code` (warisan); lihat
+   * COMMENT kolom di `2026-09-22-complain-production-codes.sql`.
+   */
   workCode: string | null
+  /** Kode Produksi KONVEKSI (`work_orders.product_note`). */
+  productionCode: string | null
   pcs: number
   posisi: string
   pic: string | null
@@ -26,6 +32,7 @@ function mapRow(row: Record<string, unknown>): ComplainPenaltiRow {
     product: row.product as string,
     warna: (row.warna as string | null) ?? null,
     workCode: (row.work_code as string | null) ?? null,
+    productionCode: (row.production_code as string | null) ?? null,
     pcs: row.pcs as number,
     posisi: row.posisi as string,
     pic: (row.pic as string | null) ?? null,
@@ -46,6 +53,7 @@ function toColumns(input: Omit<ComplainPenaltiRow, 'id' | 'status'> & { status?:
     product: input.product,
     warna: input.warna,
     work_code: input.workCode,
+    production_code: input.productionCode,
     pcs: input.pcs,
     posisi: input.posisi,
     pic: input.pic,
@@ -86,6 +94,7 @@ export async function update(
   if (updates.product !== undefined) fields.product = updates.product
   if (updates.warna !== undefined) fields.warna = updates.warna
   if (updates.workCode !== undefined) fields.work_code = updates.workCode
+  if (updates.productionCode !== undefined) fields.production_code = updates.productionCode
   if (updates.pcs !== undefined) fields.pcs = updates.pcs
   if (updates.posisi !== undefined) fields.posisi = updates.posisi
   if (updates.pic !== undefined) fields.pic = updates.pic

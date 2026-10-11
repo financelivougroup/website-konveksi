@@ -1,7 +1,7 @@
 import { supabase } from '@/lib/supabase';
+import { publicUrlFor, removeFromR2, uploadToR2 } from '@/services/r2Storage';
 
 const TABLE = 'complain_files';
-const BUCKET = 'complain-proofs';
 
 export interface ComplainFileRow {
   id: string;
@@ -75,17 +75,18 @@ export interface UploadComplainProofResult {
 export async function uploadComplainProof(input: UploadComplainProofInput): Promise<UploadComplainProofResult> {
   const safeName = input.file.name.replace(/[^\w.\-]+/g, '_');
   const filePath = `complain-${input.complainId}/${Date.now()}-${safeName}`;
-  const { error: uploadError } = await supabase.storage
-    .from(BUCKET)
-    .upload(filePath, input.file, { upsert: false, contentType: input.file.type || undefined });
+  const { error: uploadError } = await uploadToR2({
+    logicalBucket: 'complain-proofs',
+    path: filePath,
+    file: input.file,
+  });
   if (uploadError) {
     return { fileName: input.file.name, filePath, fileUrl: '', error: uploadError };
   }
-  const { data: publicUrlData } = supabase.storage.from(BUCKET).getPublicUrl(filePath);
   return {
     fileName: input.file.name,
     filePath,
-    fileUrl: publicUrlData.publicUrl,
+    fileUrl: publicUrlFor('complain-proofs', filePath) ?? '',
     error: null,
   };
 }
@@ -103,12 +104,12 @@ export async function createComplainFileRecord(input: { complainId: number; file
 }
 
 /**
- * Hapus objek storage bukti complain berdasarkan path (best-effort —
+ * Hapus objek bukti complain di R2 berdasarkan path (best-effort —
  * dipakai saat complain dihapus dan row complain_files hilang oleh CASCADE).
  */
 export async function removeComplainFilesByPaths(paths: string[]): Promise<void> {
   if (paths.length === 0) return;
-  await supabase.storage.from(BUCKET).remove(paths);
+  await removeFromR2('complain-proofs', paths);
 }
 
 export async function removeComplainFile(id: string): Promise<{ error: Error | null }> {
@@ -122,7 +123,7 @@ export async function removeComplainFile(id: string): Promise<{ error: Error | n
   const { error: deleteError } = await supabase.from(TABLE).delete().eq('id', id);
   if (deleteError) return { error: deleteError };
   if (filePath) {
-    await supabase.storage.from(BUCKET).remove([filePath]);
+    await removeFromR2('complain-proofs', [filePath]);
   }
   return { error: null };
 }

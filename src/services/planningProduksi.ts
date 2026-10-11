@@ -5,7 +5,10 @@ const TABLE = 'planning_produksi'
 export interface PlanningProduksiRow {
   id: number
   namaPenjahit: string
+  /** Kode Produksi Konveksi — kunci harga, jangan diisi kode client. */
   productNote: string | null
+  /** Kode Produksi Client — dipilih user, pasangan 1:1 dari `productNote`. */
+  clientProductionCode: string | null
   product: string
   warna: string | null
   size: string | null
@@ -19,6 +22,7 @@ function mapRow(row: Record<string, unknown>): PlanningProduksiRow {
     id: row.id as number,
     namaPenjahit: row.nama_penjahit as string,
     productNote: (row.product_note as string | null) ?? null,
+    clientProductionCode: (row.client_production_code as string | null) ?? null,
     product: row.product as string,
     warna: (row.warna as string | null) ?? null,
     size: (row.size as string | null) ?? null,
@@ -28,14 +32,16 @@ function mapRow(row: Record<string, unknown>): PlanningProduksiRow {
   }
 }
 
-type PlanningProduksiInput = Omit<PlanningProduksiRow, 'id' | 'productNote'> & {
+type PlanningProduksiInput = Omit<PlanningProduksiRow, 'id' | 'productNote' | 'clientProductionCode'> & {
   productNote?: string | null
+  clientProductionCode?: string | null
 }
 
 function toColumns(input: PlanningProduksiInput): Record<string, unknown> {
   return {
     nama_penjahit: input.namaPenjahit,
     product_note: input.productNote ?? null,
+    client_production_code: input.clientProductionCode ?? null,
     product: input.product,
     warna: input.warna,
     size: input.size,
@@ -75,6 +81,7 @@ export async function update(
   const fields: Record<string, unknown> = {}
   if (updates.namaPenjahit !== undefined) fields.nama_penjahit = updates.namaPenjahit
   if (updates.productNote !== undefined) fields.product_note = updates.productNote
+  if (updates.clientProductionCode !== undefined) fields.client_production_code = updates.clientProductionCode
   if (updates.product !== undefined) fields.product = updates.product
   if (updates.warna !== undefined) fields.warna = updates.warna
   if (updates.size !== undefined) fields.size = updates.size

@@ -60,7 +60,54 @@ export async function create(input: Omit<FinishingRecord, 'id'>): Promise<{ data
   return { data: data ? mapRow(data as Record<string, unknown>) : null, error: null }
 }
 
+/** Kolom yang boleh diubah dari UI — lihat penjelasan di `sewingRecords.ts`. */
+export interface FinishingRecordUpdate {
+  picFinishing?: string
+  qtyFinishing?: number
+  tanggalImport?: string
+  imageName?: string
+}
+
+/** Alasan `.select('id')` ada di sini sama dengan di `sewingRecords.update`. */
+export async function update(
+  id: string,
+  updates: FinishingRecordUpdate,
+): Promise<{ error: Error | null }> {
+  const dbUpdates: Record<string, unknown> = {}
+  if (updates.picFinishing !== undefined) dbUpdates.pic_finishing = updates.picFinishing
+  if (updates.qtyFinishing !== undefined) dbUpdates.qty_finishing = updates.qtyFinishing
+  if (updates.tanggalImport !== undefined) dbUpdates.tgl_import = updates.tanggalImport
+  if (updates.imageName !== undefined) dbUpdates.image_name = updates.imageName
+
+  if (Object.keys(dbUpdates).length === 0) return { error: null }
+
+  const { data, error } = await supabase
+    .from(TABLE)
+    .update(dbUpdates)
+    .eq('id', id)
+    .select('id')
+  if (error) return { error }
+  if (!data || data.length === 0) {
+    return {
+      error: new Error(
+        'Tidak ada baris yang berubah. Kemungkinan role Anda tidak berhak mengubah catatan ini, atau barisnya sudah terhapus.',
+      ),
+    }
+  }
+  return { error: null }
+}
+
 export async function remove(id: string): Promise<{ error: Error | null }> {
-  const { error } = await supabase.from(TABLE).delete().eq('id', id)
-  return { error }
+  // `.select('id')` wajib: penghapusan yang ditolak policy RLS menghasilkan
+  // 0 baris TANPA error, dan itu tidak boleh dilaporkan sebagai berhasil.
+  const { data, error } = await supabase.from(TABLE).delete().eq('id', id).select('id')
+  if (error) return { error }
+  if (!data || data.length === 0) {
+    return {
+      error: new Error(
+        'Tidak ada baris yang terhapus. Kemungkinan role Anda tidak berhak menghapus catatan ini, atau barisnya sudah terhapus.',
+      ),
+    }
+  }
+  return { error: null }
 }

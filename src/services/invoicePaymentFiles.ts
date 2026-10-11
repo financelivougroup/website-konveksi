@@ -1,8 +1,8 @@
 import { supabase } from '@/lib/supabase';
+import { publicUrlFor, removeFromR2, uploadToR2 } from '@/services/r2Storage';
 import type { InvoicePaymentFileRow } from '@/types/pipeline';
 
 const TABLE = 'invoice_payment_files';
-const BUCKET = 'invoice-payment-proofs';
 
 interface DbRow {
   id: string;
@@ -51,17 +51,18 @@ export interface UploadPaymentProofResult {
 export async function uploadPaymentProof(input: UploadPaymentProofInput): Promise<UploadPaymentProofResult> {
   const safeName = input.file.name.replace(/[^\w.-]+/g, '_');
   const filePath = `${input.invoiceId}/${input.paymentId}/${Date.now()}-${crypto.randomUUID()}-${safeName}`;
-  const { error: uploadError } = await supabase.storage
-    .from(BUCKET)
-    .upload(filePath, input.file, { upsert: false, contentType: input.file.type || undefined });
+  const { error: uploadError } = await uploadToR2({
+    logicalBucket: 'invoice-payment-proofs',
+    path: filePath,
+    file: input.file,
+  });
   if (uploadError) {
     return { fileName: input.file.name, filePath, fileUrl: '', error: uploadError };
   }
-  const { data: publicUrlData } = supabase.storage.from(BUCKET).getPublicUrl(filePath);
   return {
     fileName: input.file.name,
     filePath,
-    fileUrl: publicUrlData.publicUrl,
+    fileUrl: publicUrlFor('invoice-payment-proofs', filePath) ?? '',
     error: null,
   };
 }
@@ -79,14 +80,12 @@ export async function createPaymentFileRecord(input: { paymentId: string; fileNa
 }
 
 export async function removePaymentProofObject(filePath: string): Promise<{ error: Error | null }> {
-  const { error } = await supabase.storage.from(BUCKET).remove([filePath]);
-  return { error };
+  return removeFromR2('invoice-payment-proofs', [filePath]);
 }
 
 export async function removePaymentProofObjects(filePaths: string[]): Promise<{ error: Error | null }> {
   if (filePaths.length === 0) return { error: null };
-  const { error } = await supabase.storage.from(BUCKET).remove(filePaths);
-  return { error };
+  return removeFromR2('invoice-payment-proofs', filePaths);
 }
 
 export async function removePaymentFile(id: string): Promise<{ error: Error | null; cleanupError: Error | null }> {

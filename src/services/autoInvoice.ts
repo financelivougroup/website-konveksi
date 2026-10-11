@@ -7,12 +7,18 @@ import {
 import { resolveClientByBrand } from '@/services/registerClient';
 import { formatMonthYear } from '@/lib/monthYear';
 import { computeInvoiceFinancials } from '@/lib/invoiceCompute';
-import { deriveBillingType } from '@/lib/autoInvoice';
+import { SAMPLE_PRODUCTION_QTY_THRESHOLD } from '@/lib/autoInvoice';
 import {
-  fetchInvoiceByWorkOrderId,
+  checkGroupInvoiceReadiness,
+  deriveBillingTypeForGroup,
+  type ProductionCodeVariation,
+} from '@/lib/invoiceGrouping';
+import {
+  fetchInvoiceByProductionOrderId,
   fetchMaxSequenceNumber,
   createInvoiceAuto,
 } from '@/services/invoices';
+import { deriveStatus } from '@/lib/productionStatus';
 import type { WorkOrder, InvoiceRow } from '@/types/pipeline';
 
 export interface TransitionResult {
@@ -25,7 +31,95 @@ function todayIso(): string {
   return new Date().toISOString().split('T')[0];
 }
 
-export async function transitionToFinishingComplete(workOrderId: string): Promise<TransitionResult> {
+/**
+ * Muat seluruh variasi (work order) satu order produksi, beserta status & qty.
+ *
+ * Dipakai untuk memutuskan kelayakan invoice: invoice baru dibuat hanya ketika
+ * SEMUA variasi kode produksi itu selesai. Sebelumnya keputusan ini diambil
+ * dari satu work order saja, sehingga variasi pertama yang selesai langsung
+ * menerbitkan invoice sebagian.
+ */
+async function loadGroupVariations(productionOrderId: string): Promise<ProductionCodeVariation[]> {
+  const { data, error } = await supabase
+    .from('work_orders')
+    .select('prod_status, quantity')
+    .eq('source_order_id', productionOrderId);
+  if (error) throw error;
+  return ((data ?? []) as Array<{ prod_status: string; quantity: number }>).map((row) => ({
+    status: row.prod_status as ProductionCodeVariation['status'],
+    quantity: row.quantity,
+  }));
+}
+
+/**
+ * Total keempat tahap satu Work Order, dihitung dari tabel recordnya
+ * masing-masing. Angka hilang/tidak valid dihitung 0.
+ *
+ * Dibuat sebagai satu tempat supaya aturan status tidak perlu tahu bentuk
+ * tabelnya, dan supaya pemanggil tidak mengirim angka yang salah tahap.
+ */
+export interface WorkOrderTotals {
+  cutting: number;
+  sewing: number;
+  kancing: number;
+  finishing: number;
+}
+
+export async function loadWorkOrderTotals(workOrderId: string): Promise<WorkOrderTotals> {
+  const [cuttingRes, sewingRes, kancingRes, finishingRes] = await Promise.all([
+    supabase.from('cutting_records').select('total_cutting').eq('work_order_id', workOrderId),
+    supabase.from('sewing_records').select('qty_selesai').eq('work_order_id', workOrderId),
+    supabase.from('kancing_records').select('qty_kancing').eq('work_order_id', workOrderId),
+    supabase.from('finishing_records').select('qty_finishing').eq('work_order_id', workOrderId),
+  ]);
+  const firstError = cuttingRes.error ?? sewingRes.error ?? kancingRes.error ?? finishingRes.error;
+  if (firstError) throw firstError;
+
+  const sum = (rows: unknown, key: string): number =>
+    ((rows ?? []) as Array<Record<string, unknown>>).reduce(
+      (total, row) => total + (Number(row[key]) || 0),
+      0,
+    );
+
+  return {
+    cutting: sum(cuttingRes.data, 'total_cutting'),
+    sewing: sum(sewingRes.data, 'qty_selesai'),
+    kancing: sum(kancingRes.data, 'qty_kancing'),
+    finishing: sum(finishingRes.data, 'qty_finishing'),
+  };
+}
+
+/**
+ * Hitung ulang status produksi satu Work Order dari **SELURUH laporannya**
+ * (cutting, jahit, kancing, finishing), tulis bila berubah, lalu terbitkan
+ * invoice bila WO menjadi FINISHED.
+ *
+ * ---------------------------------------------------------------------------
+ * KENAPA FUNGSI INI ADA (dan menggantikan `transitionToFinishingComplete`)
+ * ---------------------------------------------------------------------------
+ * Dulu fungsi yang ada di sini bernama `transitionToFinishingComplete` dan
+ * **menghardcode** `prod_status = 'FINISHED'`, lalu dipanggil dari
+ * `SewingEntryForm` begitu laporan jahit mencapai qty order. Itu benar selama
+ * FINISHED hanya butuh cutting + jahit.
+ *
+ * Setelah revisi user 2026-09-28, **FINISHED menunggu kancing & finishing juga**.
+ * Kalau pemicunya tetap di form jahit, rantainya putus: jahit mencapai qty →
+ * status tidak boleh FINISHED → dan karena `KancingEntryForm` maupun
+ * `FinishingEntryForm` **tidak pernah menyentuh status** (diverifikasi: tidak ada
+ * `updateProdStatus` di keduanya), tidak ada lagi yang menaikkan WO ke FINISHED.
+ * Akibatnya tidak ada invoice yang pernah terbit — kerusakan diam-diam pada
+ * jalur uang.
+ *
+ * Karena itu pemicunya dipindah ke sini dan dipanggil dari **ketiga** form entri
+ * produksi (jahit, kancing, finishing). Satu fungsi memiliki aturan "status
+ * diturunkan dari laporan", jadi tidak ada dua tempat yang bisa berbeda.
+ *
+ * Perilaku lama yang SENGAJA dipertahankan: status baru ditulis setelah harga
+ * order dipastikan lengkap. Kalau harga belum lengkap, WO tidak dinaikkan ke
+ * FINISHED (tetap PROGRESS) dan errornya dilempar — supaya tidak ada WO yang
+ * "selesai" tetapi tidak bisa ditagih.
+ */
+export async function syncWorkOrderStatus(workOrderId: string): Promise<TransitionResult> {
   // 1. Fetch current WO
   const { data: currentWo, error: woErr } = await supabase
     .from('work_orders')
@@ -34,9 +128,7 @@ export async function transitionToFinishingComplete(workOrderId: string): Promis
     .single();
   if (woErr || !currentWo) throw woErr ?? new Error('WO not found');
 
-  console.log('[autoInvoice] transitionToFinishingComplete called for:', workOrderId);
   const wo = currentWo as Record<string, unknown>;
-  console.log('[autoInvoice] wo.prod_status:', wo.prod_status, 'source_order_id:', wo.source_order_id);
   const poId = (wo.source_order_id as string | null) ?? null;
 
   // 2. Idempotency — already at FINISHED or INVOICED
@@ -47,7 +139,34 @@ export async function transitionToFinishingComplete(workOrderId: string): Promis
     };
   }
 
-  // 3. Validate exact-order pricing before changing production status.
+  // 3. Status diturunkan dari SELURUH laporan, bukan dari tahap yang baru saja
+  //    diisi. Inilah yang membuat form jahit tidak bisa lagi "menyelesaikan"
+  //    order yang kancing/finishingnya belum jalan.
+  const totals = await loadWorkOrderTotals(workOrderId);
+  const qty = Number(wo.quantity) || 0;
+  const nextStatus = deriveStatus(
+    totals.cutting,
+    totals.sewing,
+    qty,
+    totals.kancing,
+    totals.finishing,
+  );
+
+  if (nextStatus !== 'FINISHED') {
+    if (nextStatus !== wo.prod_status) {
+      const { data: updated, error: updErr } = await supabase
+        .from('work_orders')
+        .update({ prod_status: nextStatus })
+        .eq('id', workOrderId)
+        .select()
+        .single();
+      if (updErr || !updated) throw updErr ?? new Error('update failed');
+      return { workOrder: updated as unknown as WorkOrder, invoiceCreated: false };
+    }
+    return { workOrder: wo as unknown as WorkOrder, invoiceCreated: false };
+  }
+
+  // 4. FINISHED → harga harus lengkap dulu (perilaku lama, lihat catatan di atas).
   if (!poId) {
     throw new Error('Work Order tidak memiliki sumber Order Entry');
   }
@@ -56,7 +175,7 @@ export async function transitionToFinishingComplete(workOrderId: string): Promis
     throw new Error('Harga Order Entry belum lengkap');
   }
 
-  // 4. Update prod_status only after pricing is known to be valid.
+  // 5. Update prod_status only after pricing is known to be valid.
   const { data: updatedWo, error: updErr } = await supabase
     .from('work_orders')
     .update({ prod_status: 'FINISHED' })
@@ -65,26 +184,86 @@ export async function transitionToFinishingComplete(workOrderId: string): Promis
     .single();
   if (updErr || !updatedWo) throw updErr ?? new Error('update failed');
 
-  // 5. Already has an invoice? Skip generation.
-  const { data: existing } = await fetchInvoiceByWorkOrderId(workOrderId);
-  if (existing) {
-    return { workOrder: updatedWo as unknown as WorkOrder, invoiceCreated: false, invoice: existing };
+  const updated = updatedWo as unknown as WorkOrder;
+
+  // 6. Invoice hanya bila SELURUH variasi kode produksi sudah selesai.
+  const created = await ensureInvoiceForProductionOrder(poId, updated);
+  return {
+    workOrder: updated,
+    invoiceCreated: created !== null,
+    invoice: created ?? undefined,
+  };
+}
+
+/**
+ * Terbitkan invoice untuk satu Kode Produksi Konveksi bila semua variasi
+ * selesai dan belum ada invoice-nya. Mengembalikan invoice yang SUDAH ada
+ * (bukan null) saat invoice-nya memang sudah terbit — supaya pemanggil tidak
+ * salah mengira perlu membuat lagi.
+ *
+ * Satu invoice mencakup seluruh kode produksi: pcs = jumlah SEMUA variasi,
+ * harga satuan = harga per pcs order, jadi totalnya = total kode produksi.
+ */
+export async function ensureInvoiceForProductionOrder(
+  productionOrderId: string,
+  fallbackWo?: WorkOrder,
+): Promise<InvoiceRow | null> {
+  // Sudah ada invoice untuk kode produksi ini? Jangan buat kedua.
+  const { data: existing } = await fetchInvoiceByProductionOrderId(productionOrderId);
+  if (existing) return existing;
+
+  const variations = await loadGroupVariations(productionOrderId);
+  const readiness = checkGroupInvoiceReadiness(variations);
+  // Belum siap = belum semua selesai. Ini BUKAN error: pemanggilnya bisa saja
+  // baru menyelesaikan satu variasi dari empat.
+  if (!readiness.ready) return null;
+
+  const orderPrice = await fetchOrderPriceByProductionOrderId(productionOrderId);
+  if (!orderPrice?.complete || !orderPrice.id || orderPrice.totalPerPiece <= 0) return null;
+
+  // Identitas kode produksi + client diambil dari work order mana pun dalam
+  // grup: product_note dan client_production_code sama untuk semua variasi.
+  let brand: string | null = null;
+  let productNote: string | null = null;
+  let clientProductionCode: string | null = null;
+  let fallbackWorkOrderId: string | null = null;
+
+  if (fallbackWo) {
+    brand = fallbackWo.brand;
+    productNote = fallbackWo.productNote;
+    clientProductionCode = fallbackWo.clientProductionCode;
+    fallbackWorkOrderId = fallbackWo.id;
   }
 
-  // 6. Compute derived values
-  const brand = wo.brand as string;
-  const quantity = wo.quantity as number;
+  if (!brand || !productNote || !fallbackWorkOrderId) {
+    const { data: rows, error } = await supabase
+      .from('work_orders')
+      .select('id, brand, product_note, client_production_code')
+      .eq('source_order_id', productionOrderId)
+      .limit(1);
+    if (error) throw error;
+    const row = (rows ?? [])[0] as
+      | { id: string; brand: string; product_note: string; client_production_code: string | null }
+      | undefined;
+    if (!row) return null;
+    brand = brand ?? row.brand;
+    productNote = productNote ?? row.product_note;
+    clientProductionCode = clientProductionCode ?? row.client_production_code;
+    fallbackWorkOrderId = fallbackWorkOrderId ?? row.id;
+  }
+
   const { data: client, error: clientErr } = await resolveClientByBrand(brand);
   if (clientErr) throw clientErr;
   if (!client) {
-    // Gagal cepat: pengguna sedang menunggu invoice untuk WO ini, jadi brand
-    // yang belum terdaftar harus terlihat, bukan dilewati diam-diam.
+    // Gagal cepat: pengguna sedang menunggu invoice, jadi brand yang belum
+    // terdaftar harus terlihat, bukan dilewati diam-diam.
     throw new Error(
-      `Brand "${brand}" belum terdaftar di Register Client. Tambahkan dulu di menu Master Data → Register Client.`,
+      `Brand "${brand}" belum terdaftar di Register Client. Tambahkan dulu di menu Contact → tab Client.`,
     );
   }
-  const clientCode = client.kodeClient;
-  const billingType = deriveBillingType(quantity);
+
+  const totalPcs = readiness.totalPcs;
+  const billingType = deriveBillingTypeForGroup(totalPcs, SAMPLE_PRODUCTION_QTY_THRESHOLD);
   const billingTypeCodeValue = billingTypeCode(billingType);
   const invoiceDate = todayIso();
   const monthYear = formatMonthYear(invoiceDate);
@@ -92,30 +271,38 @@ export async function transitionToFinishingComplete(workOrderId: string): Promis
   const { sequence: maxSeq } = await fetchMaxSequenceNumber();
   const invoiceCode = buildInvoiceCode({
     billingTypeCodeValue,
-    clientCode,
+    clientCode: client.kodeClient,
     invoiceDate,
     sequence: maxSeq + 1,
   });
 
   const fin = computeInvoiceFinancials({
-    pcsLinked: quantity,
+    pcsLinked: totalPcs,
     unitPrice: orderPrice.totalPerPiece,
     rateManpower: 0,
   });
 
   const invoiceInput: Omit<InvoiceRow, 'id' | 'createdAt' | 'updatedAt'> = {
-    workOrderId,
+    // `work_order_id` masih NOT NULL + UNIQUE di skema, jadi satu WO dari grup
+    // ditunjuk sebagai wakil — bukan karena invoicenya milik WO itu, melainkan
+    // karena kolomnya belum bisa dikosongkan tanpa memutus rilisan lama.
+    workOrderId: fallbackWorkOrderId,
+    productionOrderId,
     orderPriceId: orderPrice.id,
     autoCreated: true,
-    workCode: (wo.work_code as string) ?? '',
+    // Judul invoice: Kode Produksi Konveksi, dengan kode client sebagai
+    // pendamping. Kolom `work_code` dipakai apa adanya (tanpa kolom baru)
+    // supaya rilisan lama dan template yang sudah ada tetap bekerja.
+    workCode: productNote,
+    clientProductionCode,
     invoiceCode,
     invoiceDate,
     monthYear,
     clientName: client.namaClient,
-    clientCode,
+    clientCode: client.kodeClient,
     billingType,
     billingTypeCodeValue,
-    pcsLinked: quantity,
+    pcsLinked: totalPcs,
     unitPrice: orderPrice.totalPerPiece,
     totalAmount: fin.totalAmount,
     rateOperational: fin.rateOperational,
@@ -126,127 +313,39 @@ export async function transitionToFinishingComplete(workOrderId: string): Promis
 
   const { data: createdInvoice, error: invErr } = await createInvoiceAuto(invoiceInput);
   if (invErr) throw invErr;
-
-  return {
-    workOrder: updatedWo as unknown as WorkOrder,
-    invoiceCreated: true,
-    invoice: createdInvoice ?? undefined,
-  };
+  return createdInvoice ?? null;
 }
 
+/**
+ * Backfill: terbitkan invoice untuk kode produksi yang SEMUA variasinya sudah
+ * selesai tetapi belum punya invoice.
+ *
+ * Bekerja per **order produksi**, bukan per work order: mengulang per work
+ * order akan memanggil `ensureInvoice…` berkali-kali untuk kode yang sama.
+ */
 export async function backfillMissingInvoices(): Promise<number> {
-  // Find WOs in terminal-ish state without an invoice
-  console.log('[backfill] fetching WOs...');
-  const { data: woRows, error: woErr } = await supabase
+  const { data: finishedRows, error } = await supabase
     .from('work_orders')
-    .select('id, prod_status, source_order_id')
-    .in('prod_status', ['FINISHED', 'INVOICED']);
-  console.log('[backfill] woRows:', woRows, 'error:', woErr);
-  if (!woRows) return 0;
+    .select('source_order_id')
+    .in('prod_status', ['FINISHED', 'INVOICED'])
+    .not('source_order_id', 'is', null);
+  if (error || !finishedRows) return 0;
 
-  const woIds = (woRows as Array<{ id: string }>).map((w) => w.id);
+  const candidateIds = [
+    ...new Set((finishedRows as Array<{ source_order_id: string }>).map((r) => r.source_order_id)),
+  ];
 
-  const { data: existingInvs } = await supabase
-    .from('invoices')
-    .select('work_order_id')
-    .in('work_order_id', woIds);
-  const existingIds = new Set(
-    (existingInvs as Array<{ work_order_id: string }> | null)?.map((r) => r.work_order_id) ?? [],
-  );
-  console.log('[backfill] already invoiced:', [...existingIds]);
-
-  const missing = woIds.filter((id) => !existingIds.has(id));
-  console.log('[backfill] missing:', missing);
   let created = 0;
-  for (const id of missing) {
+  for (const poId of candidateIds) {
     try {
-      console.log('[backfill] generating for', id);
-      const result = await generateInvoiceForFinishedWo(id);
-      console.log('[backfill] result:', result);
-      if (result) created++;
+      const { data: existing } = await fetchInvoiceByProductionOrderId(poId);
+      if (existing) continue;
+      const invoice = await ensureInvoiceForProductionOrder(poId);
+      if (invoice) created += 1;
     } catch (err) {
-      console.error('[backfill] failed for', id, err);
+      // Satu kode produksi bermasalah tidak boleh menghentikan sisanya.
+      console.error('[backfill] gagal untuk', poId, err);
     }
   }
   return created;
-}
-
-// Generate invoice for a WO that's already FINISHED (no status update needed)
-async function generateInvoiceForFinishedWo(workOrderId: string): Promise<boolean> {
-  const { data: woRow } = await supabase
-    .from('work_orders')
-    .select('*')
-    .eq('id', workOrderId)
-    .single();
-  if (!woRow) return false;
-
-  const wo = woRow as Record<string, unknown>;
-
-  // Already has invoice?
-  const { data: existing } = await fetchInvoiceByWorkOrderId(workOrderId);
-  if (existing) return false;
-
-  // Need a complete price for the exact source order.
-  const poId = (wo.source_order_id as string | null) ?? null;
-  if (!poId) return false;
-  const orderPrice = await fetchOrderPriceByProductionOrderId(poId);
-  if (!orderPrice?.complete || !orderPrice.id || orderPrice.totalPerPiece <= 0) return false;
-
-  const brand = wo.brand as string;
-  const quantity = wo.quantity as number;
-  // Backfill memproses banyak WO sekaligus, jadi brand yang belum terdaftar
-  // dilewati per-baris (sudah dicatat pemanggil) alih-alih menggagalkan semua.
-  const { data: client, error: clientErr } = await resolveClientByBrand(brand);
-  if (clientErr) {
-    console.error('[backfill] gagal memuat Register Client untuk', workOrderId, clientErr);
-    return false;
-  }
-  if (!client) {
-    console.warn(`[backfill] brand "${brand}" belum terdaftar di Register Client, WO ${workOrderId} dilewati`);
-    return false;
-  }
-  const clientCode = client.kodeClient;
-  const billingType = deriveBillingType(quantity);
-  const billingTypeCodeValue = billingTypeCode(billingType);
-  const invoiceDate = todayIso();
-  const monthYear = formatMonthYear(invoiceDate);
-
-  const { sequence: maxSeq } = await fetchMaxSequenceNumber();
-  const invoiceCode = buildInvoiceCode({
-    billingTypeCodeValue,
-    clientCode,
-    invoiceDate,
-    sequence: maxSeq + 1,
-  });
-
-  const fin = computeInvoiceFinancials({
-    pcsLinked: quantity,
-    unitPrice: orderPrice.totalPerPiece,
-    rateManpower: 0,
-  });
-
-  const invoiceInput: Omit<InvoiceRow, 'id' | 'createdAt' | 'updatedAt'> = {
-    workOrderId,
-    orderPriceId: orderPrice.id,
-    autoCreated: true,
-    workCode: (wo.work_code as string) ?? '',
-    invoiceCode,
-    invoiceDate,
-    monthYear,
-    clientName: client.namaClient,
-    clientCode,
-    billingType,
-    billingTypeCodeValue,
-    pcsLinked: quantity,
-    unitPrice: orderPrice.totalPerPiece,
-    totalAmount: fin.totalAmount,
-    rateOperational: fin.rateOperational,
-    totalIncomeManpower: fin.totalIncomeManpower,
-    totalIncomeOperational: fin.totalIncomeOperational,
-    financeValidation: 'Collect Payment',
-  };
-
-  const { data: created, error } = await createInvoiceAuto(invoiceInput);
-  if (error || !created) return false;
-  return true;
 }

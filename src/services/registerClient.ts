@@ -14,6 +14,10 @@ export interface RegisterClientRow {
   namaClient: string
   kodeClient: string
   status: string
+  /** Nomor HP client. Opsional — dua baris lama tidak punya nilainya. */
+  noHp?: string | null
+  /** Alamat client. Opsional dengan alasan yang sama. */
+  alamat?: string | null
 }
 
 export const STATUS_OPTIONS = ['Aktif', 'Non-Aktif']
@@ -24,6 +28,8 @@ function mapRow(row: Record<string, unknown>): RegisterClientRow {
     namaClient: row.nama_client as string,
     kodeClient: row.kode_client as string,
     status: (row.status as string) ?? 'Aktif',
+    noHp: (row.no_hp as string | null) ?? null,
+    alamat: (row.alamat as string | null) ?? null,
   }
 }
 
@@ -43,6 +49,8 @@ export async function create(input: Omit<RegisterClientRow, 'id'>): Promise<{ da
       nama_client: input.namaClient,
       kode_client: input.kodeClient,
       status: input.status ?? 'Aktif',
+      no_hp: input.noHp?.trim() || null,
+      alamat: input.alamat?.trim() || null,
     })
     .select()
     .single()
@@ -55,6 +63,8 @@ export async function update(id: number, updates: Partial<RegisterClientRow>): P
   if (updates.namaClient !== undefined) dbUpdates.nama_client = updates.namaClient
   if (updates.kodeClient !== undefined) dbUpdates.kode_client = updates.kodeClient
   if (updates.status !== undefined) dbUpdates.status = updates.status
+  if (updates.noHp !== undefined) dbUpdates.no_hp = updates.noHp?.trim() || null
+  if (updates.alamat !== undefined) dbUpdates.alamat = updates.alamat?.trim() || null
   const { error } = await supabase
     .from(TABLE)
     .update(dbUpdates)
