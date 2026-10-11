@@ -2,6 +2,7 @@ import { X, ArrowUp, ArrowDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ColumnDef, SortRule } from '@/types';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { AppSelect } from '@/components/AppSelect';
 
 interface SortModalProps {
   open: boolean;
@@ -50,21 +51,19 @@ export function SortModal({ open, onClose, columns, sorts, onUpdate, onApply }: 
           ) : (
             sorts.map((s, i) => (
               <div key={i} className="flex items-center gap-2 p-2.5 bg-slate-50 rounded-lg border border-slate-100">
-                <select
+                <AppSelect
+                  bare
                   value={s.field}
-                  onChange={(e) => updateField(i, e.target.value)}
-                  className="flex-1 h-8 px-2.5 text-sm border border-gray-200 rounded-lg bg-white outline-none focus:border-sky-300 focus:ring-2 focus:ring-sky-100"
-                >
-                  {columns.map((c) => (
-                    <option key={c.key} value={c.key}>{c.label}</option>
-                  ))}
-                </select>
+                  onValueChange={(next) => updateField(i, next)}
+                  triggerClassName="flex-1"
+                  options={columns.map((c) => ({ value: c.key, label: c.label }))}
+                />
                 <button
                   onClick={() => toggleDir(i)}
                   className={cn(
                     'h-8 px-2.5 text-sm border rounded-lg flex items-center gap-1 transition-colors',
                     s.dir === 'asc'
-                      ? 'border-sky-300 text-sky-500 bg-sky-50'
+                      ? 'border-slate-400 text-sky-500 bg-slate-50'
                       : 'border-gray-200 text-slate-500 hover:bg-slate-50'
                   )}
                 >
@@ -78,7 +77,7 @@ export function SortModal({ open, onClose, columns, sorts, onUpdate, onApply }: 
           )}
         </div>
 
-        <button onClick={addSort} className="mt-3 px-3 py-1.5 text-xs font-medium text-sky-600 bg-sky-50 hover:bg-sky-100 border border-sky-100 rounded-lg transition-colors">
+        <button onClick={addSort} className="mt-3 px-3 py-1.5 text-xs font-medium text-sky-600 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors">
           + Add Sort
         </button>
 
@@ -89,7 +88,7 @@ export function SortModal({ open, onClose, columns, sorts, onUpdate, onApply }: 
           <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-500 hover:text-slate-700 hover:bg-slate-50 rounded-lg transition-colors">
             Cancel
           </button>
-          <button onClick={onApply} className="px-4 py-2 text-sm font-medium text-white bg-sky-400 hover:bg-sky-500 rounded-lg transition-colors shadow-sm shadow-sky-200">
+          <button onClick={onApply} className="px-4 py-2 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg transition-colors shadow-sm shadow-slate-300">
             Apply Sort
           </button>
         </DialogFooter>

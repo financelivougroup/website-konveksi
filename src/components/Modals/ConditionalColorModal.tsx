@@ -2,6 +2,7 @@ import { X } from 'lucide-react';
 import type { ColumnDef, CondColorRule } from '@/types';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { AppSelect } from '@/components/AppSelect';
 
 interface ConditionalColorModalProps {
   open: boolean;
@@ -53,40 +54,35 @@ export function ConditionalColorModal({ open, onClose, columns, rules, onUpdate,
             rules.map((r, i) => (
               <div key={i} className="flex items-center gap-2 p-2.5 bg-slate-50 rounded-lg border border-slate-100 flex-wrap">
                 <span className="text-xs font-medium text-slate-500">If</span>
-                <select
+                <AppSelect
+                  bare
                   value={r.field}
-                  onChange={(e) => updateRule(i, 'field', e.target.value)}
-                  className="h-8 px-2 text-sm border border-gray-200 rounded-lg bg-white outline-none focus:border-sky-300 focus:ring-2 focus:ring-sky-100"
-                >
-                  {columns.map((c) => (
-                    <option key={c.key} value={c.key}>{c.label}</option>
-                  ))}
-                </select>
-                <select
+                  onValueChange={(next) => updateRule(i, 'field', next)}
+                  options={columns.map((c) => ({ value: c.key, label: c.label }))}
+                />
+                <AppSelect
+                  bare
                   value={r.operator}
-                  onChange={(e) => updateRule(i, 'operator', e.target.value)}
-                  className="h-8 px-2 text-sm border border-gray-200 rounded-lg bg-white outline-none focus:border-sky-300 focus:ring-2 focus:ring-sky-100"
-                >
-                  <option value="contains">contains</option>
-                  <option value="equals">equals</option>
-                </select>
+                  onValueChange={(next) => updateRule(i, 'operator', next)}
+                  options={[
+                    { value: 'contains', label: 'contains' },
+                    { value: 'equals', label: 'equals' },
+                  ]}
+                />
                 <input
                   type="text"
                   value={r.value}
                   onChange={(e) => updateRule(i, 'value', e.target.value)}
                   placeholder="Value..."
-                  className="h-8 px-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-sky-300 focus:ring-2 focus:ring-sky-100 w-24"
+                  className="h-8 px-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200 w-24"
                 />
                 <span className="text-xs text-slate-300">→</span>
-                <select
+                <AppSelect
+                  bare
                   value={r.color}
-                  onChange={(e) => updateRule(i, 'color', e.target.value)}
-                  className="h-8 px-2 text-sm border border-gray-200 rounded-lg bg-white outline-none focus:border-sky-300 focus:ring-2 focus:ring-sky-100"
-                >
-                  {colorOptions.map((c) => (
-                    <option key={c.value} value={c.value}>{c.label}</option>
-                  ))}
-                </select>
+                  onValueChange={(next) => updateRule(i, 'color', next)}
+                  options={colorOptions.map((c) => ({ value: c.value, label: c.label }))}
+                />
                 <button onClick={() => removeRule(i)} className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-rose-50 transition-colors flex-shrink-0">
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -95,7 +91,7 @@ export function ConditionalColorModal({ open, onClose, columns, rules, onUpdate,
           )}
         </div>
 
-        <button onClick={addRule} className="mt-3 px-3 py-1.5 text-xs font-medium text-sky-600 bg-sky-50 hover:bg-sky-100 border border-sky-100 rounded-lg transition-colors">
+        <button onClick={addRule} className="mt-3 px-3 py-1.5 text-xs font-medium text-sky-600 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors">
           + Add Rule
         </button>
 
@@ -117,7 +113,7 @@ export function ConditionalColorModal({ open, onClose, columns, rules, onUpdate,
           <Button onClick={onClose} variant="outline">
             Cancel
           </Button>
-          <Button onClick={onApply} className="bg-sky-400 hover:bg-sky-500">
+          <Button onClick={onApply} className="bg-primary hover:bg-primary/90">
             Apply
           </Button>
         </DialogFooter>

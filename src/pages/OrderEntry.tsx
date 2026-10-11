@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  ArrowRight,
   Ban,
   CheckCircle2,
   Loader2,
@@ -7,6 +8,8 @@ import {
   Plus,
   RefreshCw,
   Search,
+  Trash2,
+  X,
 } from 'lucide-react';
 
 import {
@@ -22,30 +25,40 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import { T_SUB_LABEL, T_WRAP } from '@/lib/tableStyles';
+import { DataTable } from '@/components/Table/DataTable';
 import {
   OrderEntryDialog,
   type OrderDialogMode,
 } from '@/components/OrderEntry/OrderEntryDialog';
 import { useAuth } from '@/contexts/AuthContext';
+import { formatDate } from '@/data/pipelineData';
 import { orderEntryErrorMessage } from '@/lib/orderEntry';
+import { matchesPoJump } from '@/lib/poJump';
+import { PoFilterBanner } from '@/components/Table/PoFilterBanner';
 import { cn } from '@/lib/utils';
 import * as productionOrderSvc from '@/services/productionOrders';
+import * as workOrderSvc from '@/services/workOrders';
+import type { CancelSkipped, DeleteOrderSkipped } from '@/services/productionOrders';
 import type { OrderEntryDetail, OrderEntryOverview, ProductionOrderLifecycle } from '@/types/pipeline';
+import type { PoJump } from '@/types';
 
 const STATUS_OPTIONS: Array<{ value: 'all' | ProductionOrderLifecycle; label: string }> = [
   { value: 'all', label: 'Semua' },
-  { value: 'PLANNING', label: 'Planning' },
+  { value: 'DRAFT', label: 'Draft' },
   { value: 'PULLED', label: 'Pulled' },
   { value: 'CANCELLED', label: 'Cancelled' },
 ];
+
+/**
+ * Gerbang sisi klien untuk hapus permanen order.
+ *
+ * Selama masa testing masih `true`. **Setel ke `false` (atau hapus tombolnya)
+ * sebelum deployment** — hapus permanen tidak bisa dikembalikan, dan data
+ * produksi nyata tidak punya undo. RPC `delete_production_orders` punya flag
+ * sendiri (`c_allow_hard_delete`); keduanya harus dinyalakan agar berjalan.
+ */
+const ALLOW_HARD_DELETE = true;
 
 function rupiah(value: number): string {
   return value > 0 ? `Rp ${value.toLocaleString('id-ID')}` : '—';
@@ -53,7 +66,7 @@ function rupiah(value: number): string {
 
 function lifecycleBadge(status: ProductionOrderLifecycle) {
   const classes = {
-    PLANNING: 'border-blue-200 bg-blue-50 text-blue-700',
+    DRAFT: 'border-blue-200 bg-blue-50 text-blue-700',
     PULLED: 'border-amber-200 bg-amber-50 text-amber-700',
     CANCELLED: 'border-red-200 bg-red-50 text-red-700',
   }[status];
@@ -66,7 +79,7 @@ interface DialogState {
   orderId: string | null;
 }
 
-export default function OrderEntry() {
+export default function OrderEntry({ poJump, onClearPoJump }: { poJump?: PoJump | null; onClearPoJump?: () => void } = {}) {
   const { profile } = useAuth();
   const currentDisplayName = profile.displayName;
   const [orders, setOrders] = useState<OrderEntryOverview[]>([]);
@@ -74,9 +87,24 @@ export default function OrderEntry() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | ProductionOrderLifecycle>('all');
   const [message, setMessage] = useState<string | null>(null);
+  /** Order yang menunggu konfirmasi pembatalan satu baris (aksi di kolom Actions). */
   const [cancelTarget, setCancelTarget] = useState<OrderEntryOverview | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const [dialog, setDialog] = useState<DialogState>({ open: false, mode: 'create', orderId: null });
+
+  /** Id order yang dicentang. Set supaya toggle O(1) dan tidak ada duplikat. */
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [confirmBulkCancel, setConfirmBulkCancel] = useState(false);
+  const [bulkCancelling, setBulkCancelling] = useState(false);
+  /** Pull massal berjalan — dipakai menonaktifkan tombolnya. */
+  const [bulkPulling, setBulkPulling] = useState(false);
+  const [forceTargets, setForceTargets] = useState<CancelSkipped[]>([]);
+  /** Order yang akan dihapus permanen, diisi saat dialog konfirmasi dibuka. */
+  const [deleteTargets, setDeleteTargets] = useState<DeleteOrderSkipped[]>([]);
+  const [confirmForceCancel, setConfirmForceCancel] = useState(false);
+  const [forceCancelling, setForceCancelling] = useState(false);
+  /** Daftar order yang dilewati pembatalan massal, ditampilkan di bawah pesan. */
+  const [skippedReport, setSkippedReport] = useState<string[]>([]);
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
@@ -101,51 +129,297 @@ export default function OrderEntry() {
 
   const filtered = useMemo(() => {
     const query = searchQuery.trim().toLocaleLowerCase('id-ID');
-    return orders.filter((order) => {
+    // Lompatan dari nomor PO di Register Harga. Di halaman ini kuncinya
+    // `order.id` sendiri, dengan `productionCode` sebagai cadangan.
+    const scoped = orders.filter((order) =>
+      matchesPoJump(poJump, { orderId: order.id, code: order.productionCode }),
+    );
+    return scoped.filter((order) => {
       if (filterStatus !== 'all' && order.status !== filterStatus) return false;
       if (!query) return true;
       return [
         order.productionCode,
+        order.clientProductionCode,
         order.productId,
         order.product,
         order.brand,
         order.productionStatus,
+        order.createdBy,
       ].some((value) => value?.toLocaleLowerCase('id-ID').includes(query));
     });
-  }, [filterStatus, orders, searchQuery]);
+  }, [filterStatus, orders, searchQuery, poJump]);
 
-  function openDialog(mode: OrderDialogMode, orderId: string | null = null) {
-    setDialog({ open: true, mode, orderId });
+  // "Pilih semua" kini milik grid: ia men-toggle seluruh baris yang tampil dan
+  // memutar selisihnya lewat `toggleOne`, jadi tidak ada checkbox header manual
+  // dan tidak ada state all/some di sini.
+  const selectionCount = selectedIds.size;
+
+  function toggleOne(id: string) {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   }
 
-  function handleSaved(detail: OrderEntryDetail) {
-    setDialog({ open: false, mode: 'create', orderId: null });
-    setMessage(`Order "${detail.productionCode}" berhasil disimpan.`);
-    void fetchOrders();
+  // Bentuk kolom untuk DataTable (variant "plain"). Sel yang butuh foto,
+  // badge, atau markup bersarang memakai `render` supaya tabel bersama tidak
+  // perlu tahu soal bentuk order.
+  const orderColumns = useMemo(() => [
+    { key: 'productionCode', label: 'Kode produksi', width: '150px' },
+    { key: 'clientProductionCode', label: 'Kode produksi client', width: '170px' },
+    {
+      key: 'productPhotoUrl', label: 'Foto', width: '70px',
+      render: (row: Record<string, unknown>) => {
+        const url = row.productPhotoUrl as string | null;
+        return url ? (
+          <img
+            src={url}
+            alt={String(row.productionCode)}
+            className="h-8 w-8 rounded border border-gray-200 object-cover"
+          />
+        ) : (
+          <span className="text-gray-300">—</span>
+        );
+      },
+    },
+    {
+      key: 'variationPhotoUrl', label: 'Foto variasi', width: '100px',
+      render: (row: Record<string, unknown>) => {
+        const url = row.variationPhotoUrl as string | null;
+        return url ? (
+          <img
+            src={url}
+            alt={`Variasi ${String(row.productionCode)}`}
+            className="h-8 w-8 rounded border border-gray-200 object-cover"
+          />
+        ) : (
+          <span className="text-gray-300">—</span>
+        );
+      },
+    },
+    { key: 'brand', label: 'Client', width: '140px' },
+    {
+      key: 'product', label: 'Product', width: '200px',
+      // Produk dan product id ditumpuk dalam satu sel seperti tabel lama.
+      render: (row: Record<string, unknown>) => (
+        <>
+          <p className="text-[13px] text-slate-700">{String(row.product)}</p>
+          <p className={T_SUB_LABEL}>{String(row.productId)}</p>
+        </>
+      ),
+    },
+    {
+      key: 'totalQuantity', label: 'Total qty', width: '100px', align: 'right' as const,
+      render: (row: Record<string, unknown>) => (row.totalQuantity as number).toLocaleString('id-ID'),
+    },
+    {
+      key: 'variationCount', label: 'Variasi', width: '90px', align: 'right' as const,
+      render: (row: Record<string, unknown>) => String(row.variationCount),
+    },
+    {
+      key: 'totalPerPiece', label: 'Harga / pcs', width: '120px', align: 'right' as const,
+      render: (row: Record<string, unknown>) => rupiah(row.totalPerPiece as number),
+    },
+    {
+      key: 'createdBy', label: 'Created By', width: '140px',
+      render: (row: Record<string, unknown>) => (row.createdBy as string) || <span className="text-gray-300">—</span>,
+    },
+    {
+      key: 'createdAt', label: 'Date Created', width: '130px',
+      render: (row: Record<string, unknown>) => formatDate(row.createdAt as string),
+    },
+    {
+      key: 'status', label: 'Status order', width: '120px',
+      render: (row: Record<string, unknown>) => lifecycleBadge(row.status as ProductionOrderLifecycle),
+    },
+  ], []);
+
+  function clearSelection() {
+    setSelectedIds(new Set());
   }
 
+  /**
+   * Batalkan satu order (tombol di kolom Actions).
+   *
+   * Berbeda dari `handleBulkCancel` yang menyapu seluruh baris tercentang, ini
+   * membatalkan tepat satu baris. Dipakai saat user sudah tahu order mana yang
+   * mau dibatalkan dan tidak perlu mencentangnya dulu.
+   *
+   * Memakai `cancelMany` dengan satu id, bukan RPC terpisah: guard-nya
+   * (hanya boleh sebelum Pull / sebelum ada progres) sama persis, dan
+   * `skipped[].reason` memberi tahu user kenapa order ini ditolak — sesuatu yang
+   * tidak dimiliki varian satu-order.
+   */
   async function handleCancel() {
     if (!cancelTarget) return;
     setCancelling(true);
     const target = cancelTarget;
-    const { error } = await productionOrderSvc.cancel(target.id, currentDisplayName);
+    const { data, error } = await productionOrderSvc.cancelMany([target.id], currentDisplayName);
+
     if (error) {
       setMessage(`Gagal membatalkan order: ${orderEntryErrorMessage(error)}`);
-    } else {
+    } else if ((data?.cancelled ?? 0) > 0) {
       setMessage(`Order "${target.productionCode}" dibatalkan.`);
+    } else {
+      const reason = data?.skipped[0]?.reason;
+      setMessage(
+        `Order "${target.productionCode}" tidak bisa dibatalkan${reason ? `: ${reason}` : '.'}`,
+      );
     }
+
     setCancelling(false);
     setCancelTarget(null);
     await fetchOrders();
   }
 
+  function openDialog(mode: OrderDialogMode, orderId: string | null = null) {
+    setDialog({ open: true, mode, orderId });
+  }
+
+  function handleSaved(detail: OrderEntryDetail, photoWarning: string | null) {
+    setDialog({ open: false, mode: 'create', orderId: null });
+    setMessage(
+      photoWarning
+        ?? `Order "${detail.productionCode}" berhasil disimpan.`,
+    );
+    setSkippedReport([]);
+    void fetchOrders();
+  }
+
+  /**
+   * Pull order terpilih ke Production Order.
+   *
+   * Dipanggil satu per satu, bukan satu panggilan massal, karena
+   * `pull_production_order_to_konveksi` bekerja per order dan tidak punya
+   * varian batch. Konsekuensinya batch bisa berhasil sebagian — karena itu
+   * tiap kegagalan dikumpulkan dan dilaporkan per order. Menjumlahkan saja
+   * akan menyembunyikan order mana yang gagal, dan user tidak punya cara
+   * mengetahui mana yang masih perlu di-pull.
+   *
+   * Order yang belum lengkap harganya sengaja TIDAK dikirim ke RPC: guard
+   * `ORDER_PRICE_INCOMPLETE` di database hanya mengembalikan pesan error tanpa
+   * memberi tahu komponen mana yang kurang, sedangkan kita sudah punya
+   * `priceComplete` di daftar. Ditolak di sini dengan alasan yang bisa
+   * ditindaklanjuti.
+   */
+  async function handleBulkPull() {
+    const targets = orders.filter((order) => selectedIds.has(order.id));
+    if (targets.length === 0) return;
+
+    setBulkPulling(true);
+    setSkippedReport([]);
+
+    const pulled: string[] = [];
+    const failed: string[] = [];
+    let priceIncomplete = 0;
+
+    for (const order of targets) {
+      if (!order.priceComplete) {
+        priceIncomplete += 1;
+        continue;
+      }
+      const { error } = await workOrderSvc.pullFromProductionOrder(order.id, currentDisplayName);
+      if (error) failed.push(`${order.productionCode} — ${error.message}`);
+      else pulled.push(order.productionCode);
+    }
+
+    const parts: string[] = [];
+    if (pulled.length > 0) parts.push(`${pulled.length} order di-pull ke Production Order`);
+    if (priceIncomplete > 0) parts.push(`${priceIncomplete} dilewati karena harga belum lengkap`);
+    if (failed.length > 0) parts.push(`${failed.length} gagal`);
+    setMessage(parts.length > 0 ? `${parts.join(' · ')}.` : 'Tidak ada order yang diproses.');
+
+    // Alasan per order ditampilkan terpisah supaya bisa ditindaklanjuti.
+    setSkippedReport([
+      ...failed,
+      ...(priceIncomplete > 0
+        ? [`${priceIncomplete} order belum punya register komponen harga lengkap — lengkapi lewat Edit, lalu pull lagi.`]
+        : []),
+    ]);
+
+    setBulkPulling(false);
+    clearSelection();
+    await fetchOrders();
+  }
+
+  async function handleBulkCancel() {
+    setBulkCancelling(true);
+    setSkippedReport([]);
+
+    const { data, error } = await productionOrderSvc.cancelMany(
+      [...selectedIds],
+      currentDisplayName,
+    );
+
+    if (error) {
+      setMessage(`Gagal membatalkan order: ${orderEntryErrorMessage(error)}`);
+    } else {
+      const cancelled = data?.cancelled ?? 0;
+      const skipped = data?.skipped ?? [];
+      setMessage(
+        cancelled === 0 && skipped.length === 0
+          ? 'Tidak ada order yang diproses.'
+          : `${cancelled} order dibatalkan.`,
+      );
+      setSkippedReport(
+        skipped.map((item) => `${item.productionCode || item.id} — ${item.reason}`),
+      );
+      // Sisa yang dilewati inilah yang bisa dihapus permanen. Batch yang
+      // seluruhnya berhasil tidak memunculkan opsi ini.
+      setForceTargets(cancelled > 0 || skipped.length > 0 ? skipped : []);
+    }
+
+    setBulkCancelling(false);
+    setConfirmBulkCancel(false);
+    clearSelection();
+    await fetchOrders();
+  }
+
+  /**
+   * Hapus permanen order terpilih beserta seluruh turunannya.
+   *
+   * Konfirmasi terpisah dari pembatalan karena tindakan ini tidak bisa
+   * dikembalikan: baris database benar-benar dibuang, bukan ditandai.
+   */
+  async function handleHardDelete() {
+    setForceCancelling(true);
+    const ids = deleteTargets.map((item) => item.id);
+    const { data, error } = await productionOrderSvc.deleteOrdersPermanently(
+      ids,
+      currentDisplayName,
+      ALLOW_HARD_DELETE,
+    );
+
+    if (error) {
+      setMessage(`Gagal menghapus order: ${orderEntryErrorMessage(error)}`);
+    } else {
+      const deleted = data?.deleted ?? 0;
+      const skipped = data?.skipped ?? [];
+      setMessage(
+        skipped.length === 0
+          ? `${deleted} order dihapus permanen.`
+          : `${deleted} order dihapus, ${skipped.length} dilewati.`,
+      );
+      // Alasan yang dilewati hampir selalu soal invoice, jadi ditampilkan apa
+      // adanya supaya user tahu langkah berikutnya.
+      setSkippedReport(skipped.map((item) => `${item.productionCode || item.id} — ${item.reason}`));
+      setForceTargets(skipped);
+    }
+
+    setForceCancelling(false);
+    setConfirmForceCancel(false);
+    clearSelection();
+    await fetchOrders();
+  }
+
   return (
     <main className="flex min-w-0 flex-1 flex-col overflow-auto bg-slate-50/40">
-      <div className="p-5 sm:p-7">
+      <div className="px-6 py-4">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h1 className="text-[17px] font-semibold tracking-tight text-slate-800">Order Entry</h1>
-            <p className="mt-0.5 text-[12px] text-slate-500">Kelola kode produksi, variasi, dan harga dalam satu alur.</p>
           </div>
           <div className="flex items-center gap-2">
             <Button variant="outline" className="h-8 px-3 text-[13px]" onClick={() => void fetchOrders()} disabled={loading}>
@@ -158,9 +432,37 @@ export default function OrderEntry() {
         </div>
 
         {message && (
-          <div className="mb-3 flex items-start gap-2 rounded-md border border-blue-200 bg-blue-50 px-3.5 py-2.5 text-[12px] text-blue-800">
+          <div className="mb-3 flex items-start gap-2 rounded-md border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-[12px] text-blue-800">
             <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            <span>{message}</span>
+            <div className="min-w-0">
+              <span>{message}</span>
+              {skippedReport.length > 0 && (
+                <ul className="mt-1.5 space-y-0.5 border-t border-slate-200 pt-1.5 text-[11px] text-blue-700">
+                  {skippedReport.map((line) => (
+                    <li key={line}>{line}</li>
+                  ))}
+                </ul>
+              )}
+              {/* Pembatalan biasa menolak order yang sudah di-Pull. Daripada
+                  membiarkan user buntu, tawarkan jalur paksa — dengan
+                  konfirmasi terpisah, karena ini melewati aturan. */}
+              {forceTargets.length > 0 && (
+                <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-slate-200 pt-2">
+                  <span className="text-[11px] text-blue-700">
+                    Order di atas tidak bisa dibatalkan biasa karena sudah masuk proses.
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-7 px-2.5 text-[11px] text-red-600 hover:bg-red-50 hover:text-red-700"
+                    onClick={() => setConfirmForceCancel(true)}
+                    disabled={forceCancelling}
+                  >
+                    <Ban className="h-3 w-3" /> Batalkan paksa ({forceTargets.length})
+                  </Button>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -171,7 +473,7 @@ export default function OrderEntry() {
               <Input
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
-                placeholder="Cari kode produksi, buyer, article…"
+                placeholder="Cari kode produksi, kode client, buyer, article…"
                 className="h-8 pl-9 text-[13px]"
               />
             </div>
@@ -189,7 +491,7 @@ export default function OrderEntry() {
                     onClick={() => setFilterStatus(option.value)}
                     className={cn(
                       'h-7 px-2.5 text-[12px]',
-                      filterStatus === option.value && 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100',
+                      filterStatus === option.value && 'border-slate-300 bg-slate-100 text-blue-700 hover:bg-slate-200',
                     )}
                   >
                     {option.label} <span className="text-[10px] opacity-70">{count}</span>
@@ -200,78 +502,139 @@ export default function OrderEntry() {
             <span className="text-[12px] text-slate-400 lg:ml-auto">{filtered.length} order</span>
           </div>
 
-          <div className="overflow-x-auto">
-            <Table className="w-auto min-w-full whitespace-nowrap">
-              <TableHeader className="bg-white">
-                <TableRow className="border-b-2 border-[#D1D5DB]">
-                  <TableHead className="h-9 px-4 text-[12px] font-semibold text-[#4B5563]">Kode produksi</TableHead>
-                  <TableHead className="h-9 px-4 text-[12px] font-semibold text-[#4B5563]">Customer</TableHead>
-                  <TableHead className="h-9 px-4 text-[12px] font-semibold text-[#4B5563]">Product</TableHead>
-                  <TableHead className="h-9 px-4 text-right text-[12px] font-semibold text-[#4B5563]">Total qty</TableHead>
-                  <TableHead className="h-9 px-4 text-right text-[12px] font-semibold text-[#4B5563]">Variasi</TableHead>
-                  <TableHead className="h-9 px-4 text-right text-[12px] font-semibold text-[#4B5563]">Harga / pcs</TableHead>
-                  <TableHead className="h-9 px-4 text-[12px] font-semibold text-[#4B5563]">Status order</TableHead>
-                  <TableHead className="h-9 px-4 text-right text-[12px] font-semibold text-[#4B5563]">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loading ? (
-                  <TableRow>
-                    <TableCell colSpan={8} className="h-32 text-center text-[13px] text-slate-500">
-                      <Loader2 className="mr-2 inline h-3.5 w-3.5 animate-spin" /> Memuat order…
-                    </TableCell>
-                  </TableRow>
-                ) : filtered.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={8} className="h-32 text-center">
-                      <p className="text-[13px] text-slate-600">Belum ada order yang sesuai</p>
-                      <p className="mt-1 text-[12px] text-slate-400">Buat order baru atau ubah pencarian dan filter.</p>
-                    </TableCell>
-                  </TableRow>
-                ) : filtered.map((order, index) => (
-                  <TableRow
-                    key={order.id}
-                    onClick={() => openDialog(order.canEdit ? 'edit' : 'view', order.id)}
-                    className={cn(
-                      'cursor-pointer border-b border-[#E5E7EB] transition-colors hover:bg-[#F0F1F3]',
-                      index % 2 === 1 && 'bg-[#F9FAFB]',
-                    )}
-                  >
-                    <TableCell className="px-4 py-2 align-middle text-[13px] text-slate-700">{order.productionCode}</TableCell>
-                    <TableCell className="px-4 py-2 align-middle text-[13px] text-slate-700">{order.brand}</TableCell>
-                    <TableCell className="px-4 py-2 align-middle">
-                      <p className="text-[13px] text-slate-700">{order.product}</p>
-                      <p className="mt-0.5 text-[11px] text-slate-400">{order.productId}</p>
-                    </TableCell>
-                    <TableCell className="px-4 py-2 text-right align-middle text-[13px] tabular-nums text-slate-700">{order.totalQuantity.toLocaleString('id-ID')}</TableCell>
-                    <TableCell className="px-4 py-2 text-right align-middle text-[13px] tabular-nums text-slate-700">{order.variationCount}</TableCell>
-                    <TableCell className="px-4 py-2 text-right align-middle text-[13px] tabular-nums text-slate-700">{rupiah(order.totalPerPiece)}</TableCell>
-                    <TableCell className="px-4 py-2 align-middle">{lifecycleBadge(order.status)}</TableCell>
-                    <TableCell className="px-4 py-2 align-middle">
-                      <div className="flex items-center justify-end gap-0.5">
-                        {order.canEdit && (
-                          <span className="inline-flex items-center gap-1 text-[12px] text-blue-700">
-                            <Pencil className="h-3.5 w-3.5" /> Edit
-                          </span>
-                        )}
-                        {order.status === 'PLANNING' && (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 text-red-600 hover:bg-red-50 hover:text-red-700"
-                            onClick={(event) => { event.stopPropagation(); setCancelTarget(order); }}
-                            aria-label={`Batalkan ${order.productionCode}`}
-                          >
-                            <Ban className="h-3.5 w-3.5" />
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+          {/* Bilah aksi massal bergaya Odoo: hanya muncul bila ada baris terpilih,
+              menggantikan kolom Actions per baris. */}
+          {selectionCount > 0 && (
+            <div className="flex flex-wrap items-center gap-3 border-b border-slate-200 bg-slate-50/70 px-4 py-2">
+              <span className="text-[12px] font-medium text-blue-800">
+                {selectionCount} order dipilih
+              </span>
+              {/* Pull ke Production Order. Muncul bersama aksi massal lain
+                  begitu ada baris terpilih — tidak ada tombol Pull per baris. */}
+              <Button
+                type="button"
+                className="h-7 px-2.5 text-[12px] bg-primary text-white hover:bg-primary/90"
+                onClick={() => void handleBulkPull()}
+                disabled={bulkPulling || bulkCancelling}
+              >
+                {bulkPulling
+                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  : <ArrowRight className="h-3.5 w-3.5" />}
+                Pull ke Production Order ({selectionCount})
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-7 px-2.5 text-[12px] text-red-600 hover:bg-red-50 hover:text-red-700"
+                onClick={() => setConfirmBulkCancel(true)}
+                disabled={bulkCancelling}
+              >
+                <Ban className="h-3.5 w-3.5" /> Batalkan order
+              </Button>
+              {ALLOW_HARD_DELETE && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-7 px-2.5 text-[12px] border-red-300 bg-red-50 text-red-700 hover:bg-red-100"
+                  onClick={() => {
+                    setDeleteTargets(
+                      [...selectedIds].map((id) => ({
+                        id,
+                        productionCode: orders.find((order) => order.id === id)?.productionCode ?? null,
+                        reason: '',
+                      })),
+                    );
+                    setConfirmForceCancel(true);
+                  }}
+                  disabled={forceCancelling}
+                >
+                  <Trash2 className="h-3.5 w-3.5" /> Hapus ({selectionCount})
+                </Button>
+              )}
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-7 px-2.5 text-[12px] text-slate-500"
+                onClick={clearSelection}
+                disabled={bulkCancelling}
+              >
+                <X className="h-3.5 w-3.5" /> Bersihkan pilihan
+              </Button>
+            </div>
+          )}
+
+          {poJump && (
+            <PoFilterBanner
+              code={poJump.code}
+              orderId={poJump.orderId}
+              count={filtered.length}
+              onClear={() => onClearPoJump?.()}
+            />
+          )}
+
+          <div className={T_WRAP}>
+            {loading ? (
+              // Status memuat tetap milik halaman: grid tidak punya varian
+              // loading sendiri, dan teksnya sudah dipakai sejak sebelum migrasi.
+              <div className="py-16 text-center text-[13px] text-gray-400">
+                <Loader2 className="mr-2 inline h-3.5 w-3.5 animate-spin" /> Memuat order…
+              </div>
+            ) : (
+              <DataTable
+                variant="plain"
+                columns={orderColumns}
+                data={filtered as unknown as Record<string, unknown>[]}
+                selectedRows={selectedIds}
+                onToggleRow={toggleOne}
+                onRowClick={(row) => openDialog(
+                  (row as unknown as OrderEntryOverview).canEdit ? 'edit' : 'view',
+                  (row as unknown as OrderEntryOverview).id,
+                )}
+                rowActions={(row) => {
+                  const order = row as unknown as OrderEntryOverview;
+                  // Kolomnya selalu ada (seperti tabel lama), isinya bisa kosong:
+                  // order yang tidak bisa diedit dan tidak berstatus DRAFT
+                  // memang tidak punya aksi apa pun.
+                  return (
+                    <div className="flex items-center justify-end gap-0.5">
+                      {order.canEdit && (
+                        <span className="inline-flex items-center gap-1 text-[12px] text-blue-700">
+                          <Pencil className="h-3.5 w-3.5" /> Edit
+                        </span>
+                      )}
+                      {order.status === 'DRAFT' && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          // `h-[19px] w-[19px]`, bukan `h-7 w-7`: tinggi baris tabel
+                          // ditentukan isi sel tertinggi, dan tombol 28px mendorong
+                          // barisnya ke 40px — sedangkan tabel acuan (Register
+                          // Harga) 31.5px. 19px + padding sel 12px = 31.5px.
+                          className="h-[19px] w-[19px] text-red-600 hover:bg-red-50 hover:text-red-700"
+                          // Tanpa stopPropagation, klik tombol ini juga membuka
+                          // dialog edit lewat onRowClick — perilaku yang sama
+                          // dijaga tabel lama.
+                          onClick={(event) => { event.stopPropagation(); setCancelTarget(order); }}
+                          aria-label={`Batalkan ${order.productionCode}`}
+                        >
+                          <Ban className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                    </div>
+                  );
+                }}
+                actionsLabel="Actions"
+                emptyMessage={
+                  <div className="py-10 text-center">
+                    <p className="text-[13px] text-gray-400">
+                      {orders.length === 0 ? 'Belum ada order terdaftar' : 'Tidak ada hasil yang cocok dengan filter'}
+                    </p>
+                    <p className="mt-1 text-[12px] text-slate-400">Buat order baru atau ubah pencarian dan filter.</p>
+                  </div>
+                }
+              />
+            )}
           </div>
         </section>
       </div>
@@ -290,13 +653,68 @@ export default function OrderEntry() {
           <AlertDialogHeader>
             <AlertDialogTitle>Batalkan order?</AlertDialogTitle>
             <AlertDialogDescription>
-              Order <strong>{cancelTarget?.productionCode}</strong> akan ditandai Cancelled. Tindakan ini hanya diizinkan sebelum order di-Pull dan sebelum ada progres produksi.
+              Order <strong>{cancelTarget?.productionCode}</strong> akan ditandai Cancelled. Pembatalan hanya diizinkan selama order masih Draft — belum di-Pull dan belum ada progres produksi.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={cancelling}>Kembali</AlertDialogCancel>
             <AlertDialogAction onClick={(event) => { event.preventDefault(); void handleCancel(); }} disabled={cancelling} className="bg-red-600 hover:bg-red-700">
               {cancelling && <Loader2 className="animate-spin" />} Batalkan order
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={confirmBulkCancel} onOpenChange={(open) => !open && !bulkCancelling && setConfirmBulkCancel(false)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Batalkan {selectionCount} order?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Order terpilih akan ditandai Cancelled. Pembatalan hanya diizinkan sebelum order di-Pull dan sebelum ada progres produksi; sisanya akan dilewati dan dilaporkan.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={bulkCancelling}>Kembali</AlertDialogCancel>
+            <AlertDialogAction onClick={(event) => { event.preventDefault(); void handleBulkCancel(); }} disabled={bulkCancelling} className="bg-red-600 hover:bg-red-700">
+              {bulkCancelling && <Loader2 className="animate-spin" />} Batalkan order
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={confirmForceCancel} onOpenChange={(open) => !open && !forceCancelling && setConfirmForceCancel(false)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Hapus permanen {deleteTargets.length} order?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-[13px]">
+                <ul className="list-inside list-disc font-mono text-[12px]">
+                  {deleteTargets.slice(0, 5).map((item) => (
+                    <li key={item.id}>{item.productionCode || item.id}</li>
+                  ))}
+                </ul>
+                {deleteTargets.length > 5 && <p>Dan {deleteTargets.length - 5} order lainnya.</p>}
+                <p>
+                  Order, variasi, harga, <strong>work order</strong>, dan log produksinya akan
+                  dihapus dari database. Tindakan ini <strong>tidak bisa dikembalikan</strong> —
+                  tidak ada undo.
+                </p>
+                <p>
+                  Order yang work order-nya sudah ditagihkan akan <strong>dilewati</strong>, karena
+                  invoice-nya harus dihapus dulu di halaman Invoicing. Data tagihan tidak ikut
+                  terhapus dari sini.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={forceCancelling}>Kembali</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => { event.preventDefault(); void handleHardDelete(); }}
+              disabled={forceCancelling}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {forceCancelling && <Loader2 className="animate-spin" />} Hapus permanen
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

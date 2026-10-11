@@ -1,7 +1,12 @@
 import { X, RefreshCw } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
+import { AppSelect } from '@/components/AppSelect';
+import { toOptions } from '@/components/selectOptions';
 import { penjahitList, bulanList, viewConfig } from '@/data/mockData';
 import type { ModuleId, ColumnDef } from '@/types';
+
+const posisiOptions = toOptions(['Leader', 'Penjahit', 'Finishing']);
+const statusOptions = toOptions(['Aktif', 'Non-Aktif']);
 
 interface DetailPanelProps {
   open: boolean;
@@ -82,7 +87,7 @@ export function DetailPanel({ open, moduleId, row, isAddingNew, onClose, onSave,
               </button>
               <button
                 onClick={handleSave}
-                className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2 text-[13px] font-medium text-white bg-sky-400 hover:bg-sky-500 rounded-lg transition-colors shadow-sm shadow-sky-200"
+                className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2 text-[13px] font-medium text-white bg-primary hover:bg-primary/90 rounded-lg transition-colors shadow-sm shadow-slate-300"
               >
                 {isAddingNew ? 'Save' : 'Save Changes'}
               </button>
@@ -97,7 +102,7 @@ export function DetailPanel({ open, moduleId, row, isAddingNew, onClose, onSave,
               </button>
               <button
                 onClick={onRefresh}
-                className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2 text-[13px] font-medium text-white bg-sky-400 hover:bg-sky-500 rounded-lg transition-colors shadow-sm shadow-sky-200"
+                className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2 text-[13px] font-medium text-white bg-primary hover:bg-primary/90 rounded-lg transition-colors shadow-sm shadow-slate-300"
               >
                 <RefreshCw className="w-4 h-4" />
                 Refresh Sync
@@ -140,14 +145,16 @@ function SelesaiJahitForm({ row, readOnly }: { row: Record<string, unknown> | nu
     <div className="space-y-5">
       <Section title="Work Code">
         <FormField label="Work Code" required>
-          <select id="form-workCode" className="form-input" defaultValue={row?.workCode as string || ''} disabled={readOnly}>
-            <option value="">Pilih Work Code...</option>
-            {activeWorkCodes.map((wc) => (
-              <option key={wc.workCode} value={wc.workCode}>
-                {wc.workCode} | {wc.product} | {wc.warna} | {wc.size}
-              </option>
-            ))}
-          </select>
+          <AppSelect
+            id="form-workCode"
+            defaultValue={row?.workCode as string || ''}
+            placeholder="Pilih Work Code..."
+            disabled={readOnly}
+            options={activeWorkCodes.map((wc) => ({
+              value: wc.workCode,
+              label: `${wc.workCode} | ${wc.product} | ${wc.warna} | ${wc.size}`,
+            }))}
+          />
           <Hint>Filtered from Selesai Finishing: STATUS STOCK = DALAM PROSES PRODUKSI</Hint>
         </FormField>
       </Section>
@@ -162,10 +169,13 @@ function SelesaiJahitForm({ row, readOnly }: { row: Record<string, unknown> | nu
           <input type="number" id="form-totalSelesaiJahit" className="form-input" defaultValue={row?.totalSelesaiJahit as number || ''} readOnly={readOnly} />
         </FormField>
         <FormField label="PIC Penjahit" required>
-          <select id="form-picPenjahit" className="form-input" defaultValue={row?.picPenjahit as string || ''} disabled={readOnly}>
-            <option value="">Pilih Penjahit...</option>
-            {penjahitList.map((p) => <option key={p} value={p}>{p}</option>)}
-          </select>
+          <AppSelect
+            id="form-picPenjahit"
+            defaultValue={row?.picPenjahit as string || ''}
+            placeholder="Pilih Penjahit..."
+            disabled={readOnly}
+            options={toOptions(penjahitList)}
+          />
         </FormField>
         <FormField label="Tanggal Laporan" required>
           <input type="date" id="form-tanggalLaporan" className="form-input" defaultValue={row?.tanggalLaporan as string || ''} readOnly={readOnly} />
@@ -188,27 +198,31 @@ function TargetJahitForm({ row, readOnly }: { row: Record<string, unknown> | nul
     <div className="space-y-5">
       <Section title="Input Manual">
         <FormField label="Bulan Tahun" required>
-          <select id="form-bulanTahun" className="form-input" defaultValue={row?.bulanTahun as string || ''} disabled={readOnly}>
-            <option value="">Pilih Bulan...</option>
-            {bulanList.map((b) => <option key={b} value={b}>{b}</option>)}
-          </select>
+          <AppSelect
+            id="form-bulanTahun"
+            defaultValue={row?.bulanTahun as string || ''}
+            placeholder="Pilih Bulan..."
+            disabled={readOnly}
+            options={toOptions(bulanList)}
+          />
         </FormField>
         <FormField label="Nama" required>
-          <select id="form-nama" className="form-input" defaultValue={row?.nama as string || ''} disabled={readOnly}>
-            <option value="">Pilih Penjahit...</option>
-            {penjahitList.map((p) => <option key={p} value={p}>{p}</option>)}
-          </select>
+          <AppSelect
+            id="form-nama"
+            defaultValue={row?.nama as string || ''}
+            placeholder="Pilih Penjahit..."
+            disabled={readOnly}
+            options={toOptions(penjahitList)}
+          />
         </FormField>
         <FormField label="Posisi" required>
-          <select id="form-posisi" className="form-input" defaultValue={row?.posisi as string || ''} disabled={readOnly}>
-            <option value="">Pilih Posisi...</option>
-            <option value="Leader">Leader</option>
-            <option value="Penjahit">Penjahit</option>
-            <option value="Finishing">Finishing</option>
-          </select>
-        </FormField>
-        <FormField label="Salary" required>
-          <input type="number" id="form-salary" className="form-input" defaultValue={row?.salary as number || ''} placeholder="Gaji bulanan" readOnly={readOnly} />
+          <AppSelect
+            id="form-posisi"
+            defaultValue={row?.posisi as string || ''}
+            placeholder="Pilih Posisi..."
+            disabled={readOnly}
+            options={posisiOptions}
+          />
         </FormField>
       </Section>
 
@@ -299,18 +313,21 @@ function RegisterPenjahitForm({ row, readOnly }: { row: Record<string, unknown> 
           <input type="text" id="form-picPenjahit" className="form-input" defaultValue={row?.picPenjahit as string || ''} placeholder="Nama lengkap karyawan" readOnly={readOnly} />
         </FormField>
         <FormField label="Posisi" required>
-          <select id="form-posisi" className="form-input" defaultValue={row?.posisi as string || ''} disabled={readOnly}>
-            <option value="">Pilih Posisi...</option>
-            <option value="Leader">Leader</option>
-            <option value="Penjahit">Penjahit</option>
-            <option value="Finishing">Finishing</option>
-          </select>
+          <AppSelect
+            id="form-posisi"
+            defaultValue={row?.posisi as string || ''}
+            placeholder="Pilih Posisi..."
+            disabled={readOnly}
+            options={posisiOptions}
+          />
         </FormField>
         <FormField label="Status">
-          <select id="form-status" className="form-input" defaultValue={row?.status as string || 'Aktif'} disabled={readOnly}>
-            <option value="Aktif">Aktif</option>
-            <option value="Non-Aktif">Non-Aktif</option>
-          </select>
+          <AppSelect
+            id="form-status"
+            defaultValue={row?.status as string || 'Aktif'}
+            disabled={readOnly}
+            options={statusOptions}
+          />
         </FormField>
       </Section>
     </div>

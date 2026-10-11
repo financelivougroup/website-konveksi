@@ -2,9 +2,10 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Plus, RefreshCw, Search, Sparkles, Trash2, Upload } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatMonthYearFromYm } from '@/lib/monthYear';
-import { T_WRAP, T_TABLE, T_HEAD_ROW, T_TH, T_TD, rowClass, T_TOOLBAR_BTN, T_TOOLBAR_BTN_IDLE } from '@/lib/tableStyles';
+import { T_WRAP, T_TOOLBAR_BTN, T_TOOLBAR_BTN_IDLE, T_SOFT_BADGE_TONE } from '@/lib/tableStyles';
+import { DataTable } from '@/components/Table/DataTable';
 import { FilterButton, SortButton, ExportButton } from '@/components/Table/TableTools';
-import { ColumnSettingsButton, HiddenColgroup } from '@/components/Table/ColumnSettings';
+import { ColumnSettingsButton } from '@/components/Table/ColumnSettings';
 import { useColumnSettings } from '@/lib/columnSettings';
 import { applyFilters, applySorts, type FieldOption, type FilterRule, type SortRule } from '@/lib/tableQuery';
 import {
@@ -14,8 +15,18 @@ import {
   remove as removePlanning,
   type PlanningProduksiRow,
 } from '@/services/planningProduksi';
-import { fetchAll as fetchAllPenjahit, type RegisterPenjahitRow } from '@/services/registerPenjahit';
+import { fetchAll as fetchAllPenjahit, activePenjahitNames, type RegisterPenjahitRow } from '@/services/registerPenjahit';
 import { generateTargetsFromPlanning } from '@/services/staffDebt';
+import { AppSelect } from '@/components/AppSelect';
+import {
+  clientCodeChoices,
+  konveksiCodeFor,
+  sizeChoicesFor,
+  warnaChoicesFor,
+  type ClientVariant,
+  type ComplainProductionOption,
+} from '@/lib/complainCascade';
+import { fetchProductionCodeData } from '@/lib/complainHelper';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
@@ -27,15 +38,26 @@ function currentMonth(): string {
 }
 
 // Status planning: draft (baru) → approved (boleh di-generate ke target jahit)
-// atau rejected. Badge: hijau = approved, merah = rejected, abu = draft.
+// atau rejected.
+//
+// Warna memakai `T_SOFT_BADGE_TONE` (lihat '@/lib/tableStyles') agar seragam
+// dengan badge status soft di tabel lain — hijau = approved, merah = rejected,
+// abu = draft. `border` ditulis terpisah karena SelectTrigger dasarnya
+// `border-0`; tanpa itu badge-nya kehilangan garis tepi tipis yang jadi ciri
+// gaya soft. Ukuran/padding tetap milik SelectTrigger (h-7 px-2 text-xs),
+// bukan milik badge tabel, karena elemen ini harus setinggi kontrol lain.
 const PLAN_STATUS_BADGE: Record<string, string> = {
-  approved: 'bg-emerald-100 text-emerald-700',
-  rejected: 'bg-rose-100 text-rose-700',
+  approved: `border ${T_SOFT_BADGE_TONE.emerald}`,
+  rejected: `border ${T_SOFT_BADGE_TONE.rose}`,
 };
+const PLAN_STATUS_BADGE_FALLBACK = `border ${T_SOFT_BADGE_TONE.slate}`;
 
 interface PlanningForm {
   namaPenjahit: string;
-  productNote: string;
+  /** Kode Produksi Client — dipilih user, sumber kebenarannya. */
+  clientCode: string;
+  /** Kode Produksi Konveksi — diturunkan dari `clientCode`, tidak diketik user. */
+  productionCode: string;
   product: string;
   warna: string;
   size: string;
@@ -45,7 +67,8 @@ interface PlanningForm {
 
 const EMPTY_FORM: PlanningForm = {
   namaPenjahit: '',
-  productNote: '',
+  clientCode: '',
+  productionCode: '',
   product: '',
   warna: '',
   size: '',
@@ -60,7 +83,6 @@ export function PlanningProduksiPage() {
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
   const [filters, setFilters] = useState<FilterRule[]>([]);
   const [sorts, setSorts] = useState<SortRule[]>([]);
-  const { hidden: hiddenCols, toggle: toggleCol } = useColumnSettings('planning-produksi');
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<PlanningProduksiRow | null>(null);
@@ -71,8 +93,15 @@ export function PlanningProduksiPage() {
   // Penjahit options for the Nama Penjahit select.
   const [penjahitList, setPenjahitList] = useState<RegisterPenjahitRow[]>([]);
 
-  // Generate Target controls.
-  const [genMonth, setGenMonth] = useState(currentMonth());
+  // Opsi Kode Produksi Client + varian warna/size-nya, dibentuk dari work order.
+  // Dimuat saat dialog dibuka (pola yang sama dengan `loadPenjahit`), bukan saat
+  // halaman dimuat — supaya daftarnya selalu mengikuti produksi terbaru.
+  const [codeOptions, setCodeOptions] = useState<ComplainProductionOption[]>([]);
+  const [codeVariants, setCodeVariants] = useState<ClientVariant[]>([]);
+
+  // Generate Target controls. Bulan target tidak lagi dipilih di toolbar: tiap
+  // baris planning membawa `bulanTarget`-nya sendiri, jadi generate mengikuti
+  // baris yang dicentang. Lihat `handleGenerate`.
   const [generating, setGenerating] = useState(false);
 
   const refresh = useCallback(async () => {
@@ -86,30 +115,47 @@ export function PlanningProduksiPage() {
 
   const loadPenjahit = useCallback(async () => {
     const { data } = await fetchAllPenjahit();
-    // Only employees with posisi "Penjahit" who are still Aktif are selectable.
-    // Other positions (Leader, Finishing) and resigned employees are hidden,
-    // but their historical planning rows remain in the database.
+    // Hanya karyawan Aktif berposisi Penjahit yang boleh dipilih. Aturannya ada
+    // di `activePenjahitNames` (`src/lib/karyawan.ts`) supaya Entry Jahitan tidak
+    // bisa menyimpang lagi seperti dulu (di sana daftarnya masih hardcoded).
+    // Baris planning lama milik karyawan yang kini Non-Aktif tetap ada di tabel.
+    const names = activePenjahitNames(data ?? []);
     setPenjahitList(
-      (data ?? []).filter(
-        (p) =>
-          (p.status ?? 'Aktif').toLowerCase() === 'aktif' &&
-          (p.posisi ?? '').toLowerCase() === 'penjahit',
-      ),
+      (data ?? []).filter((p) => names.includes(p.picPenjahit)),
     );
+  }, []);
+
+  /**
+   * Ambil pasangan kode produksi (konveksi + client) **beserta varian warna/size**
+   * dari work order — satu query untuk keduanya.
+   *
+   * Dipanggil saat dialog dibuka supaya daftarnya selalu mengikuti produksi
+   * terbaru — pola yang sama dengan `loadPenjahit`. Yang disimpan adalah daftar
+   * mentahnya, bukan hasil turunan: pemulihan kode konveksi saat Edit memakai
+   * `konveksiCodeFor` yang mencari di daftar ini, sedangkan bentuk pilihan
+   * dropdown-nya disusun terpisah di `codeChoiceOptions` / `warnaChoiceOptions` /
+   * `sizeChoiceOptions`.
+   */
+  const loadCodeOptions = useCallback(async () => {
+    const { options, variants } = await fetchProductionCodeData();
+    setCodeOptions(options);
+    setCodeVariants(variants);
   }, []);
 
   const openCreate = useCallback(() => {
     setEditTarget(null);
     setForm(EMPTY_FORM);
     loadPenjahit();
+    loadCodeOptions();
     setModalOpen(true);
-  }, [loadPenjahit]);
+  }, [loadPenjahit, loadCodeOptions]);
 
   const openEdit = useCallback((item: PlanningProduksiRow) => {
     setEditTarget(item);
     setForm({
       namaPenjahit: item.namaPenjahit,
-      productNote: item.productNote ?? '',
+      clientCode: item.clientProductionCode ?? '',
+      productionCode: item.productNote ?? '',
       product: item.product,
       warna: item.warna ?? '',
       size: item.size ?? '',
@@ -117,14 +163,20 @@ export function PlanningProduksiPage() {
       bulanTarget: item.bulanTarget,
     });
     loadPenjahit();
+    loadCodeOptions();
     setModalOpen(true);
-  }, [loadPenjahit]);
+  }, [loadPenjahit, loadCodeOptions]);
 
-  const isValid = Boolean(form.namaPenjahit && form.productNote.trim() && form.product && form.qty && form.bulanTarget);
+  // `productionCode` ikut wajib: baris planning tanpa kode konveksi akan
+  // ditagih 0 rupiah oleh `generateTargetsFromPlanning` tanpa error apa pun
+  // (lihat catatan di `src/services/staffDebt.ts`). Lebih baik dicegah di sini.
+  const isValid = Boolean(
+    form.namaPenjahit && form.clientCode && form.productionCode.trim() && form.product && form.qty && form.bulanTarget,
+  );
 
   async function handleSave() {
     if (!isValid) {
-      setMessage('❌ Lengkapi Nama Penjahit, Product Note, Produk, Qty, dan Bulan Target.');
+      setMessage('❌ Lengkapi Nama Penjahit, Kode Produksi Client, Produk, Qty, dan Bulan Target.');
       setTimeout(() => setMessage(null), 3000);
       return;
     }
@@ -134,7 +186,10 @@ export function PlanningProduksiPage() {
     // satisfy the service input; omit it on update so it stays as stored.
     const payload = {
       namaPenjahit: form.namaPenjahit,
-      productNote: form.productNote.trim(),
+      // Kedua kode tersimpan berdampingan: `product_note` tetap kode konveksi
+      // karena ia kunci pencarian harga, `client_production_code` kode client.
+      productNote: form.productionCode.trim(),
+      clientProductionCode: form.clientCode,
       product: form.product,
       warna: form.warna || null,
       size: form.size || null,
@@ -164,17 +219,21 @@ export function PlanningProduksiPage() {
     setTimeout(() => setMessage(null), 3000);
   }
 
-  const handleStatusChange = async (id: number, status: string) => {
-    const prev = items;
+  // `previousStatus` datang dari baris yang diklik (selnya sudah memegang baris
+  // itu), jadi rollback-nya tidak perlu membaca `items` sama sekali. Itu yang
+  // membuat identitas fungsi ini stabil — dan karena stabil, useMemo kolom di
+  // bawah tidak dibuat ulang setiap render. Rollback-nya juga jadi presisi:
+  // hanya baris itu yang dikembalikan, bukan snapshot seluruh tabel.
+  const handleStatusChange = useCallback(async (id: number, status: string, previousStatus: string) => {
     // Optimistic: badge berubah di layar saat itu juga.
     setItems(p => p.map(r => (r.id === id ? { ...r, status } : r)));
     const { error } = await updatePlanning(id, { status });
     if (error) {
-      setItems(prev); // rollback tampilan
+      setItems(p => p.map(r => (r.id === id ? { ...r, status: previousStatus } : r)));
       setMessage(`❌ Error: ${error.message}`);
       setTimeout(() => setMessage(null), 3000);
     }
-  };
+  }, []);
 
   // Bulk status: apply ke semua baris terpilih sekaligus, lalu sinkron state lokal.
   const handleBulkStatus = useCallback(async (status: string) => {
@@ -193,31 +252,74 @@ export function PlanningProduksiPage() {
     setTimeout(() => setMessage(null), 3000);
   }, [selectedRows]);
 
-  // Generate Target handler.
+  // Generate Target handler — hanya baris yang DICENTANG yang diproses.
+  //
+  // Bulan target diambil dari tiap baris planning (`bulanTarget`), bukan dari satu
+  // input bulan, jadi mencentang baris dari dua bulan sekaligus tetap benar.
+  // Kalau penjahit sudah punya target di bulan itu, JUMLAHNYA yang ditambah —
+  // baris target baru tidak dibuat (lihat `generateTargetsFromPlanning`).
   const handleGenerate = useCallback(async () => {
+    const ids = [...selectedRows];
+    if (ids.length === 0) return;
     setGenerating(true);
+    // Pesan yang memuat daftar nama gaji yang belum diinput ditahan lebih lama:
+    // user perlu waktu membacanya dan berpindah ke halaman Expense, sedangkan
+    // 4 detik cukup untuk pesan ringkas biasa.
+    let holdMs = 4000;
     try {
-      const result = await generateTargetsFromPlanning(genMonth);
+      const result = await generateTargetsFromPlanning(ids);
       if (result.error) {
         setMessage(`❌ ${result.error.message}`);
-      } else if (result.created > 0 && result.approvedFound > 0) {
-        setMessage(`✅ ${result.created} target jahit dibuat dari ${result.approvedFound} planning approved.`);
-      } else if (result.approvedFound === 0) {
-        setMessage('⚠️ Tidak ada planning approved di bulan ini.');
       } else {
-        setMessage('ℹ️ Target Jahit sudah pernah digenerate untuk penjahit ini.');
+        const bagian: string[] = [];
+        if (result.merged > 0) bagian.push(`${result.merged} target ditambahkan qty-nya`);
+        if (result.created > 0) bagian.push(`${result.created} target baru dibuat`);
+        const catatan: string[] = [];
+        if (result.skippedNotApproved > 0) catatan.push(`${result.skippedNotApproved} belum approved`);
+        if (result.skippedIncomplete > 0) catatan.push(`${result.skippedIncomplete} data belum lengkap`);
+
+        // Gaji yang belum diinput disebutkan dengan NAMA dan BULANnya, bukan
+        // sekadar jumlahnya — user perlu tahu siapa yang harus diisi gajinya
+        // dulu sebelum bisa digenerate.
+        const gajiKurang = result.missingSalary.length > 0
+          ? ` Gaji belum diinput: ${result.missingSalary
+            .map((m) => `${m.nama} (${m.bulan})`)
+            .join(', ')} — isi di Expense (MANPOWER › SALARY) lalu generate lagi.`
+          : '';
+
+        if (bagian.length > 0) {
+          setMessage(
+            `✅ ${bagian.join(', ')} dari ${ids.length} planning terpilih.` +
+              (catatan.length > 0 ? ` Dilewati: ${catatan.join(', ')}.` : '') +
+              (gajiKurang ? `⚠️${gajiKurang}` : ''),
+          );
+        } else if (gajiKurang) {
+          // Tidak ada yang berhasil DAN penyebabnya gaji: sampaikan alasannya,
+          // bukan "tidak ada planning yang bisa digenerate" yang menyesatkan.
+          setMessage(`⚠️ Tidak ada yang digenerate.${gajiKurang}`);
+        } else if (result.skippedNotApproved > 0) {
+          setMessage(`⚠️ ${result.skippedNotApproved} planning terpilih belum berstatus approved — ubah statusnya dulu.`);
+        } else {
+          setMessage('⚠️ Tidak ada planning yang bisa digenerate dari pilihan ini.');
+        }
+        if (result.missingSalary.length > 0) holdMs = 15000;
       }
-    } catch (e: any) {
-      setMessage(`❌ Error: ${e?.message || e}`);
+      // Pilihan dikosongkan setelah berhasil, mengikuti pola `handleBulkStatus`.
+      // Karena generate MENAMBAH qty, centang yang tertinggal lalu terklik lagi
+      // akan menambah dua kali tanpa disadari.
+      if (result.created > 0 || result.merged > 0) setSelectedRows(new Set());
+    } catch (e: unknown) {
+      setMessage(`❌ Error: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setGenerating(false);
-      setTimeout(() => setMessage(null), 4000);
+      setTimeout(() => setMessage(null), holdMs);
     }
-  }, [genMonth]);
+  }, [selectedRows]);
 
   const PLAN_FIELDS: FieldOption[] = [
     { key: 'namaPenjahit', label: 'Nama Penjahit' },
-    { key: 'productNote', label: 'Product Note' },
+    { key: 'productNote', label: 'Kode Produksi Konveksi' },
+    { key: 'clientProductionCode', label: 'Kode Produksi Client' },
     { key: 'product', label: 'Product' },
     { key: 'warna', label: 'Warna' },
     { key: 'size', label: 'Size' },
@@ -228,20 +330,107 @@ export function PlanningProduksiPage() {
   const filtered = items.filter((r) => {
     if (search) {
       const q = search.toLowerCase();
-      return r.namaPenjahit.toLowerCase().includes(q) || r.productNote?.toLowerCase().includes(q) || r.product.toLowerCase().includes(q) || r.warna?.toLowerCase().includes(q) || r.size?.toLowerCase().includes(q);
+      return r.namaPenjahit.toLowerCase().includes(q) || r.productNote?.toLowerCase().includes(q) || r.clientProductionCode?.toLowerCase().includes(q) || r.product.toLowerCase().includes(q) || r.warna?.toLowerCase().includes(q) || r.size?.toLowerCase().includes(q);
     }
     return true;
   });
   const rows = useMemo(() => applySorts(applyFilters(filtered.map((r) => ({ ...r } as unknown as Record<string, unknown>)), filters), sorts) as unknown as PlanningProduksiRow[], [filtered, filters, sorts]);
 
+  // Bentuk kolom untuk DataTable (variant "plain"). Sel yang butuh badge,
+  // format bulan, atau editor status memakai `render` supaya tabel bersama
+  // tidak perlu tahu soal status planning.
+  const planningColumns = useMemo(() => [
+    { key: 'namaPenjahit', label: 'Nama Penjahit', width: '180px' },
+    {
+      // Key tetap `productNote` (kolom DB-nya `product_note`); yang berubah
+      // hanya labelnya, karena isinya memang Kode Produksi Konveksi.
+      key: 'productNote', label: 'Kode Produksi Konveksi', width: '190px',
+      render: (row: Record<string, unknown>) => {
+        const code = row.productNote as string | null;
+        return code
+          ? <span className="font-mono" title={code}>{code}</span>
+          : <span className="text-gray-300">—</span>;
+      },
+    },
+    {
+      key: 'clientProductionCode', label: 'Kode Produksi Client', width: '190px',
+      render: (row: Record<string, unknown>) => {
+        const code = row.clientProductionCode as string | null;
+        return code
+          ? <span className="font-mono" title={code}>{code}</span>
+          : <span className="text-gray-300">—</span>;
+      },
+    },
+    { key: 'product', label: 'Product', width: '150px' },
+    {
+      key: 'warna', label: 'Warna', width: '120px',
+      render: (row: Record<string, unknown>) => (row.warna as string) || <span className="text-gray-300">—</span>,
+    },
+    {
+      key: 'size', label: 'Size', width: '100px',
+      render: (row: Record<string, unknown>) => (row.size as string) || <span className="text-gray-300">—</span>,
+    },
+    {
+      key: 'qty', label: 'Qty', align: 'right' as const, width: '90px',
+      render: (row: Record<string, unknown>) => <span className="tabular-nums">{String(row.qty)}</span>,
+    },
+    {
+      key: 'bulanTarget', label: 'Bulan Target', width: '130px',
+      render: (row: Record<string, unknown>) => formatMonthYearFromYm(row.bulanTarget as string),
+    },
+    {
+      key: 'status', label: 'Status', align: 'center' as const, width: '140px',
+      // Status diubah cepat dari tabel: dropdown dibungkus badge berwarna
+      // supaya tetap terbaca sebagai status, bukan sekadar kolom isian.
+      // stopPropagation menjaga klik dropdown tidak ikut membuka dialog edit.
+      render: (row: Record<string, unknown>) => {
+        const current = (row.status as string) || 'draft';
+        return (
+          <div onClick={(e) => e.stopPropagation()}>
+            <Select value={current} onValueChange={(v) => void handleStatusChange(row.id as number, v, current)}>
+              <SelectTrigger
+                aria-label={`Status planning ${String(row.namaPenjahit)}`}
+                className={cn(
+                  // `h-[19px]`, bukan `h-7`: tinggi baris tabel ditentukan isi sel
+                  // tertinggi, dan dropdown 28px mendorong barisnya ke 40px —
+                  // sedangkan tabel acuan (Register Harga) 31.5px. 19px + padding
+                  // sel 12px = 31.5px, sama persis.
+                  'h-[19px] w-auto gap-1 rounded-md border-0 px-2 text-xs font-semibold shadow-none focus:ring-1 focus:ring-slate-300 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:opacity-70',
+                  PLAN_STATUS_BADGE[current] ?? PLAN_STATUS_BADGE_FALLBACK,
+                )}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="draft" className="text-xs">draft</SelectItem>
+                <SelectItem value="approved" className="text-xs">approved</SelectItem>
+                <SelectItem value="rejected" className="text-xs">rejected</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        );
+      },
+    },
+  ], [handleStatusChange]);
+
+  // Hide/show kolom + freeze (persist per tabel). Dipanggil setelah
+  // `planningColumns` ada: urutan kolom itu yang dipakai hook untuk merapikan
+  // daftar beku menjadi awalan yang rapat — mesin pinning mengangkat kolom yang
+  // di-pin ke depan mengikuti urutan tersebut, jadi daftar yang berlubang akan
+  // mengubah urutan kolom di layar. Tidak ada `return` lebih awal di antara
+  // keduanya, jadi urutan hook-nya tetap sama di setiap render.
+  const planningColumnKeys = useMemo(() => planningColumns.map((c) => c.key), [planningColumns]);
+  const { hidden: hiddenCols, toggle: toggleCol, frozen: frozenCols, toggleFreeze: toggleFreezeCol, toggleFreezeAll: toggleFreezeAllCols, headerFrozen, setHeaderFrozen } = useColumnSettings('planning-produksi', planningColumnKeys);
+
   // Multi-select (same pattern as Production Monitoring RAW DATA).
+  // "Select all" is owned by the grid now — it toggles every visible row and
+  // replays the difference through `handleToggleRow`.
   const handleToggleRow = (id: number) => setSelectedRows(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
-  const handleToggleAll = () => { if (selectedRows.size === rows.length) setSelectedRows(new Set()); else setSelectedRows(new Set(rows.map(r => r.id))); };
   const handleImport = () => { if (selectedRows.size === 0) { alert('Pilih minimal 1!'); return; } alert(`✅ ${selectedRows.size} planning di-import`); setSelectedRows(new Set()); };
   const handleExport = () => {
     const esc = (v: string | number | null | undefined) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-    const header = ['Nama Penjahit', 'Product Note', 'Product', 'Warna', 'Size', 'Qty', 'Bulan Target', 'Status'];
-    const lines = filtered.map((r) => [r.namaPenjahit, r.productNote ?? '', r.product, r.warna ?? '', r.size ?? '', r.qty, r.bulanTarget, r.status].map(esc).join(','));
+    const header = ['Nama Penjahit', 'Kode Produksi Konveksi', 'Kode Produksi Client', 'Product', 'Warna', 'Size', 'Qty', 'Bulan Target', 'Status'];
+    const lines = filtered.map((r) => [r.namaPenjahit, r.productNote ?? '', r.clientProductionCode ?? '', r.product, r.warna ?? '', r.size ?? '', r.qty, r.bulanTarget, r.status].map(esc).join(','));
     const csv = '﻿' + [header.map(esc).join(','), ...lines].join('\r\n'); // BOM for Excel UTF-8
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
     const a = document.createElement('a');
@@ -264,6 +453,26 @@ export function PlanningProduksiPage() {
     setTimeout(() => setMessage(null), 3000);
   };
 
+  const codeChoiceOptions = useMemo(
+    () => clientCodeChoices(codeOptions).map((c) => ({ value: c.value, label: c.label })),
+    [codeOptions],
+  );
+
+  // Warna & Size mengikuti Kode Produksi Client, bukan diketik manual. Keduanya
+  // diturunkan dari varian work order milik kode itu; Size menyempit lagi setelah
+  // Warna dipilih (pada data live ada kode yang tiap warnanya beda size).
+  // `toOptions` tidak dipakai karena di sini butuh daftar string untuk dihitung
+  // jumlahnya juga (auto-pilih saat hanya ada satu).
+  const warnaChoiceOptions = useMemo(
+    () => warnaChoicesFor(codeVariants, form.clientCode),
+    [codeVariants, form.clientCode],
+  );
+
+  const sizeChoiceOptions = useMemo(
+    () => sizeChoicesFor(codeVariants, form.clientCode, form.warna),
+    [codeVariants, form.clientCode, form.warna],
+  );
+
   if (loading) {
     return (
       <main className="flex-1 flex items-center justify-center">
@@ -274,10 +483,61 @@ export function PlanningProduksiPage() {
 
   const setField = (k: keyof PlanningForm, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
+  /**
+   * Pilih Kode Produksi Client -> Kode Produksi Konveksi ikut terisi, dan
+   * Warna/Size berganti daftar.
+   *
+   * Pasangannya diturunkan lewat `konveksiCodeFor` (relasi 1:1, diverifikasi
+   * lewat Supabase MCP), **bukan** disimpan di state pilihan: menyimpan kedua
+   * kode di daftar opsi berarti dua sumber kebenaran yang bisa berbeda —
+   * alasan yang sama dengan ComplainPenaltiPage.
+   *
+   * Warna dan Size **dikosongkan**, bukan dipertahankan: keduanya milik kode
+   * lama, dan membiarkannya terisi menghasilkan kombinasi yang tidak ada di work
+   * order mana pun — persis yang ingin dicegah dengan menjadikannya dropdown.
+   * Auto-pilih dipakai bila kode itu hanya punya satu warna/size, supaya user
+   * tidak perlu mengklik dropdown yang isinya satu.
+   *
+   * Product ikut terisi bila masih kosong, karena satu kode client memang
+   * menunjuk satu produk. Yang sudah diketik user tidak ditimpa.
+   */
+  const selectClientCode = (code: string) => {
+    if (form.clientCode === code) return;
+    const konveksi = konveksiCodeFor(codeOptions, code) ?? '';
+    const produk = codeOptions.find((o) => o.clientCode === code)?.product ?? '';
+    const warnas = warnaChoicesFor(codeVariants, code);
+    const warnaBaru = warnas.length === 1 ? warnas[0] : '';
+    const sizes = sizeChoicesFor(codeVariants, code, warnaBaru);
+    setForm((f) => ({
+      ...f,
+      clientCode: code,
+      productionCode: konveksi,
+      product: f.product.trim() ? f.product : produk,
+      warna: warnaBaru,
+      size: sizes.length === 1 ? sizes[0] : '',
+    }));
+  };
+
+  /**
+   * Pilih Warna -> Size dipersempit ke pasangan warna itu.
+   *
+   * Size ikut dikosongkan karena size milik warna lama belum tentu ada di warna
+   * baru (`PDFF_CSC-TOP-02_B-01_PRDN`: Champagne hanya M, Ivory hanya S).
+   */
+  const selectWarna = (w: string) => {
+    if (form.warna === w) return;
+    const sizes = sizeChoicesFor(codeVariants, form.clientCode, w);
+    setForm((f) => ({
+      ...f,
+      warna: w,
+      size: sizes.includes(f.size) ? f.size : sizes.length === 1 ? sizes[0] : '',
+    }));
+  };
+
   return (
     <main className="flex-1 flex flex-col min-w-0 overflow-auto">
-      <div className="px-8 pt-4 pb-0">
-        <div className="flex items-center justify-between mb-4">
+      <div className="px-6 pt-3 pb-0">
+        <div className="flex items-center justify-between mb-3">
           <div>
             <h1 className="text-[17px] font-semibold tracking-tight text-slate-900">Planning Produksi</h1>
           </div>
@@ -285,23 +545,34 @@ export function PlanningProduksiPage() {
             <Button onClick={refresh} variant="outline" size="sm" className="h-8 px-3.5">
               <RefreshCw className="w-3.5 h-3.5 mr-2" /> Refresh
             </Button>
-            <Button onClick={handleGenerate} disabled={generating} size="sm" className="h-8 px-3.5 bg-violet-500 hover:bg-violet-600">
-              <Sparkles className="w-3.5 h-3.5 mr-2" /> {generating ? 'Generating…' : 'Generate Target'}
+            <Button
+              onClick={handleGenerate}
+              disabled={generating || selectedRows.size === 0}
+              size="sm"
+              className="h-8 px-3.5 bg-violet-500 hover:bg-violet-600"
+              title={
+                selectedRows.size === 0
+                  ? 'Centang planning yang mau digenerate dulu'
+                  : `Generate ${selectedRows.size} planning terpilih`
+              }
+            >
+              <Sparkles className="w-3.5 h-3.5 mr-2" />{' '}
+              {generating ? 'Generating…' : `Generate Target${selectedRows.size > 0 ? ` (${selectedRows.size})` : ''}`}
             </Button>
-            <Button onClick={openCreate} size="sm" className="h-8 px-3.5 bg-blue-600 hover:bg-blue-700">
+            <Button onClick={openCreate} size="sm" className="h-8 px-3.5 bg-primary hover:bg-primary/90">
               <Plus className="w-3.5 h-3.5 mr-2" /> Tambah Planning
             </Button>
           </div>
         </div>
-        {message && <div className="mb-3 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">{message}</div>}
+        {message && <div className="mb-3 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-blue-700">{message}</div>}
       </div>
 
-      <div className="flex-1 px-8 pt-5 pb-6 overflow-auto">
+      <div className="flex-1 px-6 pt-4 pb-5 overflow-auto">
         <div className="flex items-center gap-2 mb-3">
-          <div className="relative flex-1 max-w-xs"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" /><input type="text" placeholder="Cari planning..." value={search} onChange={e => setSearch(e.target.value)} className="w-full h-8 pl-8 pr-3 text-sm border border-gray-200 rounded-lg outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100" /></div>
+          <div className="relative flex-1 max-w-xs"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" /><input type="text" placeholder="Cari planning..." value={search} onChange={e => setSearch(e.target.value)} className="w-full h-8 pl-8 pr-3 text-sm border border-gray-200 rounded-lg outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200" /></div>
           <FilterButton fields={PLAN_FIELDS} value={filters} onChange={setFilters} />
           <SortButton fields={PLAN_FIELDS} value={sorts} onChange={setSorts} />
-          <ColumnSettingsButton fields={PLAN_FIELDS} hidden={hiddenCols} onToggle={toggleCol} />
+          <ColumnSettingsButton fields={PLAN_FIELDS} hidden={hiddenCols} onToggle={toggleCol} frozen={frozenCols} onToggleFreeze={toggleFreezeCol} onToggleFreezeAll={toggleFreezeAllCols} headerFrozen={headerFrozen} onToggleHeaderFrozen={setHeaderFrozen} />
           <ExportButton onClick={handleExport} />
           <Button onClick={handleImport} size="sm" variant="outline" className={cn(T_TOOLBAR_BTN, T_TOOLBAR_BTN_IDLE)} disabled={selectedRows.size === 0}>
             <Upload className="w-3 h-3" /> Import
@@ -324,56 +595,31 @@ export function PlanningProduksiPage() {
             </>
           )}
           <div className="flex items-center ml-auto">
-            <input type="month" value={genMonth} onChange={(e) => setGenMonth(e.target.value)} title="Bulan generate target" className="h-8 px-2.5 text-[11px] rounded-lg border border-gray-200 bg-white text-slate-600 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100" />
+            <span className="text-[11px] text-slate-400">
+              {selectedRows.size > 0
+                ? `${selectedRows.size} planning dipilih`
+                : 'Centang planning dulu untuk generate target'}
+            </span>
           </div>
         </div>
 
         <div className={T_WRAP}>
-          <table className={cn(T_TABLE, 'w-auto min-w-full whitespace-nowrap')}>
-            <HiddenColgroup hidden={hiddenCols} cols={['_select', 'namaPenjahit', 'productNote', 'product', 'warna', 'size', 'qty', 'bulanTarget', 'status']} />
-            <thead><tr className={T_HEAD_ROW}>
-              <th className={cn(T_TH, 'w-12 text-center')}><input type="checkbox" checked={selectedRows.size === rows.length && rows.length > 0} onChange={handleToggleAll} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 align-middle" /></th>
-              <th className={cn(T_TH, 'text-left')}>Nama Penjahit</th>
-              <th className={cn(T_TH, 'text-left')}>Product Note</th>
-              <th className={cn(T_TH, 'text-left')}>Product</th>
-              <th className={cn(T_TH, 'text-left')}>Warna</th>
-              <th className={cn(T_TH, 'text-left')}>Size</th>
-              <th className={cn(T_TH, 'text-right')}>Qty</th>
-              <th className={cn(T_TH, 'text-left')}>Bulan Target</th>
-              <th className={cn(T_TH, 'text-center')}>Status</th>
-            </tr></thead>
-            <tbody>
-              {rows.length === 0 && <tr><td colSpan={9} className="py-10 text-center text-sm text-gray-400">{filtered.length === 0 ? 'Belum ada planning produksi' : 'Tidak ada hasil yang cocok dengan filter'}</td></tr>}
-              {rows.map((r, i) => {
-                const selected = selectedRows.has(r.id);
-                return (
-                  <tr key={r.id} className={cn(rowClass(i, selected), 'cursor-pointer')} onClick={() => openEdit(r)} title="Klik untuk edit">
-                    <td className={cn(T_TD, 'text-center')} onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={selected} onChange={() => handleToggleRow(r.id)} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 align-middle" /></td>
-                    <td className={cn(T_TD, 'text-gray-700')}>{r.namaPenjahit}</td>
-                    <td className={cn(T_TD, 'text-gray-700')}>
-                      {r.productNote || <span className="text-gray-300">—</span>}
-                    </td>
-                    <td className={cn(T_TD, 'text-gray-700')}>{r.product}</td>
-                    <td className={cn(T_TD, 'text-gray-700')}>{r.warna || <span className="text-gray-300">—</span>}</td>
-                    <td className={cn(T_TD, 'text-gray-700')}>{r.size || <span className="text-gray-300">—</span>}</td>
-                    <td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>{r.qty}</td>
-                    <td className={cn(T_TD, 'text-gray-500')}>{formatMonthYearFromYm(r.bulanTarget)}</td>
-                    <td className={cn(T_TD, 'text-center')} onClick={(e) => e.stopPropagation()}>
-                      <select
-                        value={r.status || 'draft'}
-                        onChange={(e) => void handleStatusChange(r.id, e.target.value)}
-                        className={cn('h-7 px-2 rounded-md text-xs font-semibold border-0 outline-none cursor-pointer whitespace-nowrap', PLAN_STATUS_BADGE[r.status || ''] ?? 'bg-slate-100 text-slate-600')}
-                      >
-                        <option value="draft">draft</option>
-                        <option value="approved">approved</option>
-                        <option value="rejected">rejected</option>
-                      </select>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <DataTable
+            variant="plain"
+            columns={planningColumns}
+            data={rows as unknown as Record<string, unknown>[]}
+            selectedRows={selectedRows}
+            onToggleRow={handleToggleRow}
+            onRowClick={(row) => openEdit(row as unknown as PlanningProduksiRow)}
+            hiddenColumns={hiddenCols}
+            frozenColumns={frozenCols}
+            headerFrozen={headerFrozen}
+            emptyMessage={
+              <div className="py-10 text-center text-[13px] text-gray-400">
+                {filtered.length === 0 ? 'Belum ada planning produksi' : 'Tidak ada hasil yang cocok dengan filter'}
+              </div>
+            }
+          />
         </div>
       </div>
 
@@ -384,32 +630,65 @@ export function PlanningProduksiPage() {
           </DialogHeader>
 
           <div className="space-y-4 py-4">
-            <div>
+            <div className="space-y-1.5">
               <Label htmlFor="namaPenjahit">Nama Penjahit *</Label>
-              <select id="namaPenjahit" value={form.namaPenjahit} onChange={(e) => setField('namaPenjahit', e.target.value)} className="w-full h-9 px-3 text-sm border border-gray-200 rounded-lg outline-none bg-white focus:border-blue-300 focus:ring-2 focus:ring-blue-100 mt-1">
-                <option value="">— Pilih Penjahit —</option>
-                {/* Show the currently selected name even if that penjahit is now Non-Aktif */}
-                {form.namaPenjahit && !penjahitList.some((p) => p.picPenjahit === form.namaPenjahit) && (
-                  <option value={form.namaPenjahit}>{form.namaPenjahit} (Non-Aktif)</option>
-                )}
-                {penjahitList.map((p) => (
-                  <option key={p.id} value={p.picPenjahit}>{p.picPenjahit}</option>
-                ))}
-              </select>
-              {penjahitList.length === 0 && <p className="text-xs text-slate-400 mt-1">Belum ada karyawan aktif dengan posisi Penjahit — daftarkan di Register Karyawan.</p>}
+              <Select value={form.namaPenjahit} onValueChange={(v) => setField('namaPenjahit', v)}>
+                <SelectTrigger id="namaPenjahit" className="h-9 text-sm">
+                  <SelectValue placeholder="— Pilih Penjahit —" />
+                </SelectTrigger>
+                <SelectContent>
+                  {/* Nama yang tersimpan tetap ditampilkan walau penjahitnya kini Non-Aktif. */}
+                  {form.namaPenjahit && !penjahitList.some((p) => p.picPenjahit === form.namaPenjahit) && (
+                    <SelectItem value={form.namaPenjahit} className="text-sm">
+                      {form.namaPenjahit} (Non-Aktif)
+                    </SelectItem>
+                  )}
+                  {penjahitList.map((p) => (
+                    <SelectItem key={p.id} value={p.picPenjahit} className="text-sm">
+                      {p.picPenjahit}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {penjahitList.length === 0 && <p className="text-xs text-slate-400">Belum ada karyawan aktif dengan posisi Penjahit — daftarkan di menu Contact → tab Karyawan.</p>}
             </div>
 
-            <div>
-              <Label htmlFor="productNote">Product Note *</Label>
-              <Input
-                id="productNote"
-                type="text"
-                value={form.productNote}
-                onChange={(e) => setField('productNote', e.target.value)}
-                placeholder="e.g. Produksi 2"
-                className="mt-1"
-              />
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                {/* `-trigger` mengikuti id yang dipasang AppSelect pada tombolnya;
+                    elemen ber-id `clientCode` sendiri adalah input tersembunyi. */}
+                <Label htmlFor="clientCode-trigger">Kode Produksi Client *</Label>
+                <AppSelect
+                  id="clientCode"
+                  className="mt-1"
+                  value={form.clientCode}
+                  onValueChange={selectClientCode}
+                  options={codeChoiceOptions}
+                  placeholder="— Pilih Kode Produksi Client —"
+                  emptyMessage="Belum ada kode produksi di Work Order."
+                  allowUnlistedValue
+                />
+              </div>
+              <div>
+                {/* Kode Produksi Konveksi — read-only, menyalin gaya kolom
+                    derived di ComplainPenaltiPage. Tidak ada `htmlFor` karena
+                    memang tidak ada kontrol yang bisa difokus. */}
+                <Label>Kode Produksi Konveksi</Label>
+                <div className="mt-1 flex h-9 items-center rounded-lg border border-slate-200 bg-slate-50 px-3 font-mono text-[12px] text-slate-700">
+                  {form.productionCode || <span className="text-slate-400">Terisi otomatis</span>}
+                </div>
+              </div>
             </div>
+            <p className="text-[11px] text-slate-400">
+              Kode Produksi Konveksi terisi otomatis setelah Kode Produksi Client dipilih. Warna dan
+              Size ikut menyesuaikan kode tersebut — pilihannya berasal dari varian di Work Order,
+              jadi tidak perlu diketik manual.
+            </p>
+            {codeOptions.length === 0 && (
+              <p className="text-xs text-slate-400">
+                Belum ada kode produksi — buat order dulu di Order Entry supaya pasangan kodenya tersedia.
+              </p>
+            )}
 
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -417,12 +696,36 @@ export function PlanningProduksiPage() {
                 <Input id="product" type="text" value={form.product} onChange={(e) => setField('product', e.target.value)} placeholder="e.g. Dress" className="mt-1" />
               </div>
               <div>
-                <Label htmlFor="warna">Warna</Label>
-                <Input id="warna" type="text" value={form.warna} onChange={(e) => setField('warna', e.target.value)} placeholder="e.g. Hitam" className="mt-1" />
+                {/* Warna & Size tidak lagi diketik manual: pilihannya berasal
+                    dari varian work order milik Kode Produksi Client di atas,
+                    jadi kombinasi yang tidak ada di produksi tidak bisa dibuat.
+                    Sebelum kode dipilih, keduanya mati dan menjelaskan kenapa. */}
+                <Label htmlFor="warna-trigger">Warna</Label>
+                <AppSelect
+                  id="warna"
+                  className="mt-1"
+                  value={form.warna}
+                  onValueChange={selectWarna}
+                  options={warnaChoiceOptions.map((w) => ({ value: w, label: w }))}
+                  placeholder={form.clientCode ? '— Pilih Warna —' : 'Pilih Kode Produksi Client dulu'}
+                  emptyMessage="Kode produksi ini belum punya warna di Work Order."
+                  disabled={!form.clientCode}
+                  allowUnlistedValue
+                />
               </div>
               <div>
-                <Label htmlFor="size">Size</Label>
-                <Input id="size" type="text" value={form.size} onChange={(e) => setField('size', e.target.value)} placeholder="e.g. M" className="mt-1" />
+                <Label htmlFor="size-trigger">Size</Label>
+                <AppSelect
+                  id="size"
+                  className="mt-1"
+                  value={form.size}
+                  onValueChange={(v) => setField('size', v)}
+                  options={sizeChoiceOptions.map((s) => ({ value: s, label: s }))}
+                  placeholder={form.clientCode ? '— Pilih Size —' : 'Pilih Kode Produksi Client dulu'}
+                  emptyMessage="Kode produksi ini belum punya size di Work Order."
+                  disabled={!form.clientCode}
+                  allowUnlistedValue
+                />
               </div>
             </div>
 
@@ -440,7 +743,7 @@ export function PlanningProduksiPage() {
 
           <DialogFooter>
             <Button onClick={() => setModalOpen(false)} variant="outline" disabled={saving}>Cancel</Button>
-            <Button onClick={handleSave} disabled={!isValid || saving} className="bg-blue-600 hover:bg-blue-700">{saving ? 'Saving…' : editTarget ? 'Update Planning' : 'Save Planning'}</Button>
+            <Button onClick={handleSave} disabled={!isValid || saving} className="bg-primary hover:bg-primary/90">{saving ? 'Saving…' : editTarget ? 'Update Planning' : 'Save Planning'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

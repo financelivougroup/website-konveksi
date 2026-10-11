@@ -22,6 +22,30 @@ module.exports = {
           DEFAULT: "hsl(var(--destructive) / <alpha-value>)",
           foreground: "hsl(var(--destructive-foreground) / <alpha-value>)",
         },
+        /* Token semantik tambahan ReUI. */
+        success: {
+          DEFAULT: "hsl(var(--success))",
+          foreground: "hsl(var(--success-foreground))",
+        },
+        warning: {
+          DEFAULT: "hsl(var(--warning))",
+          foreground: "hsl(var(--warning-foreground))",
+        },
+        info: {
+          DEFAULT: "hsl(var(--info))",
+          foreground: "hsl(var(--info-foreground))",
+        },
+        invert: {
+          DEFAULT: "hsl(var(--invert))",
+          foreground: "hsl(var(--invert-foreground))",
+        },
+        chart: {
+          1: "hsl(var(--chart-1))",
+          2: "hsl(var(--chart-2))",
+          3: "hsl(var(--chart-3))",
+          4: "hsl(var(--chart-4))",
+          5: "hsl(var(--chart-5))",
+        },
         muted: {
           DEFAULT: "hsl(var(--muted))",
           foreground: "hsl(var(--muted-foreground))",

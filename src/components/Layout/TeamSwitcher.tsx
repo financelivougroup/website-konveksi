@@ -24,7 +24,7 @@ export function TeamSwitcher({ isCollapsed }: TeamSwitcherProps) {
                 {team.name}
               </span>
               <span className="truncate text-xs text-slate-400">
-                Production Monitoring
+                Production Order
               </span>
             </div>
           )}

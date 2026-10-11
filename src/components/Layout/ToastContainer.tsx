@@ -16,7 +16,7 @@ const iconMap = {
 const styles = {
   success: 'bg-emerald-500 shadow-emerald-200/50',
   error: 'bg-rose-500 shadow-rose-200/50',
-  info: 'bg-sky-500 shadow-sky-200/50',
+  info: 'bg-slate-700 shadow-slate-300/50',
 };
 
 export function ToastContainer({ toasts, onRemove }: ToastContainerProps) {

@@ -431,7 +431,14 @@ export function PaymentModal({ open, invoice, onClose, onSaved, onError, onSucce
       const woStatus: 'INVOICED' | 'PARTIAL_PAID' | 'PAID' = totalPaid === 0
         ? 'INVOICED'
         : newOutstanding === 0 ? 'PAID' : 'PARTIAL_PAID';
-      const { error: woError } = await updateWorkOrderInvoiceStatus(targetInvoice.workOrderId, woStatus);
+      // Status ditulis ke SELURUH variasi Kode Produksi, bukan hanya WO wakil:
+      // invoice-nya milik satu kode produksi, sedangkan `workOrderId` di baris
+      // invoice cuma menunjuk satu variasi sebagai wakil.
+      const { error: woError } = await updateWorkOrderInvoiceStatus(
+        targetInvoice.workOrderId,
+        woStatus,
+        targetInvoice.productionOrderId,
+      );
       if (woError) {
         await abortSave(`Payment tersimpan, tapi gagal update status WO: ${woError.message}`, false);
         return;

@@ -30,14 +30,28 @@ const dash = (value: string | number | null | undefined) =>
   value === null || value === undefined || value === '' ? '—' : String(value);
 
 export function InvoiceImage({ invoice, workOrder, elementRef }: InvoiceImageProps) {
-  const quantity = workOrder?.quantity ?? invoice.pcsLinked;
+  // Kuantitas yang DITAGIH ada di invoice (`pcsLinked`), bukan di work order.
+  //
+  // Sejak invoice dibuat per Kode Produksi Konveksi, satu invoice menagih
+  // SELURUH variasi (400 pcs), sedangkan `workOrder` yang diterima komponen ini
+  // hanya satu variasi wakil (100 pcs). Memakai `workOrder.quantity` lebih dulu
+  // membuat dokumen klien tidak konsisten secara aritmetika: tercetak
+  // "100 × Rp40.000" padahal Total-nya Rp16.000.000. Untuk invoice lama (satu
+  // per work order) kedua nilai itu sama, jadi memilih `pcsLinked` tetap benar
+  // di kedua bentuk. `workOrder` hanya dipakai sebagai cadangan bila angka
+  // invoice tidak valid.
+  const quantity = Number.isFinite(invoice.pcsLinked) ? invoice.pcsLinked : (workOrder?.quantity ?? 0);
 
   // Work code tidak ditampilkan: isinya memuat prefix fase internal
-  // ("Produksi - Awal") yang bukan informasi untuk klien. Detail item diambil
-  // dari work order agar kolom produk tidak pernah jatuh ke nama client.
-  const variation = [workOrder?.warna, workOrder?.size, workOrder?.brand && `Brand: ${workOrder.brand}`]
-    .filter((part): part is string => Boolean(part))
-    .join(' · ');
+  // ("Produksi - Awal") yang bukan informasi untuk klien.
+  //
+  // Baris kedua sengaja TIDAK menyebut warna/size. Sejak invoice dibuat per
+  // Kode Produksi Konveksi, satu invoice menagih seluruh variasi, sedangkan
+  // `workOrder` di sini hanya variasi wakil — jadi mencetak "Ivory · XL" pada
+  // tagihan 400 pcs (Black M, Black XL, Ivory M, Ivory XL) menyebut satu varian
+  // seolah hanya itu yang ditagih. Kode Produksi Konveksi dipakai sebagai
+  // pengenal yang benar mewakili seluruh grup. Ini keputusan user.
+  const itemCode = invoice.workCode;
 
   return (
     <div
@@ -103,7 +117,7 @@ export function InvoiceImage({ invoice, workOrder, elementRef }: InvoiceImagePro
           <tr>
             <td style={tdLeft}>
               <div style={{ fontSize: 14, fontWeight: 600 }}>{dash(workOrder?.product)}</div>
-              {variation && <div style={{ fontSize: 11, color: MUTED, marginTop: 3 }}>{variation}</div>}
+              {itemCode && <div style={{ fontSize: 11, color: MUTED, marginTop: 3 }}>{itemCode}</div>}
             </td>
             <td style={tdCenter}>{dash(quantity)}</td>
             <td style={tdRight}>{formatCurrency(invoice.unitPrice)}</td>

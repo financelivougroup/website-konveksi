@@ -1,21 +1,37 @@
-import { useState, useMemo, useEffect, type ComponentType } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   Search,
-  ArrowRight,
-  Image,
   Trash2,
-  Scissors,
-  PackageCheck,
-  X,
   Table2,
-  Shirt,
-  CircleDot,
   Kanban,
-  DownloadCloud,
-  User,
+  MoreHorizontal,
+  Pencil,
 } from 'lucide-react';
 
-import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { LogEntryDialog } from '@/components/Modals/LogEntryDialog';
 import {
   DndContext,
   DragOverlay,
@@ -34,55 +50,78 @@ import * as cuttingRecordSvc from '@/services/cuttingRecords';
 import * as sewingRecordSvc from '@/services/sewingRecords';
 import * as finishingRecordSvc from '@/services/finishingRecords';
 import * as kancingRecordSvc from '@/services/kancingRecords';
-import * as productionOrderSvc from '@/services/productionOrders';
-import type { WorkOrder, SewingRecord, CuttingRecord, FinishingRecord, KancingRecord, ProductionStatus } from '@/types/pipeline';
+import { fetchAll as fetchAllKaryawan, activePenjahitNames } from '@/services/registerPenjahit';
+import type { WorkOrder, SewingRecord, CuttingRecord, FinishingRecord, KancingRecord, ProductionStatus, VariasiStatus } from '@/types/pipeline';
 import { productionStatusLabel, productionStatusColor } from '@/types/pipeline';
-import { STATUS_ORDER, deriveStatus, validateStatusTransition } from '@/lib/productionStatus';
-import { T_WRAP, T_TABLE, T_HEAD_ROW, T_TH, T_TD, rowClass } from '@/lib/tableStyles';
-import { FilterButton, SortButton, ExportButton } from '@/components/Table/TableTools';
-import { ColumnSettingsButton, HiddenColgroup } from '@/components/Table/ColumnSettings';
+import { STATUS_ORDER, deriveStatus, validateStatusTransition, deriveVariasiStatuses, variasiStatusText, needsUpPos, NEED_UP_POS_LABEL } from '@/lib/productionStatus';
+import { VariasiStatusBadge } from '@/components/Production/VariasiStatusBadge';
+import { buildKanbanGroups, type KanbanGroup } from '@/lib/kanban';
+import { matchesPoJump } from '@/lib/poJump';
+import { PoFilterBanner } from '@/components/Table/PoFilterBanner';
+import type { PoJump } from '@/types';
+import {
+  LAPORAN_KIND_BY_TAB,
+  buildKodeList,
+  buildLogRows,
+  scopedLaporanRows,
+  sumLogQty,
+  type LogTab,
+} from '@/lib/logDashboard';
+import { PillTabs, type PillTabItem } from '@/components/Production/PillTabs';
+import { StatusBadge } from '@/components/Production/StatusBadge';
+import { KodeProduksiList } from '@/components/Production/KodeProduksiList';
+import { LogTable } from '@/components/Production/LogTable';
+import { LogDashboardPanel } from '@/components/Production/LogDashboardPanel';
+import { KanbanCardDetail } from '@/components/Production/KanbanCardDetail';
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from '@/components/ui/resizable';
+import {
+  EMPTY_FILTERS,
+  PIC_LABEL,
+  applyLaporanFilters,
+  type LaporanKind,
+  type LaporanRow,
+  type LaporanFilters,
+} from '@/lib/laporanCompute';
+import { canEditProductionLog, PRODUCTION_LOG_EDIT_HINT } from '@/lib/permissions';
+import { T_WRAP, T_SUB_LABEL, T_ROW_BTN, softBadgeClass } from '@/lib/tableStyles';
+import { DataTable } from '@/components/Table/DataTable';
+import { FilterButton, SortButton } from '@/components/Table/TableTools';
+import { ColumnSettingsButton, type ColumnOption } from '@/components/Table/ColumnSettings';
 import { useColumnSettings } from '@/lib/columnSettings';
 import { applyFilters, applySorts, type FieldOption, type FilterRule, type SortRule } from '@/lib/tableQuery';
 
-type TabType = 'raw' | 'cutting' | 'sewing' | 'finishing' | 'kancing' | 'kanban';
+// Tabel log kini punya kontrol pagination di bawahnya, jadi tingginya dikurangi
+// agar tabel + kontrol itu masih muat di satu layar. (Dipakai LogTable.)
+
+// Tab: Raw Data dan Kanban digabung menjadi satu tab ALL (default Kanban,
+// dengan toggle ke List), sedangkan tiga tab log punya panel dashboard.
+type TabType = 'all' | 'cutting' | 'sewing' | 'finishing' | 'kancing';
+
+// Tab yang punya panel dua-kolom (daftar kode produksi + dashboard).
+const LOG_TABS: LogTab[] = ['sewing', 'kancing', 'finishing'];
+
+function isLogTab(tab: TabType): tab is LogTab {
+  return (LOG_TABS as TabType[]).includes(tab);
+}
+
+// Pilihan tampilan untuk tab ALL. Diingat selama sesi (state React), bukan
+// localStorage — keputusan user.
+type AllView = 'board' | 'list';
 
 // Shared data-table design system — see src/lib/tableStyles.ts
 // (zebra rows, sticky header, horizontal-only borders, formal typography).
 
-// ===== Status Badge (solid pill, white text) =====
-const STATUS_BADGE: Record<ProductionStatus, string> = {
-  NEW: 'bg-slate-500',
-  CUTTING: 'bg-blue-600',
-  PROGRESS: 'bg-amber-500',
-  FINISHED: 'bg-emerald-600',
-  INVOICED: 'bg-violet-600',
-};
+// ===== Status Badge =====
+// Dipindah ke '@/components/Production/StatusBadge' supaya panel kiri Kode
+// Produksi bisa memakainya tanpa mengimpor halaman ini.
 
-function StatusBadge({ status }: { status: ProductionStatus }) {
-  return (
-    <span className={cn('inline-block px-2.5 py-1 rounded-md text-[11px] font-medium text-white whitespace-nowrap', STATUS_BADGE[status] || 'bg-gray-500')}>
-      {productionStatusLabel[status] || status}
-    </span>
-  );
-}
-
-// ===== KanbanCard (per product note) =====
-interface KanbanGroup {
-  productNote: string;
-  product: string;
-  brand: string;
-  totalQty: number;
-  status: ProductionStatus;
-  workOrders: WorkOrder[];
-}
-
-const STATUS_RANK: Record<ProductionStatus, number> = {
-  NEW: 0,
-  CUTTING: 1,
-  PROGRESS: 2,
-  FINISHED: 3,
-  INVOICED: 4,
-};
+// ===== KanbanCard (per Kode Produksi Konveksi) =====
+// KanbanGroup & aturan status kartunya tinggal di '@/lib/kanban' supaya bisa
+// diuji tanpa merender halaman ini.
 
 function KanbanCard({
   group,
@@ -112,7 +151,18 @@ function KanbanCard({
       </div>
       <div className="flex flex-col gap-1">
         <span className="text-[12px] font-semibold leading-[1.4] text-slate-800">{group.product} · {group.brand}</span>
-        <span className="text-[12px] font-bold text-slate-900">Total qty: {group.totalQty} pcs</span>
+        {/* Kode Produksi Client adalah identitas yang dicari user, sedangkan
+            judul kartu = Kode Produksi Konveksi (product note). */}
+        <span className="text-[11px] font-mono text-slate-500 truncate" title={group.clientProductionCode ?? undefined}>
+          {group.clientProductionCode || '—'}
+        </span>
+        {/* Total qty = 0 berarti "belum diterima dari POS client" (input qty
+            manual sudah dihapus dari Order Entry), bukan order kosong. Karena
+            kartu ini menjumlahkan seluruh variasi kode produksi, angka 0 akan
+            terbaca salah — jadi ditampilkan sebagai tanda pisah. */}
+        <span className="text-[12px] font-bold text-slate-900">
+          {group.totalQty > 0 ? `Total qty: ${group.totalQty} pcs` : 'Qty: belum dari POS'}
+        </span>
       </div>
     </div>
   );
@@ -123,11 +173,11 @@ function KanbanColumn({ status, label, color, groups, searchQuery, onOpen }: { s
   const { setNodeRef, isOver } = useDroppable({ id: status });
   const filtered = searchQuery ? groups.filter(g => {
     const q = searchQuery.toLowerCase();
-    return g.productNote.toLowerCase().includes(q) || g.product.toLowerCase().includes(q) || g.brand.toLowerCase().includes(q);
+    return g.productNote.toLowerCase().includes(q) || g.product.toLowerCase().includes(q) || g.brand.toLowerCase().includes(q) || (g.clientProductionCode || '').toLowerCase().includes(q);
   }) : groups;
   return (
     <div className="w-[350px] flex flex-col">
-      <div className={cn('rounded-t-lg px-4 py-3 flex items-center justify-between', color, isOver && 'ring-2 ring-blue-400')}>
+      <div className={cn('rounded-t-lg px-4 py-3 flex items-center justify-between', color, isOver && 'ring-2 ring-slate-500')}>
         <span className="text-[13px] font-semibold">{label}</span>
         <span className="text-[11px] font-bold bg-white/30 px-2 py-0.5 rounded-full">{groups.length}</span>
       </div>
@@ -138,155 +188,114 @@ function KanbanColumn({ status, label, color, groups, searchQuery, onOpen }: { s
   );
 }
 
-// ===== Full-Screen Report Bubbles (product note scope) =====
-function FullScreenReports({ group, sewingList, finishingList, kancingList }: { group: KanbanGroup; sewingList: SewingRecord[]; finishingList: FinishingRecord[]; kancingList: KancingRecord[] }) {
-  const [openBubble, setOpenBubble] = useState<'sewing' | 'finishing' | 'kancing' | null>(null);
-  const woIds = new Set(group.workOrders.map(w => w.id));
-
-  const sewing = sewingList
-    .filter(s => woIds.has(s.workOrderId))
-    .sort((a, b) => b.tanggalLaporan.localeCompare(a.tanggalLaporan));
-  const finishing = finishingList
-    .filter(f => woIds.has(f.workOrderId))
-    .sort((a, b) => (b.syncedAt || '').localeCompare(a.syncedAt || ''));
-  const kancing = kancingList
-    .filter(k => woIds.has(k.workOrderId))
-    .sort((a, b) => (b.inputAt || '').localeCompare(a.inputAt || ''));
-
-  return (
-    <div>
-      <h3 className="text-[12px] font-bold text-slate-700 mb-2">Laporan</h3>
-      <div className="flex gap-2 mb-3">
-        <button
-          type="button"
-          onClick={() => setOpenBubble(prev => (prev === 'sewing' ? null : 'sewing'))}
-          className={cn(
-            'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold transition-colors',
-            openBubble === 'sewing' ? 'bg-sky-100 text-sky-700' : 'bg-slate-100 text-slate-600 hover:bg-sky-50 hover:text-sky-700',
-          )}
-        >
-          <Scissors className="w-3.5 h-3.5" /> Laporan Jahit
-        </button>
-        <button
-          type="button"
-          onClick={() => setOpenBubble(prev => (prev === 'finishing' ? null : 'finishing'))}
-          className={cn(
-            'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold transition-colors',
-            openBubble === 'finishing' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600 hover:bg-emerald-50 hover:text-emerald-700',
-          )}
-        >
-          <PackageCheck className="w-3.5 h-3.5" /> Laporan Finishing
-        </button>
-        <button
-          type="button"
-          onClick={() => setOpenBubble(prev => (prev === 'kancing' ? null : 'kancing'))}
-          className={cn(
-            'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold transition-colors',
-            openBubble === 'kancing' ? 'bg-violet-100 text-violet-700' : 'bg-slate-100 text-slate-600 hover:bg-violet-50 hover:text-violet-700',
-          )}
-        >
-          <CircleDot className="w-3.5 h-3.5" /> Laporan Pasang Kancing
-        </button>
-      </div>
-
-      {openBubble === 'sewing' && (
-        <div className="rounded-lg bg-slate-50 border border-slate-200 p-3">
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Laporan Jahit — {group.productNote}</p>
-          {sewing.length === 0 ? (
-            <p className="text-[12px] text-slate-400">Belum ada laporan jahit.</p>
-          ) : (
-            <ul className="space-y-2">
-              {sewing.map(s => (
-                <li key={s.id} className="text-[12px] text-slate-700 bg-white rounded-lg border border-gray-100 px-3 py-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-medium truncate">{s.picPenjahit}</span>
-                    <span className="font-bold shrink-0">{s.qtySelesai} pcs</span>
-                  </div>
-                  <div className="flex items-center justify-between gap-2 text-[11px] text-slate-400 mt-0.5">
-                    <span>{formatDate(s.tanggalLaporan)}</span>
-                    {s.imageName ? <span className="inline-flex items-center gap-1"><Image className="w-3 h-3" />{s.imageName}</span> : <span>—</span>}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
-
-      {openBubble === 'finishing' && (
-        <div className="rounded-lg bg-slate-50 border border-slate-200 p-3">
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Laporan Finishing — {group.productNote}</p>
-          {finishing.length === 0 ? (
-            <p className="text-[12px] text-slate-400">Belum ada laporan finishing.</p>
-          ) : (
-            <ul className="space-y-2">
-              {finishing.map(f => (
-                <li key={f.id} className="text-[12px] text-slate-700 bg-white rounded-lg border border-gray-100 px-3 py-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-medium">{f.qtyFinishing} pcs</span>
-                    <span className={cn('inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold', f.syncStatus === 'OK' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700')}>{f.syncStatus}</span>
-                  </div>
-                  <div className="text-[11px] text-slate-400 mt-0.5">
-                    {formatDate(f.tanggalImport)} · {f.source || '—'}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
-
-      {openBubble === 'kancing' && (
-        <div className="rounded-lg bg-slate-50 border border-slate-200 p-3">
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Laporan Pasang Kancing — {group.productNote}</p>
-          {kancing.length === 0 ? (
-            <p className="text-[12px] text-slate-400">Belum ada laporan pasang kancing.</p>
-          ) : (
-            <ul className="space-y-2">
-              {kancing.map(k => (
-                <li key={k.id} className="text-[12px] text-slate-700 bg-white rounded-lg border border-gray-100 px-3 py-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-medium truncate">{k.picKancing}</span>
-                    <span className="font-bold shrink-0">{k.qtyKancing} pcs</span>
-                  </div>
-                  <div className="flex items-center justify-between gap-2 text-[11px] text-slate-400 mt-0.5">
-                    <span>{formatDate(k.tanggalLaporan)}</span>
-                    {k.imageName ? <span className="inline-flex items-center gap-1"><Image className="w-3 h-3" />{k.imageName}</span> : <span>—</span>}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
+// ===== Filter & Sort (RAW master table) =====
+// Urutan HARUS sama dengan urutan <th> di tabel — dipakai juga sebagai urutan
+// dropdown Filter/Sort/Atur kolom.
+// `key` adalah kunci kolom yang tersimpan di preferensi "atur kolom" user, jadi
+// jangan diubah walau labelnya berganti: mengubahnya akan mengembalikan kolom
+// yang sudah disembunyikan user.
+//
+// Tingkat modul, bukan di dalam komponen: isinya murni literal, dan array yang
+// dibuat ulang tiap render akan membatalkan memo `rawColumnKeys` di bawah.
+const RAW_FIELDS: FieldOption[] = [
+  { key: 'productNote', label: 'Kode Produksi Konveksi' },
+  { key: 'clientProductionCode', label: 'Kode Produksi Client' },
+  { key: 'createdAt', label: 'Date Created' },
+  { key: 'brand', label: 'Client' },
+  { key: 'product', label: 'Product' },
+  { key: 'productId', label: 'Product ID' },
+  { key: 'variationId', label: 'Variation ID' },
+  { key: 'informationVariation', label: 'Information Variation' },
+  { key: 'warna', label: 'Warna' },
+  { key: 'size', label: 'Size' },
+  { key: 'cuttingTotal', label: 'Cutting' },
+  { key: 'sewingTotal', label: 'Jahit' },
+  { key: 'kancingTotal', label: 'Kancing' },
+  { key: 'finishingTotal', label: 'Finishing' },
+  { key: 'sisa', label: 'Sisa Cutting' },
+  // Judul "Qty Diterima Client" (dulu "Qty", lalu sempat "Qty Order") —
+  // permintaan user (verbatim): "Kolom QTY atau quantity itu jadi stok
+  // diterima klien … soalnya ini tuh lebih kayak kuantitas yang udah diupload
+  // ke sistem POS klien."
+  //
+  // Posisinya di ujung kanan blok produksi, tepat setelah "Sisa Cutting" —
+  // permintaan user: "pindahkan ke samping kanan Sisa Cutting". Karena
+  // RAW_FIELDS juga menjadi urutan dropdown Filter/Sort/Atur kolom, kolom ini
+  // ikut pindah di ketiganya (memang itu yang diinginkan: satu urutan untuk
+  // satu tabel). `key` sengaja TIDAK diubah, lihat catatan di atas.
+  //
+  // Sumber angkanya `work_orders.quantity`. Sejak input qty manual dihapus
+  // dari Order Entry (permintaan user: "kOlOm quantity harusnya dihapus aja"),
+  // kolom ini bernilai **0 untuk setiap order baru** sampai sinkronisasi
+  // Pancake POS mengisinya — jadi 0 di sini berarti "belum diterima dari
+  // client", bukan "nol pcs". Selnya menampilkan tanda pisah untuk 0, bukan
+  // angka 0, supaya tidak terbaca sebagai order kosong.
+  //
+  // Kolom POS tersendiri belum ada di database (diverifikasi lewat Supabase
+  // MCP: `work_orders` cuma punya satu kolom `quantity`, tidak ada
+  // `qty_pos`/`synced_qty`/`stok`), jadi sinkronisasi nanti menimpa kolom ini
+  // alih-alih menambah kolom baru.
+  { key: 'quantity', label: 'Qty Diterima Client' },
+  { key: 'derivedStatus', label: 'Status' },
+  // Dua kolom turunan dari permintaan user: status level-1 per variasi, dan
+  // alert "Need Up POS". Nilainya diambil dari field teks di `flatRows` (bukan
+  // dari `variasiStatuses`/`upPos` mentah) supaya Filter & Sort bekerja pada
+  // string yang sama dengan yang dilihat user.
+  { key: 'variasiStatusLabel', label: 'Status Variasi' },
+  { key: 'upPosLabel', label: 'Need Up POS' },
+  { key: 'createdBy', label: 'Created By' },
+];
+// Kolom Foto ikut daftar "atur kolom" tetapi tidak ikut Filter/Sort: ia
+// berisi <img>, bukan nilai yang bisa dibandingkan. Posisinya disisipkan
+// sesuai urutan tampilan (setelah Client).
+const RAW_COLUMNS: ColumnOption[] = [
+  ...RAW_FIELDS.slice(0, 4),
+  { key: 'photo', label: 'Foto' },
+  ...RAW_FIELDS.slice(4),
+];
 
 // ===== Main Page =====
-export default function ProductionMonitoring({ onOpenSewingEntry, onOpenFinishingEntry, onOpenKancingEntry }: { onOpenSewingEntry?: () => void; onOpenFinishingEntry?: () => void; onOpenKancingEntry?: () => void }) {
-  const [activeTab, setActiveTab] = useState<TabType>('raw');
+export default function ProductionMonitoring({ poJump, onClearPoJump, onOpenSewingEntry, onOpenFinishingEntry, onOpenKancingEntry }: { poJump?: PoJump | null; onClearPoJump?: () => void; onOpenSewingEntry?: () => void; onOpenFinishingEntry?: () => void; onOpenKancingEntry?: () => void }) {
+  const [activeTab, setActiveTab] = useState<TabType>('all');
+  // Tampilan tab ALL: Kanban (default) atau List. Diingat selama sesi.
+  const [allView, setAllView] = useState<AllView>('board');
+  // Kode produksi yang dipilih di panel kiri tab log; null = seluruh kode.
+  // Dipisah per tab agar pilihan di Sewing tidak terbawa ke Finishing —
+  // kode yang ada di satu log belum tentu punya catatan di log lain.
+  const [selectedKode, setSelectedKode] = useState<Record<string, string | null>>({});
+  // Filter slicer panel log, juga dipisah per tab.
+  //
+  // Diangkat ke halaman (bukan state di dalam LogDashboardPanel) supaya tabel
+  // di bawah panel memakai filter yang SAMA. Sebelumnya filter hanya hidup di
+  // dalam panel, jadi mengubah bulan/PIC mengubah KPI tetapi tabelnya tetap
+  // menampilkan semua baris.
+  const [logFilters, setLogFilters] = useState<Record<string, LaporanFilters>>({});
   const [searchQuery, setSearchQuery] = useState('');
+  // Halaman aktif untuk tabel log (Sewing / Kancing / Finishing). Satu state
+  // dipakai bertiga karena cuma satu log yang tampil pada satu waktu; ia
+  // direset setiap kali tab atau kata kunci pencarian berubah, supaya user
+  // tidak berakhir di halaman 5 yang tiba-tiba kosong.
+  const [logPage, setLogPage] = useState(1);
   const [cuttingInputs, setCuttingInputs] = useState<Record<string, string>>({});
   const [cuttingMessage, setCuttingMessage] = useState<string | null>(null);
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
   const [rawFilters, setRawFilters] = useState<FilterRule[]>([]);
   const [rawSorts, setRawSorts] = useState<SortRule[]>([]);
-  const { hidden: hiddenCols, toggle: toggleCol } = useColumnSettings('raw-data');
-  const [showPullModal, setShowPullModal] = useState(false);
-  const [pullMessage, setPullMessage] = useState<string | null>(null);
-  const [pullingOrderId, setPullingOrderId] = useState<string | null>(null);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
   const [cuttingRecords, setCuttingRecords] = useState<CuttingRecord[]>([]);
   const [sewingRecords, setSewingRecords] = useState<SewingRecord[]>([]);
-  const [finishingRecords, setFinishingRecords] = useState<import('@/types/pipeline').FinishingRecord[]>([]);
+  const [finishingRecords, setFinishingRecords] = useState<FinishingRecord[]>([]);
   const [kancingRecords, setKancingRecords] = useState<KancingRecord[]>([]);
-  const [planningOrders, setPlanningOrders] = useState<import('@/types/pipeline').OrderEntryOverview[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedGroup, setSelectedGroup] = useState<KanbanGroup | null>(null);
+  // Nama karyawan Aktif berposisi Penjahit (Register Karyawan → Contact →
+  // Karyawan). Dipakai dialog ubah log sebagai pilihan PIC. Sumbernya helper
+  // yang sama dengan Entry Jahitan (`activePenjahitNames`), jadi dropdown PIC
+  // tidak bisa berbeda antara form input dan form ubah.
+  const [penjahitNames, setPenjahitNames] = useState<string[]>([]);
 
   const { profile } = useAuth();
   const currentDisplayName = profile.displayName;
@@ -298,37 +307,70 @@ export default function ProductionMonitoring({ onOpenSewingEntry, onOpenFinishin
   useEffect(() => {
     (async () => {
       setLoading(true);
-      const [wo, cr, sr, fr, kr, po] = await Promise.all([workOrderSvc.fetchAll(), cuttingRecordSvc.fetchAll(), sewingRecordSvc.fetchAll(), finishingRecordSvc.fetchAll(), kancingRecordSvc.fetchAll(), productionOrderSvc.fetchAll()]);
+      const [wo, cr, sr, fr, kr] = await Promise.all([workOrderSvc.fetchAll(), cuttingRecordSvc.fetchAll(), sewingRecordSvc.fetchAll(), finishingRecordSvc.fetchAll(), kancingRecordSvc.fetchAll()]);
       if (wo.data) setWorkOrders(wo.data);
       if (cr.data) setCuttingRecords(cr.data);
       if (sr.data) setSewingRecords(sr.data);
       if (fr.data) setFinishingRecords(fr.data);
       if (kr.data) setKancingRecords(kr.data);
-      if (po.data) setPlanningOrders(po.data.filter(p => p.status === 'PLANNING'));
       setLoading(false);
     })();
   }, []);
 
+  // Daftar nama penjahit untuk dialog ubah. Dimuat terpisah dari blok utama
+  // supaya kegagalan memuatnya tidak menahan seluruh halaman di layar Loading —
+  // dialog ubah tetap bisa dibuka dengan nama PIC dari baris log saja.
+  useEffect(() => {
+    fetchAllKaryawan().then(({ data }) => {
+      setPenjahitNames(activePenjahitNames(data ?? []));
+    });
+  }, []);
+
   const filteredWO = useMemo(() => {
-    if (!searchQuery) return workOrders;
+    // Lompatan dari nomor PO di Register Harga: saring ke satu order. Kunci
+    // relasinya `sourceOrderId` (FK ke `production_orders.id`), dengan
+    // `productNote` sebagai cadangan — lihat `matchesPoJump`.
+    const scoped = workOrders.filter((w) =>
+      matchesPoJump(poJump, { orderId: w.sourceOrderId, code: w.productNote }),
+    );
+    if (!searchQuery) return scoped;
     const q = searchQuery.toLowerCase();
-    return workOrders.filter(w =>
+    return scoped.filter(w =>
       w.workCode.toLowerCase().includes(q) ||
       w.product.toLowerCase().includes(q) ||
       w.brand.toLowerCase().includes(q) ||
       (w.warna || '').toLowerCase().includes(q) ||
       (w.productNote || '').toLowerCase().includes(q) ||
+      (w.clientProductionCode || '').toLowerCase().includes(q) ||
       (w.productId || '').toLowerCase().includes(q) ||
       (w.variationId || '').toLowerCase().includes(q) ||
       (w.informationVariation || '').toLowerCase().includes(q) ||
       (w.size || '').toLowerCase().includes(q),
     );
-  }, [workOrders, searchQuery]);
+  }, [workOrders, searchQuery, poJump]);
 
-  function getCuttingForWO(woId: string) { return cuttingRecords.find(c => c.workOrderId === woId); }
-  function getSewingTotalLocal(woId: string) { return sewingRecords.filter(s => s.workOrderId === woId).reduce((sum, r) => sum + r.qtySelesai, 0); }
-  function getFinishingTotalLocal(woId: string) { return finishingRecords.filter(f => f.workOrderId === woId).reduce((sum, r) => sum + (Number(r.qtyFinishing) || 0), 0); }
-  function getKancingTotalLocal(woId: string) { return kancingRecords.filter(k => k.workOrderId === woId).reduce((sum, r) => sum + (Number(r.qtyKancing) || 0), 0); }
+  // Stabil lewat useCallback: keempatnya dibaca `decoratedWO`, dan sebelum
+  // dibungkus, dep array memo itu memang tidak lengkap. Warnanya dulu hanya
+  // `exhaustive-deps`; setelah blok pull dihapus, komponen jadi cukup sederhana
+  // sehingga React Compiler mencoba mengompilasinya dan ketidaklengkapan yang
+  // sama naik menjadi error `preserve-manual-memoization`. Menstabilkan
+  // fungsinya memperbaiki akarnya, bukan menekan gejalanya.
+  const getCuttingForWO = useCallback(
+    (woId: string) => cuttingRecords.find(c => c.workOrderId === woId),
+    [cuttingRecords],
+  );
+  const getSewingTotalLocal = useCallback(
+    (woId: string) => sewingRecords.filter(s => s.workOrderId === woId).reduce((sum, r) => sum + r.qtySelesai, 0),
+    [sewingRecords],
+  );
+  const getFinishingTotalLocal = useCallback(
+    (woId: string) => finishingRecords.filter(f => f.workOrderId === woId).reduce((sum, r) => sum + (Number(r.qtyFinishing) || 0), 0),
+    [finishingRecords],
+  );
+  const getKancingTotalLocal = useCallback(
+    (woId: string) => kancingRecords.filter(k => k.workOrderId === woId).reduce((sum, r) => sum + (Number(r.qtyKancing) || 0), 0),
+    [kancingRecords],
+  );
 
   // Decorate each WO with cutting/sewing totals and derived status so filters + Kanban
   // reflect actual production progress even when prod_status in DB is stale.
@@ -341,46 +383,157 @@ export default function ProductionMonitoring({ onOpenSewingEntry, onOpenFinishin
         const finishingTotal = getFinishingTotalLocal(wo.id);
         const kancingTotal = getKancingTotalLocal(wo.id);
         const orderQty = Number(wo.quantity) || 0;
-        const status = deriveStatus(cuttingTotal, sewingTotal, orderQty);
-        return { ...wo, cuttingTotal, sewingTotal, finishingTotal, kancingTotal, derivedStatus: status };
+        const status = deriveStatus(cuttingTotal, sewingTotal, orderQty, kancingTotal, finishingTotal);
+        const variasiStatuses = deriveVariasiStatuses({ cuttingTotal, sewingTotal, finishingTotal, kancingTotal, orderQty });
+        // Revisi 2026-09-28: alert ditentukan HANYA oleh finishing vs Qty —
+        // jahit tidak lagi ikut dibandingkan. Lihat catatan di `needsUpPos`.
+        const upPos = needsUpPos(finishingTotal, orderQty);
+        return { ...wo, cuttingTotal, sewingTotal, finishingTotal, kancingTotal, derivedStatus: status, variasiStatuses, upPos };
       })
       .sort((a, b) => {
         const da = a.createdAt || a.pulledAt || '';
         const db = b.createdAt || b.pulledAt || '';
         return da.localeCompare(db); // oldest first → newest at bottom
       });
-  }, [filteredWO, cuttingRecords, sewingRecords, finishingRecords, kancingRecords]);
+  }, [filteredWO, getCuttingForWO, getSewingTotalLocal, getFinishingTotalLocal, getKancingTotalLocal]);
 
-  // Group decorated WOs by product note for the Kanban. Card status = highest
-  // among the group's WOs; totalQty = sum of all quantities (incl. FINISHED/INVOICED).
-  const kanbanGroups = useMemo<KanbanGroup[]>(() => {
-    const map = new Map<string, KanbanGroup>();
-    for (const wo of decoratedWO) {
-      const note = wo.productNote?.trim();
-      if (!note) continue; // product_note never null (user); skip safety
-      const existing = map.get(note);
-      const rank = STATUS_RANK[wo.derivedStatus as ProductionStatus] ?? 0;
-      if (existing) {
-        existing.totalQty += Number(wo.quantity) || 0;
-        if (rank > STATUS_RANK[existing.status]) existing.status = wo.derivedStatus as ProductionStatus;
-        existing.workOrders.push(wo);
-      } else {
-        map.set(note, {
-          productNote: note,
-          product: wo.product,
-          brand: wo.brand,
-          totalQty: Number(wo.quantity) || 0,
-          status: wo.derivedStatus as ProductionStatus,
-          workOrders: [wo],
-        });
-      }
-    }
-    return Array.from(map.values());
-  }, [decoratedWO]);
+  // Group decorated WOs by Kode Produksi Konveksi for the Kanban.
+  // Aturan status kartu (status TERENDAH, bukan tertinggi) beserta alasannya
+  // ada di src/lib/kanban.ts — diuji di tests/kanban.test.ts.
+  const kanbanGroups = useMemo<KanbanGroup[]>(() => buildKanbanGroups(decoratedWO), [decoratedWO]);
 
   // ===== CUTTING =====
   const cuttingQueueWO = decoratedWO.filter(w => w.derivedStatus === 'NEW');
   const cuttingDoneWO = decoratedWO.filter(w => w.derivedStatus !== 'NEW');
+
+  // Riwayat cutting menampilkan kolom cutting record, jadi record-nya
+  // digabungkan ke baris WO di sini — sel tidak perlu lagi mencari sendiri ke
+  // array cuttingRecords lewat `getCuttingForWO`.
+  const cuttingHistoryRows = useMemo(
+    () => cuttingDoneWO.map((wo) => {
+      const cr = getCuttingForWO(wo.id);
+      return {
+        ...wo,
+        totalCutting: cr?.totalCutting,
+        sisaCutting: cr?.sisaCutting,
+        inputBy: cr?.inputBy,
+        inputAt: cr?.inputAt,
+      };
+    }),
+    [cuttingDoneWO, getCuttingForWO],
+  );
+
+  // Kolom tabel Antrian Cutting. Kolom Cutting + Action memuat input dan tombol
+  // simpan, jadi keduanya dirender sendiri lewat `render`; tabel bersama tidak
+  // perlu tahu soal state input per-baris.
+  const cuttingQueueColumns = useMemo(() => [
+    {
+      key: 'product', label: 'Produk', width: '260px',
+      render: (row: Record<string, unknown>) => (
+        <div className="min-w-[240px]">
+          <div className="font-medium text-gray-900">{String(row.product ?? '')}</div>
+          <div className={cn(T_SUB_LABEL, 'truncate')} title={String(row.workCode ?? '')}>{String(row.workCode ?? '')}</div>
+        </div>
+      ),
+    },
+    {
+      key: 'brand', label: 'Client', width: '130px',
+      render: (row: Record<string, unknown>) => <span className="text-gray-700">{String(row.brand ?? '')}</span>,
+    },
+    {
+      // Judul "Qty Diterima Client" — angka ini qty pesanan/klien, bukan stok
+      // dari POS. Lihat catatan lengkap di RAW_FIELDS. Lebar 150px karena
+      // judulnya panjang dan `T_TH` memakai `whitespace-nowrap`.
+      //
+      // 0 = belum diterima dari POS client (input qty manual sudah dihapus dari
+      // Order Entry), jadi ditampilkan sebagai "—", bukan "0".
+      key: 'quantity', label: 'Qty Diterima Client', width: '150px', align: 'right' as const,
+      render: (row: Record<string, unknown>) => {
+        const qty = Number(row.quantity) || 0;
+        if (qty <= 0) return <span className="text-gray-300">—</span>;
+        return <span className="font-medium tabular-nums text-gray-900">{qty}</span>;
+      },
+    },
+    {
+      key: 'cutting', label: 'Cutting', width: '130px', align: 'center' as const,
+      render: (row: Record<string, unknown>) => {
+        const id = String(row.id);
+        return (
+          <input
+            type="number"
+            value={cuttingInputs[id] || ''}
+            onChange={e => setCuttingInputs(prev => ({ ...prev, [id]: e.target.value }))}
+            className="w-24 h-8 px-2 text-[13px] border border-gray-300 rounded-md text-center focus:outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200 tabular-nums"
+          />
+        );
+      },
+    },
+    {
+      key: 'action', label: 'Action', width: '100px', align: 'center' as const,
+      render: (row: Record<string, unknown>) => (
+        <button
+          onClick={() => void handleInputCutting(String(row.id))}
+          className="px-3.5 py-1.5 text-[12px] font-medium bg-primary text-white rounded-md hover:bg-primary/90 transition-colors"
+        >
+          Simpan
+        </button>
+      ),
+    },
+  // `handleInputCutting` is recreated every render, so listing it here would
+  // rebuild the columns on every keystroke and remount the inputs mid-typing.
+  // The columns only close over it to call it; the latest closure is always the
+  // one on the page's own render, so the reference is deliberately not tracked.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], [cuttingInputs]);
+
+  // Kolom tabel Riwayat Cutting — baca-saja, semua dari cutting record.
+  const cuttingHistoryColumns = useMemo(() => [
+    {
+      key: 'product', label: 'Produk', width: '260px',
+      render: (row: Record<string, unknown>) => (
+        <div className="min-w-[240px]">
+          <div className="font-medium text-gray-900">{String(row.product ?? '')}</div>
+          <div className={cn(T_SUB_LABEL, 'truncate')} title={String(row.workCode ?? '')}>{String(row.workCode ?? '')}</div>
+        </div>
+      ),
+    },
+    {
+      // Judul "Qty Diterima Client" — angka ini qty pesanan/klien, bukan stok
+      // dari POS. Lihat catatan lengkap di RAW_FIELDS. Lebar 150px karena
+      // judulnya panjang dan `T_TH` memakai `whitespace-nowrap`.
+      //
+      // 0 = belum diterima dari POS client (input qty manual sudah dihapus dari
+      // Order Entry), jadi ditampilkan sebagai "—", bukan "0".
+      key: 'quantity', label: 'Qty Diterima Client', width: '150px', align: 'right' as const,
+      render: (row: Record<string, unknown>) => {
+        const qty = Number(row.quantity) || 0;
+        if (qty <= 0) return <span className="text-gray-300">—</span>;
+        return <span className="tabular-nums text-gray-700">{qty}</span>;
+      },
+    },
+    {
+      key: 'totalCutting', label: 'Cutting', width: '90px', align: 'right' as const,
+      render: (row: Record<string, unknown>) => (
+        <span className="font-medium tabular-nums text-emerald-600">{String(row.totalCutting ?? '—')}</span>
+      ),
+    },
+    {
+      key: 'sisaCutting', label: 'Sisa Cutting', width: '110px', align: 'right' as const,
+      render: (row: Record<string, unknown>) => (
+        <span className="tabular-nums text-gray-500">{String(row.sisaCutting ?? '—')}</span>
+      ),
+    },
+    {
+      key: 'inputBy', label: 'Input By', width: '130px',
+      render: (row: Record<string, unknown>) => <span className="text-gray-700">{String(row.inputBy ?? '—')}</span>,
+    },
+    {
+      key: 'inputAt', label: 'Tanggal', width: '120px',
+      render: (row: Record<string, unknown>) => (
+        <span className="whitespace-nowrap text-gray-700">{row.inputAt ? formatDate(String(row.inputAt)) : '—'}</span>
+      ),
+    },
+  ], []);
 
   const handleInputCutting = async (woId: string) => {
     const val = cuttingInputs[woId];
@@ -392,24 +545,32 @@ export default function ProductionMonitoring({ onOpenSewingEntry, onOpenFinishin
       workOrderId: woId, totalCutting: qty, sisaCutting: qty - wo.quantity, inputBy: currentDisplayName, inputAt: new Date().toISOString().split('T')[0], locked: true,
     });
     if (error) { setCuttingMessage(`❌ ${error.message}`); return; }
-    await workOrderSvc.updateProdStatus(woId, 'CUTTING');
+    // Cutting terisi → status langsung PROGRESS (tidak ada status CUTTING lagi).
+    // Dihitung lewat deriveStatus, bukan hardcode, supaya WO yang jahitnya sudah
+    // penuh tidak salah turun ke PROGRESS. Kancing & finishing ikut dihitung
+    // karena FINISHED sekarang menunggu keduanya (revisi 2026-09-28).
+    const nextStatus = deriveStatus(
+      qty,
+      getSewingTotalLocal(woId),
+      wo.quantity,
+      getKancingTotalLocal(woId),
+      getFinishingTotalLocal(woId),
+    );
+    await workOrderSvc.updateProdStatus(woId, nextStatus);
     if (newCR) setCuttingRecords(prev => [...prev, newCR]);
-    setWorkOrders(prev => prev.map(w => w.id === woId ? { ...w, productionStatus: 'CUTTING' } : w));
+    setWorkOrders(prev => prev.map(w => w.id === woId ? { ...w, productionStatus: nextStatus } : w));
     setCuttingMessage(`✅ Cutting ${qty} pcs berhasil disimpan!`);
     setCuttingInputs(prev => ({ ...prev, [woId]: '' }));
     setTimeout(() => setCuttingMessage(null), 3000);
   };
 
   // ===== FINISHING & KANCING LOGS =====
-  // Entry dilakukan lewat form terpisah (FinishingEntryForm / KancingEntryForm).
-  const finishingLogData = useMemo(
-    () => [...finishingRecords].sort((a, b) => (b.syncedAt || '').localeCompare(a.syncedAt || '')),
-    [finishingRecords],
-  );
-  const kancingLogData = useMemo(
-    () => kancingRecords.filter(k => !searchQuery || k.workCode.toLowerCase().includes(searchQuery.toLowerCase()) || k.picKancing.toLowerCase().includes(searchQuery.toLowerCase())).sort((a, b) => (b.inputAt || '').localeCompare(a.inputAt || '')),
-    [kancingRecords, searchQuery],
-  );
+  // Penyaringan + pengurutan ketiga log kini ditangani `buildLogRows`
+  // (@/lib/logDashboard), yang menormalkan catatan mentah menjadi satu bentuk
+  // baris. Sebelumnya tiap log menyaring sendiri di sini — tiga salinan aturan
+  // yang sama, dan finishing_records tidak punya `work_code` sehingga kodenya
+  // harus di-join dari workOrders secara manual.
+
 
   // ===== SELECTION =====
   const handleToggleRow = (woId: string) => setSelectedRows(prev => {
@@ -418,90 +579,193 @@ export default function ProductionMonitoring({ onOpenSewingEntry, onOpenFinishin
     else next.add(woId);
     return next;
   });
-  const handleToggleAll = () => { if (selectedRows.size === decoratedWO.length) setSelectedRows(new Set()); else setSelectedRows(new Set(decoratedWO.map(w => w.id))); };
+  // "Pilih semua" kini milik grid: ia men-toggle seluruh baris yang tampil dan
+  // memutar selisihnya lewat `handleToggleRow`, jadi tidak ada checkbox header
+  // manual di sini lagi.
 
   // ===== Filter & Sort (RAW master table) =====
-  const RAW_FIELDS: FieldOption[] = [
-    { key: 'productNote', label: 'Product Note' },
-    { key: 'product', label: 'Product' },
-    { key: 'productId', label: 'Product ID' },
-    { key: 'variationId', label: 'Variation ID' },
-    { key: 'informationVariation', label: 'Information Variation' },
-    { key: 'warna', label: 'Warna' },
-    { key: 'size', label: 'Size' },
-    { key: 'workCode', label: 'Work Code' },
-    { key: 'brand', label: 'Brand' },
-    { key: 'quantity', label: 'Qty' },
-    { key: 'cuttingTotal', label: 'Cutting' },
-    { key: 'sewingTotal', label: 'Jahit' },
-    { key: 'finishingTotal', label: 'Finishing' },
-    { key: 'kancingTotal', label: 'Kancing' },
-    { key: 'sisa', label: 'Sisa' },
-    { key: 'derivedStatus', label: 'Status' },
-    { key: 'createdAt', label: 'Created At' },
-    { key: 'createdBy', label: 'Created By' },
-  ];
+  // Urutan kolom tabel Raw Data sebagai daftar `key` datar.
+  //
+  // Dipakai `useColumnSettings` untuk merapikan kolom beku menjadi awalan yang
+  // rapat — mesin pinning mengangkat kolom yang di-pin ke depan mengikuti
+  // urutan itu, jadi daftar beku yang berlubang akan mengubah urutan kolom di
+  // layar. RAW_COLUMNS sendiri ada di tingkat modul, jadi identitasnya stabil.
+  const rawColumnKeys = useMemo(() => RAW_COLUMNS.map((c) => c.key), []);
+  // Pengaturan kolom tabel Raw Data: sembunyikan, bekukan, dan header beku.
+  const { hidden: hiddenCols, toggle: toggleCol, frozen: frozenCols, toggleFreeze: toggleFreezeCol, toggleFreezeAll: toggleFreezeAllCols, headerFrozen, setHeaderFrozen } = useColumnSettings('raw-data', rawColumnKeys);
   // Rows shaped for Filter/Sort: flat display values, uniform styling in cells.
+  // `variasiStatusLabel` dan `upPosLabel` adalah bentuk TEKS dari dua kolom
+  // baru — dipakai mesin Filter/Sort, yang membandingkan string. Selnya sendiri
+  // tetap dirender sebagai badge lewat `rawColumns`; tabel ini tidak punya
+  // ekspor CSV, jadi tidak ada konsumen lain dari field teks itu.
   const flatRows = useMemo(() => decoratedWO.map((wo) => ({
     ...wo,
     sisa: Math.max(0, wo.cuttingTotal - wo.sewingTotal),
     statusLabel: productionStatusLabel[wo.derivedStatus as ProductionStatus] ?? String(wo.derivedStatus),
+    variasiStatusLabel: variasiStatusText(wo.variasiStatuses),
+    upPosLabel: wo.upPos ? NEED_UP_POS_LABEL : '',
     createdAtLabel: formatDate(wo.createdAt),
   })), [decoratedWO]);
   const rawRows = useMemo(() => applySorts(applyFilters(flatRows, rawFilters), rawSorts), [flatRows, rawFilters, rawSorts]);
+
+  // Bentuk kolom untuk DataTable (variant "plain") — sama seperti tabel lain di
+  // aplikasi. Sel yang butuh foto, badge, atau warna angka memakai `render`
+  // supaya tabel bersama tidak perlu tahu soal bentuk work order.
+  //
+  // Urutannya HARUS sama dengan RAW_COLUMNS: kunci kolom yang tersimpan di
+  // preferensi "atur kolom" user adalah `key` di sini, jadi mengubahnya akan
+  // mengembalikan kolom yang sudah disembunyikan user.
+  const rawColumns = useMemo(() => [
+    {
+      key: 'productNote', label: 'Kode Produksi Konveksi', width: '180px',
+      render: (row: Record<string, unknown>) => {
+        const v = row.productNote as string | null;
+        return v ? <span className="font-mono text-gray-700">{v}</span> : <span className="text-gray-300">—</span>;
+      },
+    },
+    {
+      key: 'clientProductionCode', label: 'Kode Produksi Client', width: '180px',
+      render: (row: Record<string, unknown>) => {
+        const v = row.clientProductionCode as string | null;
+        return v ? <span className="font-mono text-gray-700">{v}</span> : <span className="text-gray-300">—</span>;
+      },
+    },
+    {
+      key: 'createdAt', label: 'Date Created', width: '120px',
+      render: (row: Record<string, unknown>) => <span className="text-gray-700">{String(row.createdAtLabel ?? '')}</span>,
+    },
+    {
+      key: 'brand', label: 'Client', width: '130px',
+      render: (row: Record<string, unknown>) => <span className="text-gray-700">{String(row.brand ?? '')}</span>,
+    },
+    {
+      key: 'photo', label: 'Foto', width: '70px',
+      // Foto per variasi, diambil dari Order Entry lewat source_variation_id —
+      // karena satu baris = satu variasi.
+      render: (row: Record<string, unknown>) => {
+        const url = row.variationPhotoUrl as string | null;
+        return url ? (
+          <img src={url} alt={String(row.product)} className="h-8 w-8 rounded border border-gray-200 object-cover" />
+        ) : (
+          <span className="text-gray-300">—</span>
+        );
+      },
+    },
+    {
+      key: 'product', label: 'Product', width: '160px',
+      render: (row: Record<string, unknown>) => <span className="text-gray-700">{String(row.product ?? '')}</span>,
+    },
+    {
+      key: 'productId', label: 'Product ID', width: '130px',
+      render: (row: Record<string, unknown>) => (row.productId as string) || <span className="text-gray-300">—</span>,
+    },
+    {
+      key: 'variationId', label: 'Variation ID', width: '130px',
+      render: (row: Record<string, unknown>) => (row.variationId as string) || <span className="text-gray-300">—</span>,
+    },
+    {
+      key: 'informationVariation', label: 'Information Variation', width: '160px',
+      render: (row: Record<string, unknown>) => (row.informationVariation as string) || <span className="text-gray-300">—</span>,
+    },
+    {
+      key: 'warna', label: 'Warna', width: '110px',
+      render: (row: Record<string, unknown>) => (row.warna as string) || <span className="text-gray-300">—</span>,
+    },
+    {
+      key: 'size', label: 'Size', width: '90px',
+      render: (row: Record<string, unknown>) => (row.size as string) || <span className="text-gray-300">—</span>,
+    },
+    {
+      key: 'cuttingTotal', label: 'Cutting', width: '90px', align: 'right' as const,
+      render: (row: Record<string, unknown>) => {
+        const n = Number(row.cuttingTotal ?? 0);
+        return n > 0 ? <span className="tabular-nums text-emerald-600">{n}</span> : <span className="text-gray-300">—</span>;
+      },
+    },
+    {
+      key: 'sewingTotal', label: 'Jahit', width: '90px', align: 'right' as const,
+      render: (row: Record<string, unknown>) => {
+        const n = Number(row.sewingTotal ?? 0);
+        if (n <= 0) return <span className="text-gray-300">—</span>;
+        return <span className={cn('tabular-nums', n >= Number(row.quantity ?? 0) ? 'text-emerald-600' : 'text-red-600')}>{n}</span>;
+      },
+    },
+    {
+      key: 'kancingTotal', label: 'Kancing', width: '90px', align: 'right' as const,
+      render: (row: Record<string, unknown>) => {
+        const n = Number(row.kancingTotal ?? 0);
+        if (n <= 0) return <span className="text-gray-300">—</span>;
+        return <span className={cn('tabular-nums', n >= Number(row.quantity ?? 0) ? 'text-emerald-600' : 'text-red-600')}>{n}</span>;
+      },
+    },
+    {
+      key: 'finishingTotal', label: 'Finishing', width: '90px', align: 'right' as const,
+      render: (row: Record<string, unknown>) => {
+        const n = Number(row.finishingTotal ?? 0);
+        if (n <= 0) return <span className="text-gray-300">—</span>;
+        return <span className={cn('tabular-nums', n >= Number(row.quantity ?? 0) ? 'text-emerald-600' : 'text-red-600')}>{n}</span>;
+      },
+    },
+    {
+      key: 'sisa', label: 'Sisa Cutting', width: '100px', align: 'right' as const,
+      render: (row: Record<string, unknown>) => {
+        if (Number(row.cuttingTotal ?? 0) <= 0) return <span className="text-gray-300">—</span>;
+        const sisa = Number(row.sisa ?? 0);
+        return <span className={cn('tabular-nums', sisa === 0 ? 'text-emerald-600' : 'text-red-600')}>{sisa}</span>;
+      },
+    },
+    {
+      // Qty pesanan/klien, sengaja diletakkan SETELAH "Sisa Cutting" (ujung
+      // kanan blok produksi) atas permintaan user. Lihat catatan lengkap di
+      // RAW_FIELDS.
+      //
+      // Lebarnya 150px karena judulnya panjang dan `T_TH` memakai
+      // `whitespace-nowrap` — kolom yang lebih sempit membuat judulnya terpotong,
+      // bukan terlipat.
+      //
+      // 0 ditampilkan sebagai "—", bukan "0": sejak input qty manual dihapus
+      // dari Order Entry, setiap order baru bernilai 0 sampai POS client
+      // mengisinya. Angka 0 di sel akan terbaca sebagai "order ini nol pcs",
+      // padahal artinya "belum diterima dari client".
+      key: 'quantity', label: 'Qty Diterima Client', width: '150px', align: 'right' as const,
+      render: (row: Record<string, unknown>) => {
+        const qty = Number(row.quantity) || 0;
+        if (qty <= 0) return <span className="text-gray-300">—</span>;
+        return <span className="tabular-nums text-gray-700">{qty}</span>;
+      },
+    },
+    {
+      key: 'derivedStatus', label: 'Status', width: '120px', align: 'center' as const,
+      render: (row: Record<string, unknown>) => <StatusBadge status={row.derivedStatus as ProductionStatus} />,
+    },
+    {
+      // Status LEVEL-1 (per variasi) — bisa lebih dari satu badge sekaligus.
+      // Lebarnya 190px karena baris paling lebar ("Cutting · Kancing ·
+      // Finishing") memuat tiga badge; lebih sempit membuatnya terpotong.
+      key: 'variasiStatusLabel', label: 'Status Variasi', width: '190px', align: 'center' as const,
+      render: (row: Record<string, unknown>) => (
+        <VariasiStatusBadge statuses={(row.variasiStatuses as VariasiStatus[]) ?? []} />
+      ),
+    },
+    {
+      // Alert "Need Up POS" (revisi 2026-09-28): finishing sudah melebihi Qty
+      // Diterima Client, jadi angka di POS perlu dinaikkan. Jahit tidak lagi
+      // ikut dibandingkan. Sel kosong (bukan badge abu-abu) bila tidak ada
+      // masalah, supaya mata langsung tertuju ke baris yang bertanda.
+      key: 'upPosLabel', label: 'Need Up POS', width: '130px', align: 'center' as const,
+      render: (row: Record<string, unknown>) => (
+        row.upPos
+          ? <span className={softBadgeClass('rose')}>{NEED_UP_POS_LABEL}</span>
+          : <span className="text-gray-300">—</span>
+      ),
+    },
+    {
+      key: 'createdBy', label: 'Created By', width: '130px',
+      render: (row: Record<string, unknown>) => (row.createdBy as string) || <span className="text-gray-300">—</span>,
+    },
+  ], []);
+
   const handleImport = () => { if (selectedRows.size === 0) { alert('Pilih minimal 1!'); return; } alert(`✅ ${selectedRows.size} WO di-import`); setSelectedRows(new Set()); };
-  const handleExportRaw = () => {
-    const esc = (v: string | number | null | undefined) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-    const header = ['Product Note', 'Product', 'Product ID', 'Variation ID', 'Information Variation', 'Warna', 'Size', 'Work Code', 'Brand', 'Qty', 'Cutting', 'Jahit', 'Finishing', 'Kancing', 'Sisa', 'Status', 'Created At', 'Created By'];
-    const lines = rawRows.map((r) => [r.productNote, r.product, r.productId, r.variationId, r.informationVariation, r.warna, r.size, r.workCode, r.brand, r.quantity, r.cuttingTotal, r.sewingTotal, r.finishingTotal, r.kancingTotal, r.sisa, r.statusLabel, r.createdAtLabel, r.createdBy].map(esc).join(','));
-    const csv = '﻿' + [header.map(esc).join(','), ...lines].join('\r\n'); // BOM for Excel UTF-8
-    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `raw-data-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  // ===== PULL =====
-  const handlePullOrder = async (poId: string) => {
-    const po = planningOrders.find(p => p.id === poId);
-    if (!po || po.status !== 'PLANNING' || pullingOrderId) return;
-
-    setPullingOrderId(poId);
-    setPullMessage('⏳ Memproses Pull...');
-
-    try {
-      const { data: pulledWorkOrders, error } = await workOrderSvc.pullFromProductionOrder(
-        po.id,
-        currentDisplayName,
-      );
-
-      if (error || !pulledWorkOrders || pulledWorkOrders.length === 0) {
-        setPullMessage(`❌ Gagal pull order: ${error?.message ?? 'Work order tidak dikembalikan'}`);
-        return;
-      }
-
-      setWorkOrders(prev => {
-        const byId = new Map(prev.map(item => [item.id, item]));
-        for (const workOrder of pulledWorkOrders) byId.set(workOrder.id, workOrder);
-        return [...byId.values()];
-      });
-      setPlanningOrders(prev => prev.filter(p => p.id !== poId));
-      setPullMessage(`✅ "${po.product}" berhasil di-pull menjadi ${pulledWorkOrders.length} Work Order!`);
-      if (planningOrders.length <= 1) setShowPullModal(false);
-    } catch (error: unknown) {
-      const detail = error instanceof Error ? error.message : String(error);
-      setPullMessage(`❌ Gagal pull order: ${detail}`);
-    } finally {
-      setPullingOrderId(null);
-      setTimeout(() => setPullMessage(null), 3000);
-    }
-  };
-
-  // ===== SEWING =====
-  const sewingData = useMemo(() => sewingRecords.filter(s => !searchQuery || s.workCode.toLowerCase().includes(searchQuery.toLowerCase()) || s.picPenjahit.toLowerCase().includes(searchQuery.toLowerCase())).sort((a, b) => b.tanggalLaporan.localeCompare(a.tanggalLaporan)), [sewingRecords, searchQuery]);
-
   // ===== KANBAN DND (drag id = product note; updates all WOs in the group) =====
   const handleDragStart = (e: DragStartEvent) => setActiveDragId(e.active.id as string);
   const handleDragEnd = async (e: DragEndEvent) => {
@@ -515,7 +779,15 @@ export default function ProductionMonitoring({ onOpenSewingEntry, onOpenFinishin
     const first = group.workOrders[0];
     const st = getSewingTotalLocal(first.id);
     const ct = getCuttingForWO(first.id)?.totalCutting ?? 0;
-    const err = validateStatusTransition(first.productionStatus, newStatus, st, ct, first.quantity);
+    const err = validateStatusTransition(
+      first.productionStatus,
+      newStatus,
+      st,
+      ct,
+      first.quantity,
+      getKancingTotalLocal(first.id),
+      getFinishingTotalLocal(first.id),
+    );
     if (err) { showToast(`⚠️ ${err}`); return; }
     // Update every WO in the group.
     setWorkOrders(prev => prev.map(w => (group.workOrders.some(gw => gw.id === w.id) ? { ...w, productionStatus: newStatus as ProductionStatus } : w)));
@@ -525,90 +797,269 @@ export default function ProductionMonitoring({ onOpenSewingEntry, onOpenFinishin
     else showToast(`✅ Status updated ke "${productionStatusLabel[newStatus as ProductionStatus] || newStatus}"`);
   };
 
-  const TAB_ICONS: Record<TabType, ComponentType<{ className?: string }>> = {
-    raw: Table2, cutting: Scissors, sewing: Shirt, finishing: PackageCheck, kancing: CircleDot, kanban: Kanban,
-  };
-  const tabs: { id: TabType; label: string }[] = [
-    { id: 'raw', label: 'Raw Data' },
-    { id: 'cutting', label: 'Cutting Log' },
-    { id: 'sewing', label: 'Sewing Log' },
-    { id: 'finishing', label: 'Finishing Log' },
-    { id: 'kancing', label: 'Pasang Kancing Log' },
-    { id: 'kanban', label: 'Kanban' },
+  // Urutan mengikuti alur kerja: pasang kancing dikerjakan sebelum finishing.
+  //
+  // Tanpa ikon (permintaan user) — cukup tulisannya. Toggle Kanban/List di
+  // bawah sengaja TETAP berikon: user hanya menyebut kelima tab ini.
+  const tabs: PillTabItem<TabType>[] = [
+    { id: 'all', label: 'ALL' },
+    { id: 'cutting', label: 'Cutting' },
+    { id: 'sewing', label: 'Sewing' },
+    { id: 'kancing', label: 'Kancing' },
+    { id: 'finishing', label: 'Finishing' },
   ];
+
+  // ===== Data panel log (tab Sewing / Kancing / Finishing) =====
+  const activeLogTab: LogTab | null = isLogTab(activeTab) ? activeTab : null;
+
+  // Catatan mentah milik tab log yang sedang aktif — satu tempat, supaya
+  // pemetaan tab → array tidak diulang di tiga tempat.
+  const activeLogRecords = useMemo(
+    () => (activeLogTab === 'sewing' ? sewingRecords
+      : activeLogTab === 'kancing' ? kancingRecords
+        : activeLogTab === 'finishing' ? finishingRecords
+          : []),
+    [activeLogTab, sewingRecords, kancingRecords, finishingRecords],
+  );
+
+  // Baris log tanpa saringan pencarian — dipakai panel kiri (yang justru jadi
+  // alat pencariannya) dan panel kanan.
+  const allLogRows = useMemo(
+    () => (activeLogTab ? buildLogRows(activeLogTab, activeLogRecords, workOrders, '') : []),
+    [activeLogTab, activeLogRecords, workOrders],
+  );
+
+  // Daftar kode produksi panel kiri + kode yang sedang dipilih.
+  const kodeEntries = useMemo(
+    () => (activeLogTab ? buildKodeList(kanbanGroups, allLogRows) : []),
+    [activeLogTab, kanbanGroups, allLogRows],
+  );
+  const selectedKodeNote = activeLogTab ? selectedKode[activeLogTab] ?? null : null;
+  const selectedKodeGroup = selectedKodeNote
+    ? kanbanGroups.find(g => g.productNote === selectedKodeNote) ?? null
+    : null;
+  const selectKode = (note: string | null) => {
+    if (!activeLogTab) return;
+    setSelectedKode(prev => ({ ...prev, [activeLogTab]: note }));
+    // Buang filter slicer saat kode berganti. Filter produk/bulan dari kode
+    // sebelumnya bisa tidak cocok sama sekali dengan kode baru, sehingga panel
+    // tampil kosong tanpa sebab yang terlihat. (Dulu ini ditangani `key`
+    // remount di panel; sekarang filter hidup di halaman, jadi harus eksplisit.)
+    setLogFilters(prev => ({ ...prev, [activeLogTab]: EMPTY_FILTERS }));
+    setLogPage(1);
+  };
+
+  // Baris panel kanan: disaring ke kode terpilih (null = seluruh kode), lalu
+  // diberi slicer. Dipakai bersama oleh KPI di panel DAN tabel di bawahnya —
+  // satu rantai baris untuk keduanya, supaya filter tidak bisa mengenai salah
+  // satu saja.
+  const panelScopedRows = useMemo(
+    () => (activeLogTab
+      ? scopedLaporanRows(LAPORAN_KIND_BY_TAB[activeLogTab], activeLogRecords, workOrders, selectedKodeGroup)
+      : []),
+    [activeLogTab, activeLogRecords, workOrders, selectedKodeGroup],
+  );
+  const panelFilters = activeLogTab ? logFilters[activeLogTab] ?? EMPTY_FILTERS : EMPTY_FILTERS;
+  const panelTableRows = useMemo(
+    () => applyLaporanFilters(panelScopedRows, panelFilters),
+    [panelScopedRows, panelFilters],
+  );
+
   const activeDragGroup = activeDragId ? kanbanGroups.find(g => g.productNote === activeDragId) : null;
+
+  // ===== Ubah / hapus baris log (khusus owner & finance) =====
+  //
+  // Aturan siapa yang berhak hidup di `src/lib/permissions.ts`, dan policy RLS
+  // di database menegakkan aturan yang sama — jadi menyembunyikan tombol di sini
+  // bukan satu-satunya pengaman, hanya supaya role lain tidak melihat aksi yang
+  // pasti ditolak. Lihat
+  // supabase/migrations/2026-09-24-production-log-role-restriction.sql.
+  const canEditLog = canEditProductionLog(profile.role);
+  const [editTarget, setEditTarget] = useState<LaporanRow | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<LaporanRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  // Jenis log yang sedang ditampilkan — dipakai dialog ubah & hapus agar tahu
+  // service mana yang dipanggil.
+  const activeLogKind: LaporanKind | null = activeLogTab ? LAPORAN_KIND_BY_TAB[activeLogTab] : null;
+
+  // Nama PIC yang ditawarkan saat mengubah: gabungan nama karyawan Aktif
+  // berposisi Penjahit (sumber yang sama dengan Entry Jahitan) dengan nama yang
+  // sudah ada di baris log.
+  //
+  // Nama lama sengaja ikut. Baris buatan masa lalu memakai nama dummy
+  // ("Ani Wulandari", "Eka Prasetya") yang tidak ada di Register Karyawan;
+  // tanpa menyertakannya, membuka dialog ubah pada baris itu akan menampilkan
+  // dropdown kosong dan memaksa operator mengganti orangnya hanya untuk bisa
+  // memperbaiki angka qty.
+  const logPicOptions = useMemo(() => {
+    const fromRows = allLogRows.map((row) => row.pic).filter(Boolean);
+    return [...new Set([...penjahitNames, ...fromRows])].sort((a, b) => a.localeCompare(b));
+  }, [allLogRows, penjahitNames]);
+
+  /**
+   * Muat ulang HANYA catatan log yang jenisnya berubah.
+   *
+   * Sengaja mengambil ulang dari server, bukan menambal state lokal: seluruh
+   * angka turunan (baris tabel, KPI dashboard, daftar kode di panel kiri)
+   * dihitung dari catatan mentah oleh `buildLogRows`, dan pemetaan
+   * "kolom tabel → kolom catatan" sudah dimiliki `laporanCompute.ts`. Menyalin
+   * pemetaan itu ke sini agar bisa menambal state lokal berarti membuat sumber
+   * kebenaran kedua yang bisa berbeda diam-diam dari yang pertama.
+   *
+   * Tidak menyalakan `loading` — memuat ulang satu tabel tidak boleh membuat
+   * seluruh halaman berkedip kembali ke layar Loading.
+   */
+  const refreshLogRecords = useCallback(async (kind: LaporanKind) => {
+    if (kind === 'jahit') {
+      const { data } = await sewingRecordSvc.fetchAll();
+      if (data) setSewingRecords(data);
+    } else if (kind === 'kancing') {
+      const { data } = await kancingRecordSvc.fetchAll();
+      if (data) setKancingRecords(data);
+    } else {
+      const { data } = await finishingRecordSvc.fetchAll();
+      if (data) setFinishingRecords(data);
+    }
+  }, []);
+
+  const handleLogSaved = useCallback(async () => {
+    if (!activeLogKind) return;
+    await refreshLogRecords(activeLogKind);
+    setEditTarget(null);
+    showToast('✅ Catatan berhasil diubah!');
+  }, [activeLogKind, refreshLogRecords]);
+
+  const handleLogDelete = useCallback(async () => {
+    if (!deleteTarget || !activeLogKind) return;
+    setDeleting(true);
+
+    const { error } =
+      activeLogKind === 'jahit' ? await sewingRecordSvc.remove(deleteTarget.id)
+        : activeLogKind === 'kancing' ? await kancingRecordSvc.remove(deleteTarget.id)
+          : await finishingRecordSvc.remove(deleteTarget.id);
+
+    if (error) {
+      setDeleting(false);
+      // Sejak policy RLS dibatasi, penolakan datang sebagai error dari service
+      // (0 baris terpengaruh) — jadi pesannya jujur, tidak menyebut "berhasil".
+      console.error('[ProductionMonitoring] gagal hapus catatan log:', error);
+      showToast(`⚠️ ${error.message}`);
+      return;
+    }
+
+    await refreshLogRecords(activeLogKind);
+    setDeleting(false);
+    setDeleteTarget(null);
+    showToast('🗑️ Catatan berhasil dihapus!');
+  }, [deleteTarget, activeLogKind, refreshLogRecords]);
+
+  // Akar halaman: tab log dua-panel butuh tinggi PASTI (bukan tinggi konten),
+  // jadi `overflow-auto` hanya dipasang pada tab satu-panel. Scroll-nya pindah
+  // ke dalam tiap panel.
+  const isTwoPanel = activeLogTab !== null;
 
   if (loading) return <div className="flex-1 flex items-center justify-center"><div className="text-slate-400 text-sm">Loading production data...</div></div>;
 
   return (
-    <div className="flex-1 flex flex-col min-w-0 overflow-auto">
-      <div className="px-8 pt-4 pb-0">
-        <div className="flex items-center justify-between mb-4">
+    <div className={cn('flex-1 flex flex-col min-w-0', isTwoPanel ? 'min-h-0' : 'overflow-auto')}>
+      <div className="px-6 pt-3 pb-0">
+        <div className="flex items-center justify-between mb-3">
           <div>
-            <h1 className="text-[17px] font-semibold tracking-tight text-slate-900">Production Monitoring</h1>
-          </div>
-          <div className="flex items-center gap-2.5">
-            <Button onClick={() => setShowPullModal(true)} size="sm" className="h-8 px-3.5 bg-blue-600 hover:bg-blue-700">
-              <DownloadCloud className="w-3.5 h-3.5 mr-2" /> Pull Order Entry
-            </Button>
-            <div className="h-8 px-3.5 text-[12px] flex items-center gap-2 bg-white border border-slate-200 rounded-lg text-slate-600">
-              <User className="w-3.5 h-3.5 text-blue-500" /> {currentDisplayName}
-            </div>
+            <h1 className="text-[17px] font-semibold tracking-tight text-slate-900">Production Order</h1>
           </div>
         </div>
-        {toast && <div className="mb-3 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-[12px] text-blue-700">{toast}</div>}
-        {pullMessage && <div className="mb-3 px-3 py-2 bg-green-50 border border-green-200 rounded-lg text-[12px] text-green-700">{pullMessage}</div>}
-        <div className="flex items-stretch gap-1.5 w-full overflow-x-auto bg-white border border-slate-200/80 rounded-lg p-1.5 shadow-sm shadow-slate-200/60">
-          {tabs.map(t => {
-            const Icon = TAB_ICONS[t.id];
-            const active = activeTab === t.id;
-            return (
-              <button
-                key={t.id}
-                onClick={() => setActiveTab(t.id)}
-                aria-pressed={active}
-                className={cn(
-                  'flex-1 min-w-0 h-9 px-4 rounded-md text-[12px] font-medium inline-flex items-center justify-center gap-2 whitespace-nowrap transition-all duration-200 ease-out',
-                  active
-                    ? 'bg-blue-600 text-white shadow-md shadow-blue-200'
-                    : 'text-slate-500 hover:bg-blue-50 hover:text-blue-700 hover:-translate-y-px hover:shadow-md hover:shadow-blue-100',
-                )}
-              >
-                <Icon className={cn('w-3.5 h-3.5 shrink-0', active ? 'text-white' : 'text-slate-400')} />
-                {t.label}
-              </button>
-            );
-          })}
+        {toast && <div className="mb-3 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[12px] text-blue-700">{toast}</div>}
+        <div className="flex items-center gap-3 flex-wrap">
+          <PillTabs
+            items={tabs}
+            active={activeTab}
+            aria-label="Tampilan Production Order"
+            onChange={(id) => { setActiveTab(id); setLogPage(1); }}
+          />
+          {/* Toggle Kanban/List hanya muncul di tab ALL. */}
+          {activeTab === 'all' && (
+            <PillTabs
+              items={[
+                { id: 'board', label: 'Kanban', icon: Kanban },
+                { id: 'list', label: 'List', icon: Table2 },
+              ]}
+              active={allView}
+              aria-label="Pilih tampilan ALL"
+              className="ml-auto"
+              onChange={setAllView}
+            />
+          )}
         </div>
       </div>
 
-      <div className="flex-1 px-8 pt-5 pb-6 overflow-auto">
-        {/* RAW DATA */}
-        {activeTab === 'raw' && (
+      {/* Tab log dua-panel memakai tinggi penuh (tanpa pb) supaya tiap panel
+          bisa menggulir sendiri; tab lain tetap seperti sebelumnya. */}
+      <div className={cn('flex-1 px-6 pt-4 min-h-0', isTwoPanel ? 'pb-5 flex flex-col' : 'pb-5 overflow-auto')}>
+        {/* Penanda lompatan dari Register Harga. Ditaruh di atas semua tab
+            supaya berlaku juga untuk tampilan Kanban dan tab log, bukan hanya
+            List — ketiganya memakai `filteredWO` yang sama. */}
+        {poJump && (
+          <PoFilterBanner
+            code={poJump.code}
+            orderId={poJump.orderId}
+            count={filteredWO.length}
+            onClear={() => onClearPoJump?.()}
+          />
+        )}
+        {/* ALL — LIST VIEW (tabel Raw Data). Kanban ada di blok terpisah. */}
+        {activeTab === 'all' && allView === 'list' && (
           <div>
             <div className="flex items-center gap-2 mb-3">
-              <div className="relative flex-1 max-w-xs"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" /><input type="text" placeholder="Cari work order..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full h-8 pl-8 pr-3 text-[12px] border border-gray-200 rounded-lg outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100" /></div>
+              <div className="relative flex-1 max-w-xs"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" /><input type="text" placeholder="Cari work order..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full h-8 pl-8 pr-3 text-[12px] border border-gray-200 rounded-lg outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200" /></div>
               <FilterButton fields={RAW_FIELDS} value={rawFilters} onChange={setRawFilters} />
               <SortButton fields={RAW_FIELDS} value={rawSorts} onChange={setRawSorts} />
-              <ColumnSettingsButton fields={RAW_FIELDS} hidden={hiddenCols} onToggle={toggleCol} />
-              <ExportButton onClick={handleExportRaw} />
-              <button onClick={handleImport} className={cn('h-8 px-2.5 text-[11px] rounded-lg flex items-center gap-1.5 font-medium transition-colors', selectedRows.size > 0 ? 'bg-blue-500 text-white hover:bg-blue-600' : 'border border-gray-200 text-slate-400')}>📥 Import ({selectedRows.size})</button>
+              <ColumnSettingsButton fields={RAW_COLUMNS} hidden={hiddenCols} onToggle={toggleCol} frozen={frozenCols} onToggleFreeze={toggleFreezeCol} onToggleFreezeAll={toggleFreezeAllCols} headerFrozen={headerFrozen} onToggleHeaderFrozen={setHeaderFrozen} />
+              <button onClick={handleImport} className={cn('h-8 px-2.5 text-[11px] rounded-lg flex items-center gap-1.5 font-medium transition-colors', selectedRows.size > 0 ? 'bg-primary text-white hover:bg-primary/90' : 'border border-gray-200 text-slate-400')}>📥 Import ({selectedRows.size})</button>
               {selectedRows.size > 0 && (
                 <button
                   onClick={async () => {
                     if (!confirm(`Hapus ${selectedRows.size} Work Order terpilih? Semua cutting & sewing records terkait juga akan dihapus.`)) return;
                     let deleted = 0;
+                    // Kumpulkan alasan gagal, jangan hanya menghitung yang berhasil:
+                    // pesan "0 berhasil" tanpa sebab tidak bisa ditindaklanjuti.
+                    const failures: string[] = [];
                     for (const woId of selectedRows) {
-                      const cr = cuttingRecords.find(c => c.workOrderId === woId);
-                      if (cr) await cuttingRecordSvc.remove(cr.id);
-                      const srs = sewingRecords.filter(s => s.workOrderId === woId);
-                      for (const sr of srs) await sewingRecordSvc.remove(sr.id);
+                      // Work order dihapus DULU, dan log anaknya hanya disentuh
+                      // setelah induknya benar-benar terhapus. Urutan sebaliknya
+                      // berbahaya: kalau penghapusan induk ditolak (mis. karena
+                      // ada invoice), log cutting/sewing sudah terlanjur hilang
+                      // tanpa bisa dikembalikan.
                       const { error } = await workOrderSvc.remove(String(woId));
-                      if (!error) deleted++;
+                      if (error) {
+                        failures.push(`${woId}: work order — ${error.message}`);
+                        continue;
+                      }
+                      deleted++;
+                      // Sisa log yang tidak ikut terhapus oleh cascade.
+                      const cr = cuttingRecords.find(c => c.workOrderId === woId);
+                      if (cr) {
+                        const { error: cutErr } = await cuttingRecordSvc.remove(cr.id);
+                        if (cutErr) failures.push(`${woId}: cutting — ${cutErr.message}`);
+                      }
+                      const srs = sewingRecords.filter(s => s.workOrderId === woId);
+                      for (const sr of srs) {
+                        const { error: sewErr } = await sewingRecordSvc.remove(sr.id);
+                        if (sewErr) failures.push(`${woId}: sewing — ${sewErr.message}`);
+                      }
                     }
-                    setWorkOrders(prev => prev.filter(w => !selectedRows.has(w.id)));
+                    // Hanya buang baris yang benar-benar terhapus. Sebelumnya
+                    // seluruh baris terpilih dibuang walau gagal, sehingga tabel
+                    // tampak berhasil padahal datanya masih ada di database.
+                    setWorkOrders(prev => prev.filter(w => !(selectedRows.has(w.id) && !failures.some(f => f.startsWith(`${w.id}: work order`)))));
                     setSelectedRows(new Set());
-                    showToast(`✅ ${deleted} WO berhasil dihapus!`);
+                    if (failures.length === 0) {
+                      showToast(`✅ ${deleted} WO berhasil dihapus!`);
+                    } else {
+                      console.error('[ProductionMonitoring] gagal hapus WO:', failures);
+                      const first = failures[0].replace(/^[^:]+: /, '');
+                      showToast(`⚠️ ${deleted} terhapus, ${failures.length} gagal — ${first}`);
+                    }
                   }}
                   className="h-8 px-2.5 text-[11px] rounded-lg flex items-center gap-1.5 font-medium bg-red-500 text-white hover:bg-red-600 transition-colors"
                 >
@@ -618,58 +1069,21 @@ export default function ProductionMonitoring({ onOpenSewingEntry, onOpenFinishin
               <span className="text-[11px] text-slate-400 ml-auto">{rawRows.length} work orders</span>
             </div>
             <div className={T_WRAP}>
-              <table className={cn(T_TABLE, 'w-auto min-w-full whitespace-nowrap')}>
-                <HiddenColgroup hidden={hiddenCols} cols={['__sel', 'productNote', 'product', 'productId', 'variationId', 'informationVariation', 'warna', 'size', 'workCode', 'brand', 'quantity', 'cuttingTotal', 'sewingTotal', 'finishingTotal', 'kancingTotal', 'sisa', 'derivedStatus', 'createdAt', 'createdBy']} />
-                <thead><tr className={T_HEAD_ROW}>
-                  <th className={cn(T_TH, 'w-12 text-center')}><input type="checkbox" checked={selectedRows.size === decoratedWO.length && decoratedWO.length > 0} onChange={handleToggleAll} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 align-middle" /></th>
-                  <th className={cn(T_TH, 'text-left')}>Product Note</th>
-                  <th className={cn(T_TH, 'text-left')}>Product</th>
-                  <th className={cn(T_TH, 'text-left')}>Product ID</th>
-                  <th className={cn(T_TH, 'text-left')}>Variation ID</th>
-                  <th className={cn(T_TH, 'text-left')}>Information Variation</th>
-                  <th className={cn(T_TH, 'text-left')}>Warna</th>
-                  <th className={cn(T_TH, 'text-left')}>Size</th>
-                  <th className={cn(T_TH, 'text-left')}>Work Code</th>
-                  <th className={cn(T_TH, 'text-left')}>Brand</th>
-                  <th className={cn(T_TH, 'text-right')}>Qty</th>
-                  <th className={cn(T_TH, 'text-right')}>Cutting</th>
-                  <th className={cn(T_TH, 'text-right')}>Jahit</th>
-                  <th className={cn(T_TH, 'text-right')}>Finishing</th>
-                  <th className={cn(T_TH, 'text-right')}>Kancing</th>
-                  <th className={cn(T_TH, 'text-right')}>Sisa</th>
-                  <th className={cn(T_TH, 'text-center')}>Status</th>
-                  <th className={cn(T_TH, 'text-left')}>Created At</th>
-                  <th className={cn(T_TH, 'text-left')}>Created By</th>
-                </tr></thead>
-                <tbody>
-                  {rawRows.length === 0 && <tr><td colSpan={19} className="py-10 text-center text-[13px] text-gray-400">{decoratedWO.length === 0 ? 'Tidak ada data work order' : 'Tidak ada hasil yang cocok dengan filter'}</td></tr>}
-                  {rawRows.map((wo, i) => {
-                    const selected = selectedRows.has(wo.id);
-                    const TD = T_TD; // unified compact row height (design-system token)
-                    return <tr key={wo.id} className={rowClass(i, selected)}>
-                      <td className={cn(TD, 'text-center')}><input type="checkbox" checked={selected} onChange={() => handleToggleRow(wo.id)} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 align-middle" /></td>
-                      <td className={cn(TD, 'text-gray-700')} title={wo.productNote ?? undefined}>{wo.productNote || <span className="text-gray-300">—</span>}</td>
-                      <td className={cn(TD, 'text-gray-700')} title={wo.product}>{wo.product}</td>
-                      <td className={cn(TD, 'text-gray-700')} title={wo.productId ?? undefined}>{wo.productId || <span className="text-gray-300">—</span>}</td>
-                      <td className={cn(TD, 'text-gray-700')} title={wo.variationId ?? undefined}>{wo.variationId || <span className="text-gray-300">—</span>}</td>
-                      <td className={cn(TD, 'text-gray-700')} title={wo.informationVariation ?? undefined}>{wo.informationVariation || <span className="text-gray-300">—</span>}</td>
-                      <td className={cn(TD, 'text-gray-700')}>{wo.warna || <span className="text-gray-300">—</span>}</td>
-                      <td className={cn(TD, 'text-gray-700')}>{wo.size || <span className="text-gray-300">—</span>}</td>
-                      <td className={cn(TD, 'text-gray-700')} title={wo.workCode}>{wo.workCode}</td>
-                      <td className={cn(TD, 'text-gray-700')}>{wo.brand}</td>
-                      <td className={cn(TD, 'text-right tabular-nums text-gray-700')}>{wo.quantity}</td>
-                      <td className={cn(TD, 'text-right tabular-nums')}>{wo.cuttingTotal > 0 ? <span className="text-emerald-600">{wo.cuttingTotal}</span> : <span className="text-gray-300">—</span>}</td>
-                      <td className={cn(TD, 'text-right tabular-nums')}>{wo.sewingTotal > 0 ? <span className={wo.sewingTotal >= wo.quantity ? 'text-emerald-600' : 'text-amber-600'}>{wo.sewingTotal}</span> : <span className="text-gray-300">—</span>}</td>
-                      <td className={cn(TD, 'text-right tabular-nums')}>{wo.finishingTotal > 0 ? <span className={wo.finishingTotal >= wo.quantity ? 'text-emerald-600' : 'text-amber-600'}>{wo.finishingTotal}</span> : <span className="text-gray-300">—</span>}</td>
-                      <td className={cn(TD, 'text-right tabular-nums')}>{wo.kancingTotal > 0 ? <span className={wo.kancingTotal >= wo.quantity ? 'text-emerald-600' : 'text-amber-600'}>{wo.kancingTotal}</span> : <span className="text-gray-300">—</span>}</td>
-                      <td className={cn(TD, 'text-right tabular-nums')}>{wo.cuttingTotal > 0 ? <span className={wo.sisa === 0 ? 'text-emerald-600' : 'text-amber-600'}>{wo.sisa}</span> : <span className="text-gray-300">—</span>}</td>
-                      <td className={cn(TD, 'text-center')}><StatusBadge status={wo.derivedStatus} /></td>
-                      <td className={cn(TD, 'text-gray-700')}>{wo.createdAtLabel}</td>
-                      <td className={cn(TD, 'text-gray-700')}>{wo.createdBy || <span className="text-gray-300">—</span>}</td>
-                    </tr>;
-                  })}
-                </tbody>
-              </table>
+              <DataTable
+                variant="plain"
+                columns={rawColumns}
+                data={rawRows as unknown as Record<string, unknown>[]}
+                selectedRows={selectedRows}
+                onToggleRow={handleToggleRow}
+                hiddenColumns={hiddenCols}
+                frozenColumns={frozenCols}
+                headerFrozen={headerFrozen}
+                emptyMessage={
+                  <div className="py-10 text-center text-[13px] text-gray-400">
+                    {decoratedWO.length === 0 ? 'Tidak ada data work order' : 'Tidak ada hasil yang cocok dengan filter'}
+                  </div>
+                }
+              />
             </div>
           </div>
         )}
@@ -679,72 +1093,150 @@ export default function ProductionMonitoring({ onOpenSewingEntry, onOpenFinishin
           <div>
             {cuttingMessage && <div className="mb-3 px-3 py-2 bg-green-50 border border-green-200 rounded-lg text-[12px] text-green-700">{cuttingMessage}</div>}
             <div className="mb-4"><h3 className="text-[13px] font-semibold text-slate-700 mb-2">🔵 Antrian Cutting — {cuttingQueueWO.length} WO</h3>
-              <div className="border border-gray-200 rounded-lg overflow-hidden">
-                {cuttingQueueWO.length === 0 ? <div className="py-8 text-center text-gray-400 text-[13px]">Semua work order sudah di-cutting</div> :
-                  <table className={T_TABLE}>
-                    <thead><tr className={T_HEAD_ROW}><th className={cn(T_TH, 'text-left')}>Work Code</th><th className={cn(T_TH, 'text-left')}>Brand</th><th className={cn(T_TH, 'text-right')}>Qty</th><th className={cn(T_TH, 'text-center')}>Cutting</th><th className={cn(T_TH, 'text-center')}>Action</th></tr></thead>
-                    <tbody>{cuttingQueueWO.map((wo, i) => <tr key={wo.id} className={rowClass(i)}><td className={cn(T_TD, 'min-w-[240px]')}><div className="font-medium text-gray-900">{wo.product}</div><div className="text-[11px] text-gray-400 truncate" title={wo.workCode}>{wo.workCode}</div></td><td className={cn(T_TD, 'text-gray-700')}>{wo.brand}</td><td className={cn(T_TD, 'text-right font-medium tabular-nums text-gray-900')}>{wo.quantity}</td><td className={cn(T_TD, 'text-center')}><input type="number" value={cuttingInputs[wo.id] || ''} onChange={e => setCuttingInputs(prev => ({ ...prev, [wo.id]: e.target.value }))} className="w-24 h-8 px-2 text-[13px] border border-gray-300 rounded-md text-center focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 tabular-nums" /></td><td className={cn(T_TD, 'text-center')}><button onClick={() => handleInputCutting(wo.id)} className="px-3.5 py-1.5 text-[12px] font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">Simpan</button></td></tr>)}</tbody>
-                  </table>}
+              <div className={T_WRAP}>
+                <DataTable
+                  variant="plain"
+                  columns={cuttingQueueColumns}
+                  data={cuttingQueueWO as unknown as Record<string, unknown>[]}
+                  emptyMessage={
+                    <div className="py-8 text-center text-gray-400 text-[13px]">Semua work order sudah di-cutting</div>
+                  }
+                />
               </div>
             </div>
             <div><h3 className="text-[13px] font-semibold text-slate-700 mb-2">🟢 Riwayat Cutting ({cuttingDoneWO.length} WO)</h3>
-              <div className="border border-gray-200 rounded-lg overflow-hidden">
-                <table className={T_TABLE}>
-                  <thead><tr className={T_HEAD_ROW}><th className={cn(T_TH, 'text-left')}>Work Code</th><th className={cn(T_TH, 'text-right')}>Qty</th><th className={cn(T_TH, 'text-right')}>Cutting</th><th className={cn(T_TH, 'text-right')}>Sisa</th><th className={cn(T_TH, 'text-left')}>Input By</th><th className={cn(T_TH, 'text-left')}>Tanggal</th></tr></thead>
-                  <tbody>{cuttingDoneWO.map((wo, i) => { const cr = getCuttingForWO(wo.id); return <tr key={wo.id} className={rowClass(i)}><td className={cn(T_TD, 'min-w-[240px]')}><div className="font-medium text-gray-900">{wo.product}</div><div className="text-[11px] text-gray-400 truncate" title={wo.workCode}>{wo.workCode}</div></td><td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>{wo.quantity}</td><td className={cn(T_TD, 'text-right font-medium tabular-nums text-emerald-600')}>{cr?.totalCutting || '—'}</td><td className={cn(T_TD, 'text-right tabular-nums text-gray-500')}>{cr?.sisaCutting || '—'}</td><td className={cn(T_TD, 'text-gray-700')}>{cr?.inputBy || '—'}</td><td className={cn(T_TD, 'text-gray-700 whitespace-nowrap')}>{cr ? formatDate(cr.inputAt) : '—'}</td></tr>; })}</tbody>
-                </table>
+              <div className={T_WRAP}>
+                <DataTable
+                  variant="plain"
+                  columns={cuttingHistoryColumns}
+                  data={cuttingHistoryRows as unknown as Record<string, unknown>[]}
+                  emptyMessage={
+                    <div className="py-8 text-center text-gray-400 text-[13px]">Belum ada riwayat cutting</div>
+                  }
+                />
               </div>
             </div>
           </div>
         )}
 
-        {/* SEWING LOG */}
-        {activeTab === 'sewing' && (
-          <div>
-            <div className="flex items-center justify-end mb-3"><button onClick={() => onOpenSewingEntry?.()} className="px-3 py-1.5 text-[11px] font-semibold bg-blue-500 text-white rounded-lg hover:bg-blue-600">➕ Entry Jahitan Baru</button></div>
-            <div className="relative max-w-xs mb-3"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" /><input type="text" placeholder="Cari..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full h-8 pl-8 pr-3 text-[12px] border border-gray-200 rounded-lg" /></div>
-            <div className={T_WRAP}>
-              <table className={T_TABLE}>
-                <thead><tr className={T_HEAD_ROW}><th className={cn(T_TH, 'text-left')}>Tanggal</th><th className={cn(T_TH, 'text-left')}>Work Code</th><th className={cn(T_TH, 'text-left')}>PIC</th><th className={cn(T_TH, 'text-right')}>Qty</th><th className={cn(T_TH, 'text-center')}>Bukti</th></tr></thead>
-                <tbody>{sewingData.length === 0 ? <tr><td colSpan={5} className="py-10 text-center text-[13px] text-gray-400">Belum ada data jahitan</td></tr> : sewingData.map((sr, i) => <tr key={sr.id} className={rowClass(i)}><td className={cn(T_TD, 'text-gray-700 whitespace-nowrap')}>{formatDate(sr.tanggalLaporan)}</td><td className={cn(T_TD, 'min-w-[240px]')}><div className="font-medium text-gray-900">{workOrders.find(w => w.id === sr.workOrderId)?.product || '—'}</div><div className="text-[11px] text-gray-400 truncate" title={sr.workCode}>{sr.workCode}</div></td><td className={cn(T_TD, 'text-gray-700')}>{sr.picPenjahit}</td><td className={cn(T_TD, 'text-right font-medium tabular-nums text-gray-900')}>{sr.qtySelesai}</td><td className={cn(T_TD, 'text-center')}>{sr.imageName ? <Image className="w-4 h-4 text-blue-500 inline" /> : <span className="text-gray-300">—</span>}</td></tr>)}</tbody>
-              </table>
-            </div>
-          </div>
+        {/* TAB LOG DUA PANEL — Sewing / Kancing / Finishing.
+            Kiri: daftar Kode Produksi Konveksi. Kanan: dashboard + tabel log
+            yang ikut terfilter saat satu kode dipilih. */}
+        {isTwoPanel && activeLogTab && (
+          <ResizablePanelGroup orientation="horizontal" className="flex-1 min-h-0 rounded-lg border bg-card overflow-hidden">
+            {/* Ukuran panel WAJIB berupa string persen ("26%"), bukan angka.
+                Di react-resizable-panels v4, nilai NUMBER diartikan PIXEL —
+                `defaultSize={26}` berarti 26px, dan `maxSize={44}` mengunci
+                panel kiri selebar 44px sehingga tampilannya rusak. Di v2/v3
+                angka berarti persen; proyek ini memakai v4. */}
+            {/* Panel kiri dilebarkan dari 26% karena kini memuat thumbnail
+                foto + tiga baris teks; pada 26% kode produksi seperti
+                `PO/001-LVU/09/2026/002` terpotong. */}
+            <ResizablePanel defaultSize="32%" minSize="20%" maxSize="50%" className="min-w-0">
+              <KodeProduksiList
+                entries={kodeEntries}
+                selected={selectedKodeNote}
+                onSelect={selectKode}
+                totalRows={allLogRows.length}
+                totalQty={sumLogQty(allLogRows)}
+              />
+            </ResizablePanel>
+            <ResizableHandle withHandle />
+            <ResizablePanel defaultSize="68%" minSize="40%" className="min-w-0">
+              <div className="h-full min-h-0 overflow-y-auto p-4 flex flex-col gap-4">
+                <LogDashboardPanel
+                  // Filter kini milik halaman (lihat selectKode yang
+                  // mengosongkannya saat kode berganti), jadi `key` di sini
+                  // bukan lagi yang mengatur reset — dipertahankan supaya
+                  // state internal panel (jika kelak ditambah) tetap bersih
+                  // antar kode.
+                  key={`${activeLogTab}:${selectedKodeNote ?? 'semua'}`}
+                  kind={LAPORAN_KIND_BY_TAB[activeLogTab]}
+                  scopedRows={panelScopedRows}
+                  filters={panelFilters}
+                  onFiltersChange={(next) =>
+                    setLogFilters((prev) => ({ ...prev, [activeLogTab]: next }))
+                  }
+                  group={selectedKodeGroup}
+                  searchQuery={searchQuery}
+                  // Pencarian menyaring daftar Kode Produksi di panel kiri,
+                  // yang punya halamannya sendiri — jadi halaman tabel ikut
+                  // direset agar tidak mendarat di halaman yang sudah kosong.
+                  onSearchChange={(value) => { setSearchQuery(value); setLogPage(1); }}
+                  actions={
+                    <button
+                      onClick={
+                        activeLogTab === 'sewing' ? () => onOpenSewingEntry?.()
+                          : activeLogTab === 'kancing' ? () => onOpenKancingEntry?.()
+                            : () => onOpenFinishingEntry?.()
+                      }
+                      className={cn(
+                        'h-7 px-3 text-[11px] font-semibold text-white rounded-lg transition-colors',
+                        activeLogTab === 'sewing' ? 'bg-primary hover:bg-primary/90'
+                          : activeLogTab === 'kancing' ? 'bg-violet-500 hover:bg-violet-600'
+                            : 'bg-emerald-500 hover:bg-emerald-600',
+                      )}
+                    >
+                      ➕ Entry {LAPORAN_KIND_BY_TAB[activeLogTab] === 'jahit' ? 'Jahitan' : activeLogTab === 'kancing' ? 'Pasang Kancing' : 'Finishing'} Baru
+                    </button>
+                  }
+                />
+
+                <LogTable
+                  rows={panelTableRows}
+                  picLabel={PIC_LABEL[LAPORAN_KIND_BY_TAB[activeLogTab]]}
+                  photoTone={activeLogTab === 'sewing' ? 'blue' : activeLogTab === 'kancing' ? 'violet' : 'emerald'}
+                  emptyText={
+                    activeLogTab === 'sewing' ? 'Belum ada data jahitan'
+                      : activeLogTab === 'kancing' ? 'Belum ada data pasang kancing'
+                        : 'Belum ada data finishing'
+                  }
+                  page={logPage}
+                  onPageChange={setLogPage}
+                  // Kolom Aksi hanya ada bila role-nya berhak. Untuk role lain
+                  // `rowActions` tidak diisi sama sekali, sehingga kolomnya tidak
+                  // dirender dan tabel tampil persis seperti sebelumnya.
+                  rowActions={canEditLog ? (row) => (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          className={cn(T_ROW_BTN, 'text-slate-400 hover:bg-slate-100 hover:text-slate-700')}
+                          title={PRODUCTION_LOG_EDIT_HINT}
+                          aria-label={`Aksi untuk catatan ${row.produk || row.id}`}
+                        >
+                          <MoreHorizontal className="w-3.5 h-3.5" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-44">
+                        <DropdownMenuItem
+                          onClick={() => setEditTarget(row)}
+                          className="text-[12px] gap-2"
+                        >
+                          <Pencil className="w-3.5 h-3.5" /> Ubah
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          onClick={() => setDeleteTarget(row)}
+                          className="text-[12px] gap-2 text-rose-600 focus:text-rose-700"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" /> Hapus
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  ) : undefined}
+                  actionsLabel="Aksi"
+                  trailingColumns={canEditLog ? 1 : 0}
+                />
+              </div>
+            </ResizablePanel>
+          </ResizablePanelGroup>
         )}
 
-        {/* FINISHING LOG */}
-        {activeTab === 'finishing' && (
-          <div>
-            <div className="flex items-center justify-end mb-3"><button onClick={() => onOpenFinishingEntry?.()} className="px-3 py-1.5 text-[11px] font-semibold bg-emerald-500 text-white rounded-lg hover:bg-emerald-600">➕ Entry Finishing Baru</button></div>
-            <div className="relative max-w-xs mb-3"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" /><input type="text" placeholder="Cari..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full h-8 pl-8 pr-3 text-[12px] border border-gray-200 rounded-lg" /></div>
-            <div className={T_WRAP}>
-              <table className={T_TABLE}>
-                <thead><tr className={T_HEAD_ROW}><th className={cn(T_TH, 'text-left')}>Tanggal</th><th className={cn(T_TH, 'text-left')}>Work Code</th><th className={cn(T_TH, 'text-left')}>PIC</th><th className={cn(T_TH, 'text-right')}>Qty</th><th className={cn(T_TH, 'text-center')}>Bukti</th></tr></thead>
-                <tbody>{finishingLogData.length === 0 ? <tr><td colSpan={5} className="py-10 text-center text-[13px] text-gray-400">Belum ada data finishing</td></tr> : finishingLogData.map((fr, i) => <tr key={fr.id} className={rowClass(i)}><td className={cn(T_TD, 'text-gray-700 whitespace-nowrap')}>{fr.tanggalImport ? formatDate(fr.tanggalImport) : '—'}</td><td className={cn(T_TD, 'min-w-[240px]')}><div className="font-medium text-gray-900">{workOrders.find(w => w.id === fr.workOrderId)?.product || '—'}</div><div className="text-[11px] text-gray-400 truncate" title={workOrders.find(w => w.id === fr.workOrderId)?.workCode || fr.workOrderId}>{workOrders.find(w => w.id === fr.workOrderId)?.workCode || fr.workOrderId}</div></td><td className={cn(T_TD, 'text-gray-700')}>{fr.picFinishing || fr.inputBy || '—'}</td><td className={cn(T_TD, 'text-right font-medium tabular-nums text-gray-900')}>{fr.qtyFinishing}</td><td className={cn(T_TD, 'text-center')}>{fr.imageName ? <Image className="w-4 h-4 text-emerald-500 inline" /> : <span className="text-gray-300">—</span>}</td></tr>)}</tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {/* PASANG KANCING LOG */}
-        {activeTab === 'kancing' && (
-          <div>
-            <div className="flex items-center justify-end mb-3"><button onClick={() => onOpenKancingEntry?.()} className="px-3 py-1.5 text-[11px] font-semibold bg-violet-500 text-white rounded-lg hover:bg-violet-600">➕ Entry Pasang Kancing Baru</button></div>
-            <div className="relative max-w-xs mb-3"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" /><input type="text" placeholder="Cari..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full h-8 pl-8 pr-3 text-[12px] border border-gray-200 rounded-lg" /></div>
-            <div className={T_WRAP}>
-              <table className={T_TABLE}>
-                <thead><tr className={T_HEAD_ROW}><th className={cn(T_TH, 'text-left')}>Tanggal</th><th className={cn(T_TH, 'text-left')}>Work Code</th><th className={cn(T_TH, 'text-left')}>PIC</th><th className={cn(T_TH, 'text-right')}>Qty</th><th className={cn(T_TH, 'text-center')}>Bukti</th></tr></thead>
-                <tbody>{kancingLogData.length === 0 ? <tr><td colSpan={5} className="py-10 text-center text-[13px] text-gray-400">Belum ada data pasang kancing</td></tr> : kancingLogData.map((kr, i) => <tr key={kr.id} className={rowClass(i)}><td className={cn(T_TD, 'text-gray-700 whitespace-nowrap')}>{formatDate(kr.tanggalLaporan)}</td><td className={cn(T_TD, 'min-w-[240px]')}><div className="font-medium text-gray-900">{workOrders.find(w => w.id === kr.workOrderId)?.product || '—'}</div><div className="text-[11px] text-gray-400 truncate" title={kr.workCode}>{kr.workCode}</div></td><td className={cn(T_TD, 'text-gray-700')}>{kr.picKancing}</td><td className={cn(T_TD, 'text-right font-medium tabular-nums text-gray-900')}>{kr.qtyKancing}</td><td className={cn(T_TD, 'text-center')}>{kr.imageName ? <Image className="w-4 h-4 text-violet-500 inline" /> : <span className="text-gray-300">—</span>}</td></tr>)}</tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {/* KANBAN */}
-        {activeTab === 'kanban' && (
+        {/* ALL — KANBAN VIEW (default tab ALL) */}
+        {activeTab === 'all' && allView === 'board' && (
           <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
             <div className="h-full overflow-x-auto">
-              <div className="grid grid-cols-[repeat(5,350px)] gap-4 min-w-max pb-4">
+              <div className="grid grid-cols-[repeat(4,350px)] gap-4 min-w-max pb-4">
                 {(STATUS_ORDER.map(s => ({ status: s, label: productionStatusLabel[s], color: productionStatusColor[s] }))).map(col => {
                   const groups = kanbanGroups.filter(g => g.status === col.status);
                   return <KanbanColumn key={col.status} status={col.status} label={col.label} color={col.color} groups={groups} searchQuery={searchQuery} onOpen={setSelectedGroup} />;
@@ -756,86 +1248,93 @@ export default function ProductionMonitoring({ onOpenSewingEntry, onOpenFinishin
         )}
 
         {/* PRODUCT NOTE FULL-SCREEN OVERLAY */}
-        {selectedGroup && (
-          <div className="fixed inset-0 z-[100] bg-slate-900/40 backdrop-blur-[2px] flex items-center justify-center p-4" onClick={() => setSelectedGroup(null)}>
-            <div
-              className="relative bg-white rounded-2xl shadow-2xl w-[min(1100px,96vw)] h-[min(86vh,900px)] flex flex-col overflow-hidden border border-gray-100"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-                <div className="flex items-center gap-3 min-w-0">
-                  <span className="text-[11px] font-mono font-bold text-slate-900 truncate">{selectedGroup.productNote}</span>
-                  <StatusBadge status={selectedGroup.status} />
+        <Dialog open={selectedGroup !== null} onOpenChange={(open) => { if (!open) setSelectedGroup(null); }}>
+          {/* `sm:max-w-none` wajib, bukan hanya `max-w-none`: DialogContent
+              bawaan shadcn memasang `sm:max-w-lg` (512px), dan `cn` memakai
+              twMerge yang hanya menimpa kelas dalam GRUP dan AWALAN yang sama
+              — jadi `max-w-none` tanpa awalan tidak akan menghapusnya.
+              `min-h-0` di badan perlu agar panel resizable benar-benar
+              menyusut, bukan mendorong tinggi dialog. Lebar 1280px karena
+              badan kini terbagi dua panel (identitas + grafik). */}
+          <DialogContent className="flex h-[min(86vh,900px)] w-[min(1280px,96vw)] max-w-none flex-col gap-0 p-0 sm:max-w-none">
+            {/* pr-12 memberi ruang bagi tombol tutup bawaan DialogContent. */}
+            <DialogHeader className="shrink-0 border-b border-gray-100 px-6 py-4 pr-12">
+              <DialogTitle className="flex items-center gap-3 text-[13px]">
+                {selectedGroup && (
+                  <>
+                    <span className="truncate font-mono font-bold text-slate-900">{selectedGroup.productNote}</span>
+                    <StatusBadge status={selectedGroup.status} />
+                  </>
+                )}
+              </DialogTitle>
+            </DialogHeader>
+
+            {selectedGroup && (
+              <KanbanCardDetail
+                group={selectedGroup}
+                cuttingRecords={cuttingRecords}
+                sewingRecords={sewingRecords}
+                kancingRecords={kancingRecords}
+                finishingRecords={finishingRecords}
+              />
+            )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Dialog ubah + konfirmasi hapus baris log. Hanya bisa terbuka lewat
+            aksi baris, dan aksi baris itu sendiri hanya dipasang untuk role
+            owner/finance (`canEditLog`) — jadi keduanya tidak pernah muncul
+            untuk role lain. */}
+        <LogEntryDialog
+          // `key` me-remount dialog setiap baris berganti, sehingga formulirnya
+          // diisi ulang dari baris yang baru tanpa efek penyelarasan state.
+          key={`log-edit-${editTarget?.id ?? 'none'}`}
+          open={editTarget !== null}
+          kind={activeLogKind ?? 'jahit'}
+          row={editTarget}
+          picOptions={logPicOptions}
+          picLabel={activeLogKind ? PIC_LABEL[activeLogKind] : 'PIC'}
+          onOpenChange={(next) => { if (!next) setEditTarget(null); }}
+          onSaved={handleLogSaved}
+        />
+
+        <AlertDialog
+          open={deleteTarget !== null}
+          onOpenChange={(open) => { if (!open && !deleting) setDeleteTarget(null); }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle className="text-[14px]">Hapus catatan ini?</AlertDialogTitle>
+              <AlertDialogDescription asChild>
+                <div className="space-y-2 text-[13px]">
+                  <p className="font-mono text-[12px]">
+                    {deleteTarget?.produk || '—'} · {deleteTarget?.warna || '—'} · {deleteTarget?.size || '—'}
+                  </p>
+                  <p>
+                    {deleteTarget ? `${deleteTarget.qty.toLocaleString('id-ID')} pcs` : ''}
+                    {deleteTarget?.tanggal ? ` · ${formatDate(deleteTarget.tanggal)}` : ''}
+                  </p>
+                  <p>
+                    Angka "sudah terjahit / terpasang / terfinishing" pada work
+                    order ikut berkurang, dan catatan ini tidak bisa
+                    dikembalikan setelah dihapus.
+                  </p>
                 </div>
-                <button onClick={() => setSelectedGroup(null)} className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors" title="Tutup">
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={deleting}>Kembali</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={(event) => { event.preventDefault(); void handleLogDelete(); }}
+                disabled={deleting}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                Hapus
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
-              <div className="flex-1 overflow-y-auto px-6 py-5">
-                {/* Identity */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-                  <div className="rounded-xl border border-gray-200 p-3">
-                    <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">Product</p>
-                    <p className="text-[13px] font-semibold text-slate-800 mt-0.5">{selectedGroup.product}</p>
-                  </div>
-                  <div className="rounded-xl border border-gray-200 p-3">
-                    <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">Brand</p>
-                    <p className="text-[13px] font-semibold text-slate-800 mt-0.5">{selectedGroup.brand}</p>
-                  </div>
-                  <div className="rounded-xl border border-gray-200 p-3">
-                    <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">Total Qty</p>
-                    <p className="text-[13px] font-semibold text-slate-800 mt-0.5">{selectedGroup.totalQty} pcs</p>
-                  </div>
-                  <div className="rounded-xl border border-gray-200 p-3">
-                    <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">Work Code</p>
-                    <p className="text-[13px] font-semibold text-slate-800 mt-0.5">{selectedGroup.workOrders.length}</p>
-                  </div>
-                </div>
-
-                {/* Work code list */}
-                <h3 className="text-[12px] font-bold text-slate-700 mb-2">Daftar Work Code</h3>
-                <div className="bg-white border border-gray-200 rounded-lg overflow-auto mb-5">
-                  <table className={T_TABLE}>
-                    <thead><tr className={T_HEAD_ROW}><th className={cn(T_TH, 'text-left')}>Work Code</th><th className={cn(T_TH, 'text-left')}>Warna</th><th className={cn(T_TH, 'text-left')}>Size</th><th className={cn(T_TH, 'text-right')}>Qty</th><th className={cn(T_TH, 'text-right')}>Cutting</th><th className={cn(T_TH, 'text-right')}>Jahit</th><th className={cn(T_TH, 'text-center')}>Status</th></tr></thead>
-                    <tbody>
-                      {selectedGroup.workOrders.map((wo, i) => (
-                        <tr key={wo.id} className={rowClass(i)}>
-                          <td className={cn(T_TD, 'font-mono text-[12px] text-gray-600')}>{wo.workCode}</td>
-                          <td className={cn(T_TD, 'text-gray-700')}>{wo.warna}</td>
-                          <td className={cn(T_TD, 'text-gray-700')}>{wo.size}</td>
-                          <td className={cn(T_TD, 'text-right font-medium tabular-nums text-gray-900')}>{wo.quantity}</td>
-                          <td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>{(wo as WorkOrder & { cuttingTotal?: number }).cuttingTotal ?? '—'}</td>
-                          <td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>{(wo as WorkOrder & { sewingTotal?: number }).sewingTotal ?? '—'}</td>
-                          <td className={cn(T_TD, 'text-center')}><StatusBadge status={(wo as WorkOrder & { derivedStatus: ProductionStatus }).derivedStatus} /></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Report bubbles — one at a time */}
-                <FullScreenReports group={selectedGroup} sewingList={sewingRecords} finishingList={finishingRecords} kancingList={kancingRecords} />
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* PULL MODAL */}
-        {showPullModal && (
-          <div className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center" onClick={() => setShowPullModal(false)}>
-            <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-4 max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
-              <div className="px-5 py-3 border-b border-gray-200 flex items-center justify-between"><h3 className="text-[14px] font-semibold">📥 Pull Order Entry</h3><button onClick={() => setShowPullModal(false)} className="text-slate-400 hover:text-slate-600 text-lg">✕</button></div>
-              <div className="flex-1 overflow-auto p-5">
-                {planningOrders.length === 0 ? <div className="py-8 text-center text-slate-400">✅ Semua sudah di-pull</div> :
-                  <table className="w-full text-[11px]">
-                    <thead><tr className="bg-slate-50 border-b"><th className="text-left py-2 px-3 font-semibold">Product</th><th className="text-left py-2 px-3 font-semibold">Kode Produksi</th><th className="text-left py-2 px-3 font-semibold">Brand</th><th className="text-right py-2 px-3 font-semibold">Qty</th><th className="text-center py-2 px-3 font-semibold">Action</th></tr></thead>
-                    <tbody>{planningOrders.map(po => <tr key={po.id} className="border-b hover:bg-blue-50/30"><td className="py-2 px-3 font-medium">{po.product}</td><td className="py-2 px-3 text-slate-500 max-w-[180px] truncate">{po.productionCode}</td><td className="py-2 px-3 text-slate-600">{po.brand}</td><td className="py-2 px-3 text-right font-semibold">{po.totalQuantity}</td><td className="py-2 px-3 text-center"><button onClick={() => handlePullOrder(po.id)} disabled={pullingOrderId !== null || !po.priceComplete} title={po.priceComplete ? 'Pull ke produksi' : 'Harga Order Entry belum lengkap'} className="px-3 py-1 text-[10px] font-semibold bg-green-500 text-white rounded hover:bg-green-600 flex items-center gap-1 mx-auto disabled:cursor-not-allowed disabled:opacity-50"><ArrowRight className="w-3 h-3" /> {pullingOrderId === po.id ? 'Pulling…' : 'Pull'}</button></td></tr>)}</tbody>
-                  </table>}
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );

@@ -1,13 +1,16 @@
-import { Fragment, useState, useEffect, useMemo, useCallback, type ReactNode } from 'react';
-import { ChevronDown, ChevronRight, RefreshCw, Search, Trash2, X } from 'lucide-react';
+import { useState, useEffect, useMemo, useCallback, type ReactNode } from 'react';
+import { ChevronDown, ChevronRight, RefreshCw, Search, Trash2 } from 'lucide-react';
 import { cn, formatCurrency } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { formatMonthYearFromYm } from '@/lib/monthYear';
-import { T_WRAP, T_TABLE, T_HEAD_ROW, T_TH, T_TD, T_TOOLBAR_BTN, T_TOOLBAR_BTN_IDLE, rowClass } from '@/lib/tableStyles';
+import { T_WRAP, T_TD, T_TOOLBAR_BTN, T_TOOLBAR_BTN_IDLE, softBadgeClass } from '@/lib/tableStyles';
+import { DataTable } from '@/components/Table/DataTable';
 import { FilterButton, SortButton, ExportButton } from '@/components/Table/TableTools';
 import { ColumnSettingsButton } from '@/components/Table/ColumnSettings';
 import { useColumnSettings } from '@/lib/columnSettings';
 import { applyFilters, applySorts, type FieldOption, type FilterRule, type SortRule } from '@/lib/tableQuery';
-import { fetchAll as fetchAllTarget, update as updateTarget, remove as removeTarget, type TargetJahitRow } from '@/services/targetJahit';
+import { fetchAll as fetchAllTarget, remove as removeTarget, type TargetJahitRow } from '@/services/targetJahit';
 import { fetchAll as fetchAllRegister, type RegisterPenjahitRow } from '@/services/registerPenjahit';
 import { computeDebt, buildPriceMap, type DebtSummary } from '@/services/staffDebt';
 import * as daftarLiburSvc from '@/services/daftarLibur';
@@ -15,10 +18,14 @@ import * as sewingRecordSvc from '@/services/sewingRecords';
 import * as workOrderSvc from '@/services/workOrders';
 import * as targetJahitDetailSvc from '@/services/targetJahitDetail';
 import { enrichTargetRows, enrichDetails } from '@/lib/targetCompute';
+import { buildSalaryLookup, emptySalaryLookup, type SalaryLookup } from '@/lib/staffSalary';
+import * as expenseSvc from '@/services/expenseEntries';
+import { calculateDesignBenefits } from '@/lib/targetBenefit';
 import { buildSewingBacklog, calculateMonthlyRemainingMoney, type SummaryRate } from '@/lib/sewingBacklog';
 import { fetchSewingRatesByProductionOrder, type SewingRateByProductionOrder } from '@/services/productionOrderPrices';
 import type { WorkOrderDesignIdentity } from '@/lib/targetDetailIdentity';
 import { filterDebtRowsByLatestAccum } from '@/lib/staffDebtEligibility';
+import { sumRealisasiCostByStaff } from '@/lib/staffDebtAmounts';
 import type { SewingRecord, WorkOrder } from '@/types/pipeline';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -43,7 +50,9 @@ const TARGET_COLUMN_ALIAS: Record<string, string> = {
   target_ngebut_hari_akumulasi: 'targetNgebutHariAkumulasi',
   progress_accum: 'progressAccum',
   status_final_akumulasi: 'statusFinalAkumulasi',
-  benefit_per_pcs: 'benefitRate',
+  // `benefit_per_pcs` sengaja TIDAK punya alias: kolomnya sudah tidak dipakai
+  // (tarif benefit adalah milik desain, dari Register Harga). Membiarkannya
+  // ber-alias `benefitRate` akan menyesatkan — seolah ada satu tarif per baris.
 };
 
 function normalizeTargetRow(row: TargetJahitRow): Record<string, unknown> {
@@ -61,7 +70,6 @@ const TARGET_COLUMNS: ColDef[] = [
   { key: 'bulanTahun', label: 'Bulan Tahun' },
   { key: 'nama', label: 'Nama' },
   { key: 'posisi', label: 'Posisi', badge: true, inv: true },
-  { key: 'salary', label: 'Salary', align: 'right', format: 'currency' },
   { key: 'sisaHari', label: 'Sisa Hari', align: 'right', inv: true },
   { key: 'targetDaily', label: 'Target | Daily', align: 'right' },
   { key: 'targetNgebutHari', label: 'Target Ngebut | Daily', align: 'right' },
@@ -78,7 +86,6 @@ const TARGET_COLUMNS: ColDef[] = [
   { key: 'targetNgebutHariAkumulasi', label: 'Target Ngebut | Akumulasi', align: 'right' },
   { key: 'progressAccum', label: 'Progress Akumulasi', align: 'right', format: 'percent' },
   { key: 'statusFinalAkumulasi', label: 'Status Final | Akumulasi', badge: true },
-  { key: 'benefitRate', label: 'Benefit Rate /Pcs', align: 'right', format: 'currency' },
   { key: 'extraProduction', label: 'Extra Production', align: 'right' },
   { key: 'benefitAmount', label: 'Benefit Amount', align: 'right', format: 'currency' },
 ];
@@ -100,8 +107,9 @@ function formatRateValue(rate: number | null): ReactNode {
 
 interface DebtRow {
   nama: string;
-  totalGaji: number;
-  totalNilai: number;
+  totalTargetCost: number;
+  /** Realisasi Cost / Posisi — pengurang Target Cost (dulu "Total Nilai PCS"). */
+  realisasiCost: number;
   utang: number;
 }
 
@@ -112,7 +120,6 @@ interface BenefitRow {
   targetMonthly: number;
   realisasiMonthly: number;
   extraProduction: number;
-  benefitRate: number | null;
   benefitAmount: number;
 }
 
@@ -121,6 +128,21 @@ function renderCell(col: ColDef, row: Record<string, unknown>) {
   if (col.key === 'bulanTahun') {
     const s = String(v ?? '').trim();
     return s ? formatMonthYearFromYm(s) : <span className="text-gray-300">—</span>;
+  }
+  // Target Cost / Posisi = GAJI bulan itu. Bila gajinya belum diinput, kolomnya
+  // menampilkan "—" plus badge penjelas — BUKAN "Rp 0", yang akan terbaca seolah
+  // gajinya nol. `salaryAmount` yang membedakan keduanya; nilai `targetCostPosisi`
+  // sendiri sudah dinolkan supaya hitungan uang di hilir tetap menerima angka.
+  if (col.key === 'targetCostPosisi') {
+    if (row.salaryAmount == null) {
+      return (
+        <span className="inline-flex items-center gap-1.5">
+          <span className="text-gray-300">—</span>
+          <span className={softBadgeClass('amber')}>Gaji belum diinput</span>
+        </span>
+      );
+    }
+    return formatCurrency(Number(v));
   }
   if (col.format === 'currency') return v == null || v === '' ? <span className="text-gray-300">—</span> : formatCurrency(Number(v));
   if (col.format === 'percent') return v == null || v === '' ? <span className="text-gray-300">—</span> : `${(Number(v) * 100).toFixed(1)}%`;
@@ -132,17 +154,17 @@ function renderCell(col: ColDef, row: Record<string, unknown>) {
   if (col.badge) {
     const s = String(v ?? '').trim();
     if (!s) return <span className="text-gray-300">—</span>;
-    let cls = 'bg-slate-100 text-slate-600';
+    // Badge memakai token soft bersama (lihat `softBadgeClass`) supaya seragam
+    // dengan tabel lain. Sebelumnya pill solid `rounded-full bg-*-100` dengan
+    // padding `py-0.5` tanpa `leading-none` — bentuk dan tingginya berbeda dari
+    // badge tabel acuan.
+    let tone = 'slate';
     if (col.key === 'statusFinal' || col.key === 'statusFinalAkumulasi') {
-      if (s === 'Tercapai') cls = 'bg-emerald-100 text-emerald-700';
-      else if (s === 'Tidak Tercapai') cls = 'bg-rose-100 text-rose-700';
-      else cls = 'bg-blue-100 text-blue-700'; // 'Berjalan' (atau nilai lain)
+      if (s === 'Tercapai') tone = 'emerald';
+      else if (s === 'Tidak Tercapai') tone = 'rose';
+      else tone = 'blue'; // 'Berjalan' (atau nilai lain)
     }
-    return (
-      <span className={cn('inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap', cls)}>
-        {s}
-      </span>
-    );
+    return <span className={softBadgeClass(tone)}>{s}</span>;
   }
   return v == null || v === '' ? <span className="text-gray-300">—</span> : String(v);
 }
@@ -160,10 +182,6 @@ export function TargetJahitPage() {
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
   const [filters, setFilters] = useState<FilterRule[]>([]);
   const [sorts, setSorts] = useState<SortRule[]>([]);
-  const [editingSalaryId, setEditingSalaryId] = useState<number | null>(null);
-  const [salaryDraft, setSalaryDraft] = useState('');
-  const [editingBenefitId, setEditingBenefitId] = useState<number | null>(null);
-  const [benefitDraft, setBenefitDraft] = useState('');
   const [message, setMessage] = useState<string | null>(null);
 
   // Derived-columns source data (live compute — never written back to DB).
@@ -172,6 +190,12 @@ export function TargetJahitPage() {
   const [details, setDetails] = useState<import('@/services/targetJahitDetail').TargetJahitDetailRow[]>([]);
   const [workOrderDesign, setWorkOrderDesign] = useState<Map<string, WorkOrderDesignIdentity>>(new Map());
   const [prices, setPrices] = useState<Record<string, { jahit: number; obras: number }>>({});
+  /**
+   * Pencarian gaji per (nama, bulan) — sumber nilai `Target Cost / Posisi`.
+   *
+   * Dimuat sekali bersama data lain, bukan per baris: satu kali lintas data.
+   */
+  const [salaries, setSalaries] = useState<SalaryLookup>(() => emptySalaryLookup());
   const [overlayId, setOverlayId] = useState<number | null>(null);
 
   // Belum Jahit state — backlog global lintas penjahit dan bulan.
@@ -188,15 +212,18 @@ export function TargetJahitPage() {
 
   const refresh = useCallback(async () => {
     setLoading(true);
-    const [t, l, s, d, wo, pm, rates] = await Promise.all([
+    const [t, l, s, d, wo, pm, rates, sal] = await Promise.all([
       fetchAllTarget(), daftarLiburSvc.fetchAll(), sewingRecordSvc.fetchAll(),
       targetJahitDetailSvc.fetchAll(), workOrderSvc.fetchAll(), buildPriceMap(),
-      fetchSewingRatesByProductionOrder(),
+      fetchSewingRatesByProductionOrder(), expenseSvc.fetchSalaries(),
     ]);
     setItems(t.data ?? []);
     setLibur((l.data ?? []).map((r) => r.tanggal));
     setSewing(s.data ?? []);
     setDetails(d.data ?? []);
+    // Gaji yang boleh dibaca pengguna ini (RLS yang menyaring) — dipakai sebagai
+    // nilai `Target Cost / Posisi`. Kegagalannya tidak boleh menjatuhkan tab.
+    setSalaries(buildSalaryLookup(sal.data ?? []));
     setWorkOrderDesign(new Map(
       (wo.data ?? []).map((w) => [
         w.id,
@@ -221,6 +248,22 @@ export function TargetJahitPage() {
 
   useEffect(() => { refresh(); }, [refresh]);
 
+  // Live enrichment: all 22 columns computed from source data at render time
+  // (workdays, realization from sewing_records, accumulation, status).
+  const allEnriched = useMemo(
+    () => enrichTargetRows(items, sewing, workOrderDesign, prices, details, libur, new Date(), salaries),
+    [items, sewing, workOrderDesign, prices, details, libur, salaries],
+  );
+
+  // Realisasi Cost / Posisi per penjahit — DIAMBIL dari baris hasil enrichment
+  // di atas, bukan dihitung ulang. Tab Utang Staf dan tab Target dengan demikian
+  // membaca angka yang sama; dua tempat yang menghitung nilai yang sama adalah
+  // cara paling mudah membuat keduanya berbeda diam-diam.
+  const realisasiCostByStaff = useMemo(
+    () => sumRealisasiCostByStaff(allEnriched),
+    [allEnriched],
+  );
+
   const loadDebt = useCallback(async () => {
     if (!canSeeDebt) return; // owner/finance only — never query debt for other roles
     setDebtLoading(true);
@@ -234,13 +277,15 @@ export function TargetJahitPage() {
         names = Array.from(new Set(items.map((r) => r.nama).filter(Boolean))) as string[];
       }
 
-      const results = await Promise.all(names.map((n) => computeDebt(n)));
+      const results = await Promise.all(
+        names.map((n) => computeDebt(n, realisasiCostByStaff.get(n.trim()) ?? 0)),
+      );
       const combined: DebtRow[] = names.map((nama, i) => {
         const d: DebtSummary = results[i];
         return {
           nama,
-          totalGaji: d.totalGaji,
-          totalNilai: d.totalNilai,
+          totalTargetCost: d.totalTargetCost,
+          realisasiCost: d.realisasiCost,
           utang: d.utang,
         };
       });
@@ -248,20 +293,13 @@ export function TargetJahitPage() {
     } finally {
       setDebtLoading(false);
     }
-  }, [canSeeDebt, items]);
+  }, [canSeeDebt, items, realisasiCostByStaff]);
 
   useEffect(() => {
     if (canSeeDebt && tab === 'utang-staf') {
       loadDebt();
     }
   }, [tab, canSeeDebt, loadDebt]);
-
-  // Live enrichment: all 22 columns computed from source data at render time
-  // (workdays, realization from sewing_records, accumulation, status).
-  const allEnriched = useMemo(
-    () => enrichTargetRows(items, sewing, workOrderDesign, prices, details, libur, new Date()),
-    [items, sewing, workOrderDesign, prices, details, libur],
-  );
 
   // Backlog jahit global (baca-saja): seluruh Work Order yang masih punya sisa
   // jahit, dikelompokkan per Product Note. Dihitung murni di helper.
@@ -276,6 +314,15 @@ export function TargetJahitPage() {
     return backlogGroups.filter((g) => g.searchText.includes(q));
   }, [backlogGroups, backlogSearch]);
 
+  // The shared grid keys rows by `row.id` (`getRowId`), while a backlog group
+  // is keyed by its own `key` ("note:<product note>"). Copying it across as
+  // `id` keeps one identity for the grid, the expansion set, and the detail
+  // lookup — instead of three maps that could drift apart.
+  const backlogRows = useMemo(
+    () => visibleBacklogGroups.map((g) => ({ ...g, id: g.key })),
+    [visibleBacklogGroups],
+  );
+
   const enriched = useMemo(() => {
     if (!search) return allEnriched;
     const q = search.toLowerCase();
@@ -284,7 +331,6 @@ export function TargetJahitPage() {
         d.bulan_tahun,
         d.nama,
         d.posisi ?? '',
-        String(d.salary),
         d.statusFinal,
         d.statusFinalAkumulasi,
       ].some((v) => String(v).toLowerCase().includes(q)),
@@ -296,28 +342,297 @@ export function TargetJahitPage() {
     [debtRows, allEnriched],
   );
 
+  // The grid keys rows by `row.id` (`getRowId`); a debt row is identified by
+  // the staff name, so it is copied across as `id`.
+  const debtGridRows = useMemo(
+    () => visibleDebtRows.map((r) => ({ ...r, id: r.nama })),
+    [visibleDebtRows],
+  );
+
+  // Kolom tab "Utang Staf".
+  const debtColumns = useMemo(
+    () => [
+      { key: 'nama', label: 'Nama', width: '180px' },
+      {
+        key: 'totalTargetCost',
+        label: 'Target Cost',
+        width: '140px',
+        align: 'right' as const,
+        render: (row: Record<string, unknown>) => (
+          <span className="tabular-nums text-gray-700">{formatCurrency(Number(row.totalTargetCost))}</span>
+        ),
+      },
+      {
+        key: 'realisasiCost',
+        label: 'Realisasi Cost / Posisi',
+        width: '160px',
+        align: 'right' as const,
+        render: (row: Record<string, unknown>) => (
+          <span className="tabular-nums text-gray-700">{formatCurrency(Number(row.realisasiCost))}</span>
+        ),
+      },
+      {
+        key: 'utang',
+        label: 'Utang',
+        width: '140px',
+        align: 'right' as const,
+        render: (row: Record<string, unknown>) => (
+          <span className="font-semibold text-rose-600 tabular-nums">{formatCurrency(Number(row.utang))}</span>
+        ),
+      },
+    ],
+    [],
+  );
+
+  // Kolom tab "Benefit".
+  const benefitColumns = useMemo(
+    () => [
+      { key: 'nama', label: 'Nama', width: '170px' },
+      {
+        key: 'bulan',
+        label: 'Bulan',
+        width: '130px',
+        render: (row: Record<string, unknown>) => {
+          const bulan = String(row.bulan ?? '').trim();
+          return bulan ? formatMonthYearFromYm(bulan) : <span className="text-gray-300">—</span>;
+        },
+      },
+      {
+        key: 'targetMonthly',
+        label: 'Target | Monthly',
+        width: '120px',
+        align: 'right' as const,
+        render: (row: Record<string, unknown>) => <span className="tabular-nums text-gray-700">{String(row.targetMonthly)}</span>,
+      },
+      {
+        key: 'realisasiMonthly',
+        label: 'Realisasi | Monthly',
+        width: '130px',
+        align: 'right' as const,
+        render: (row: Record<string, unknown>) => <span className="tabular-nums text-gray-700">{String(row.realisasiMonthly)}</span>,
+      },
+      {
+        key: 'extraProduction',
+        label: 'Extra Production',
+        width: '130px',
+        align: 'right' as const,
+        render: (row: Record<string, unknown>) => (
+          <span className="font-semibold text-emerald-600 tabular-nums">+{String(row.extraProduction)}</span>
+        ),
+      },
+      {
+        key: 'benefitAmount',
+        label: 'Benefit Amount',
+        width: '140px',
+        align: 'right' as const,
+        render: (row: Record<string, unknown>) => (
+          <span className="tabular-nums text-gray-700">{formatCurrency(Number(row.benefitAmount))}</span>
+        ),
+      },
+    ],
+    [],
+  );
+
   const normalized = useMemo(
     () => applySorts(applyFilters(enriched.map((r) => normalizeTargetRow(r)), filters), sorts),
     [enriched, filters, sorts],
   );
 
-  // Access matrix (spec): inventory may see production data but NOT salary,
-  // target/cost, or akumulasi columns. Owner/finance see everything.
+  // Access matrix (spec): inventory may see production data but NOT target/cost
+  // or akumulasi columns. Owner/finance see everything.
   const roleColumns = useMemo(
     () => (canSeeDebt ? TARGET_COLUMNS : TARGET_COLUMNS.filter((c) => c.inv)),
     [canSeeDebt],
   );
 
-  // Hide/show kolom (persist per tabel).
-  const { hidden: hiddenCols, toggle: toggleCol } = useColumnSettings('target-jahit');
+  // Hide/show kolom + freeze (persist per tabel).
+  //
+  // `roleColumns.map(...)` sebagai urutan kolom: dipakai hook untuk merapikan
+  // daftar beku menjadi awalan yang rapat, karena mesin pinning mengangkat
+  // kolom yang di-pin ke depan mengikuti urutan itu — daftar yang berlubang
+  // akan mengubah urutan kolom di layar.
+  const roleColumnKeys = useMemo(() => roleColumns.map((c) => c.key), [roleColumns]);
+  const { hidden: hiddenCols, toggle: toggleCol, frozen: frozenCols, toggleFreeze: toggleFreezeCol, toggleFreezeAll: toggleFreezeAllCols, headerFrozen, setHeaderFrozen } = useColumnSettings('target-jahit', roleColumnKeys);
   const visibleColumns = useMemo(
     () => roleColumns.filter((c) => !hiddenCols.has(c.key)),
     [roleColumns, hiddenCols],
   );
 
-  // Benefit tab: rows whose monthly realization exceeds the target
-  // (extraProduction > 0 — same condition as earning a bonus). Shown as-is:
-  // rows with an unset benefit rate still appear with amount 0.
+  // Bentuk kolom untuk DataTable (variant "plain") — sama seperti tabel lain di
+  // aplikasi. Sel yang butuh badge, format mata uang/persen, atau editor
+  // benefit memakai `render` supaya tabel bersama tidak perlu tahu soal bentuk
+  // target jahit.
+  //
+  // Lebar di sini nominal saja: tabel bersama dipakai tanpa `columnsResizable`,
+  // jadi lebarnya `table-auto` dan kolomnya menyerap lebar halaman sendiri.
+  // Kolom tabel target memakai bentuk yang sama dengan tabel lain di aplikasi.
+  // Tidak ada lagi editor `benefitRate` inline: tarif benefit adalah milik
+  // DESAIN (dari Register Harga), bukan milik penjahit+bulan, jadi tidak bisa
+  // diwakili satu angka per baris.
+  const targetColumns = useMemo(
+    () => visibleColumns.map((c) => ({
+      key: c.key,
+      label: c.label,
+      width: '130px',
+      align: c.align === 'right' ? ('right' as const) : undefined,
+      render: (row: Record<string, unknown>) => renderCell(c, row),
+    })),
+    [visibleColumns],
+  );
+
+  // Kolom tab "Belum Jahit" — tabel pohon: satu baris per Product Note, dan
+  // rincian Work Order-nya dirender lewat `expandedRow` (bukan tabel bersarang),
+  // supaya bentuknya sama dengan tabel lain. Kolom chevron paling kiri tetap
+  // ada sebagai penanda buka/tutup.
+  const backlogColumns = useMemo(
+    () => [
+      {
+        key: 'toggle',
+        label: '',
+        width: '32px',
+        align: 'center' as const,
+        render: (row: Record<string, unknown>) => {
+          const open = expandedNotes.has(String(row.key));
+          return (
+            <span className="text-slate-400">
+              {open
+                ? <ChevronDown className="w-3.5 h-3.5 inline-block" />
+                : <ChevronRight className="w-3.5 h-3.5 inline-block" />}
+            </span>
+          );
+        },
+      },
+      {
+        key: 'productNote',
+        label: 'Product Note',
+        width: '160px',
+        render: (row: Record<string, unknown>) => {
+          const note = String(row.productNote ?? '').trim();
+          return note ? note : <span className="text-gray-300">—</span>;
+        },
+      },
+      { key: 'productLabel', label: 'Product', width: '160px' },
+      { key: 'totalQtyOrder', label: 'Total Qty Order', width: '110px', align: 'right' as const },
+      { key: 'totalQtyJahit', label: 'Qty Jahit', width: '90px', align: 'right' as const },
+      {
+        key: 'totalBelumJahit',
+        label: 'Total Belum Jahit',
+        width: '120px',
+        align: 'right' as const,
+        render: (row: Record<string, unknown>) => (
+          <span className="font-semibold text-rose-600 tabular-nums">{String(row.totalBelumJahit)}</span>
+        ),
+      },
+      {
+        key: 'rate',
+        label: 'Tarif Jahit + Obras',
+        width: '130px',
+        align: 'right' as const,
+        render: (row: Record<string, unknown>) => (
+          <span className="tabular-nums text-gray-700">{formatRate(row.rate as SummaryRate)}</span>
+        ),
+      },
+    ],
+    [expandedNotes],
+  );
+
+  // Kolom rincian Work Order di dalam panel terbuka tab "Belum Jahit".
+  const backlogDetailColumns = useMemo(
+    () => [
+      { key: 'workCode', label: 'Work Code', width: '150px' },
+      { key: 'product', label: 'Product', width: '160px' },
+      {
+        key: 'warna',
+        label: 'Warna',
+        width: '110px',
+        render: (row: Record<string, unknown>) => {
+          const w = String(row.warna ?? '').trim();
+          return w ? w : <span className="text-gray-300">—</span>;
+        },
+      },
+      {
+        key: 'size',
+        label: 'Size',
+        width: '80px',
+        render: (row: Record<string, unknown>) => {
+          const s = String(row.size ?? '').trim();
+          return s ? s : <span className="text-gray-300">—</span>;
+        },
+      },
+      {
+        key: 'qtyOrder',
+        label: 'Qty Order',
+        width: '90px',
+        align: 'right' as const,
+        render: (row: Record<string, unknown>) => <span className="tabular-nums text-gray-700">{String(row.qtyOrder)}</span>,
+      },
+      {
+        key: 'qtyJahit',
+        label: 'Qty Jahit',
+        width: '90px',
+        align: 'right' as const,
+        render: (row: Record<string, unknown>) => <span className="tabular-nums text-gray-700">{String(row.qtyJahit)}</span>,
+      },
+      {
+        key: 'totalBelumJahit',
+        label: 'Total Belum Jahit',
+        width: '120px',
+        align: 'right' as const,
+        render: (row: Record<string, unknown>) => (
+          <span className="font-semibold text-rose-600 tabular-nums">{String(row.totalBelumJahit)}</span>
+        ),
+      },
+      {
+        key: 'rate',
+        label: 'Tarif Jahit + Obras',
+        width: '130px',
+        align: 'right' as const,
+        render: (row: Record<string, unknown>) => (
+          <span className="tabular-nums text-gray-700">{formatRateValue(row.rate as number | null)}</span>
+        ),
+      },
+    ],
+    [],
+  );
+
+  // Kolom ringkasan backlog di dalam dialog detail (5 teratas, baca-saja).
+  const backlogSummaryColumns = useMemo(
+    () => [
+      {
+        key: 'productNote',
+        label: 'Product Note',
+        width: '160px',
+        render: (row: Record<string, unknown>) => {
+          const note = String(row.productNote ?? '').trim();
+          return note ? note : <span className="text-gray-300">—</span>;
+        },
+      },
+      { key: 'productLabel', label: 'Product', width: '160px' },
+      {
+        key: 'totalBelumJahit',
+        label: 'Total Belum Jahit',
+        width: '120px',
+        align: 'right' as const,
+        render: (row: Record<string, unknown>) => (
+          <span className="font-semibold text-rose-600 tabular-nums">{String(row.totalBelumJahit)}</span>
+        ),
+      },
+      {
+        key: 'rate',
+        label: 'Tarif Jahit + Obras',
+        width: '130px',
+        align: 'right' as const,
+        render: (row: Record<string, unknown>) => (
+          <span className="tabular-nums text-gray-700">{formatRate(row.rate as SummaryRate)}</span>
+        ),
+      },
+    ],
+    [],
+  );
+
+  // Benefit tab: rows with a surplus on at least one design (extraProduction > 0).
+  // The per-design rate is deliberately NOT a column here — it differs by
+  // production code, so it lives in the detail popup instead.
   const benefitRows = useMemo<BenefitRow[]>(() => {
     if (!canSeeDebt) return [];
     return enriched
@@ -329,53 +644,20 @@ export function TargetJahitPage() {
         targetMonthly: r.target_monthly,
         realisasiMonthly: r.realisasiMonthly,
         extraProduction: r.extraProduction,
-        benefitRate: r.benefitRate,
         benefitAmount: r.benefitAmount,
       }))
       .sort((a, b) => (b.bulan || '').localeCompare(a.bulan || '') || a.nama.localeCompare(b.nama));
   }, [enriched, canSeeDebt]);
 
-  // Edit salary inline (owner/finance only) — satu-satunya kolom yang bisa diedit.
-  async function handleSaveSalary(id: number) {
-    const value = Number(salaryDraft);
-    if (Number.isNaN(value) || value < 0 || salaryDraft.trim() === '') {
-      setMessage('❌ Salary harus angka ≥ 0.');
-      setTimeout(() => setMessage(null), 3000);
-      return;
-    }
-    const { error } = await updateTarget(id, { salary: value });
-    if (error) {
-      setMessage(`❌ Error: ${error.message}`);
-    } else {
-      setItems(prev => prev.map(r => (r.id === id ? { ...r, salary: value } : r)));
-      setMessage('✅ Salary disimpan.');
-      setEditingSalaryId(null);
-    }
-    setTimeout(() => setMessage(null), 3000);
-  }
-
-  // Edit benefit rate inline (owner/finance only)
-  async function handleSaveBenefit(id: number) {
-    const value = Number(benefitDraft);
-    if (Number.isNaN(value) || value < 0) {
-      setMessage('❌ Benefit rate harus angka ≥ 0.');
-      setTimeout(() => setMessage(null), 3000);
-      return;
-    }
-    const { error } = await updateTarget(id, { benefit_per_pcs: value });
-    if (error) {
-      setMessage(`❌ Error: ${error.message}`);
-    } else {
-      setItems(prev => prev.map(r => (r.id === id ? { ...r, benefit_per_pcs: value } : r)));
-      setMessage('✅ Benefit rate disimpan.');
-      setEditingBenefitId(null);
-    }
-    setTimeout(() => setMessage(null), 3000);
-  }
+  // Edit benefit rate inline dihapus: tarif benefit adalah milik DESAIN (dari
+  // Register Harga), bukan satu angka per penjahit+bulan. Rinciannya ada di
+  // popup detail.
 
   // Multi-select + toolbar (same pattern as Production Monitoring RAW DATA).
   const handleToggleRow = (id: number) => setSelectedRows(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
-  const handleToggleAll = () => { if (selectedRows.size === normalized.length) setSelectedRows(new Set()); else setSelectedRows(new Set(normalized.map(r => Number(r.id)))); };
+  // "Pilih semua" kini milik grid: ia men-toggle seluruh baris yang tampil dan
+  // memutar selisihnya lewat `handleToggleRow`, jadi tidak ada checkbox header
+  // manual di sini lagi.
   const handleImport = () => { if (selectedRows.size === 0) { alert('Pilih minimal 1!'); return; } alert(`✅ ${selectedRows.size} target di-import`); setSelectedRows(new Set()); };
   const handleExport = () => {
     const esc = (v: string | number | null | undefined) => `"${String(v ?? '').replace(/"/g, '""')}"`;
@@ -414,10 +696,15 @@ export function TargetJahitPage() {
     );
   }
 
+  // Baris yang dibuka di overlay detail. Dihitung sebelum render supaya dialog
+  // hanya benar-benar terbuka bila barisnya ada — kalau tidak, `open` tetap
+  // false dan tidak muncul dialog kosong tanpa judul.
+  const overlayRow = overlayId != null ? enriched.find((r) => r.id === overlayId) ?? null : null;
+
   return (
     <main className="flex-1 flex flex-col min-w-0 overflow-auto">
-      <div className="px-8 pt-4 pb-0">
-        <div className="flex items-center justify-between mb-4">
+      <div className="px-6 pt-3 pb-0">
+        <div className="flex items-center justify-between mb-3">
           <div>
             <h1 className="text-[17px] font-semibold tracking-tight text-slate-900">Target Jahit</h1>
           </div>
@@ -429,7 +716,7 @@ export function TargetJahitPage() {
             )}
           </div>
         </div>
-        {message && <div className="mb-3 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-[12px] text-blue-700">{message}</div>}
+        {message && <div className="mb-3 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[12px] text-blue-700">{message}</div>}
 
         {/* Tabs — segmented control, pola Production Monitoring */}
         <div className="flex items-center gap-2">
@@ -437,7 +724,7 @@ export function TargetJahitPage() {
             onClick={() => setTab('target')}
             className={cn(
               'h-8 px-4 text-[12px] font-medium rounded-lg transition-colors',
-              tab === 'target' ? 'bg-blue-600 text-white shadow-md shadow-blue-200' : 'bg-white text-slate-600 border border-gray-200 hover:bg-blue-50 hover:text-blue-700',
+              tab === 'target' ? 'bg-primary text-white shadow-md shadow-slate-300' : 'bg-white text-slate-600 border border-gray-200 hover:bg-slate-50 hover:text-blue-700',
             )}
           >
             Target
@@ -446,7 +733,7 @@ export function TargetJahitPage() {
             onClick={() => setTab('belum-jahit')}
             className={cn(
               'h-8 px-4 text-[12px] font-medium rounded-lg transition-colors',
-              tab === 'belum-jahit' ? 'bg-blue-600 text-white shadow-md shadow-blue-200' : 'bg-white text-slate-600 border border-gray-200 hover:bg-blue-50 hover:text-blue-700',
+              tab === 'belum-jahit' ? 'bg-primary text-white shadow-md shadow-slate-300' : 'bg-white text-slate-600 border border-gray-200 hover:bg-slate-50 hover:text-blue-700',
             )}
           >
             Belum Jahit
@@ -456,7 +743,7 @@ export function TargetJahitPage() {
               onClick={() => setTab('utang-staf')}
               className={cn(
                 'h-8 px-4 text-[12px] font-medium rounded-lg transition-colors',
-                tab === 'utang-staf' ? 'bg-blue-600 text-white shadow-md shadow-blue-200' : 'bg-white text-slate-600 border border-gray-200 hover:bg-blue-50 hover:text-blue-700',
+                tab === 'utang-staf' ? 'bg-primary text-white shadow-md shadow-slate-300' : 'bg-white text-slate-600 border border-gray-200 hover:bg-slate-50 hover:text-blue-700',
               )}
             >
               Utang Staf
@@ -475,7 +762,7 @@ export function TargetJahitPage() {
               onClick={() => setTab('benefit')}
               className={cn(
                 'h-8 px-4 text-[12px] font-medium rounded-lg transition-colors',
-                tab === 'benefit' ? 'bg-blue-600 text-white shadow-md shadow-blue-200' : 'bg-white text-slate-600 border border-gray-200 hover:bg-blue-50 hover:text-blue-700',
+                tab === 'benefit' ? 'bg-primary text-white shadow-md shadow-slate-300' : 'bg-white text-slate-600 border border-gray-200 hover:bg-slate-50 hover:text-blue-700',
               )}
             >
               Benefit
@@ -492,7 +779,7 @@ export function TargetJahitPage() {
         </div>
       </div>
 
-      <div className="flex-1 px-8 pt-5 pb-6 overflow-auto">
+      <div className="flex-1 px-6 pt-4 pb-5 overflow-auto">
         {tab === 'target' && (
           <>
             <div className="flex items-center gap-2 mb-3">
@@ -503,14 +790,14 @@ export function TargetJahitPage() {
                   placeholder="Cari target..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="w-full h-8 pl-8 pr-3 text-[12px] border border-gray-200 rounded-lg outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                  className="w-full h-8 pl-8 pr-3 text-[12px] border border-gray-200 rounded-lg outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
                 />
               </div>
               <FilterButton fields={visibleColumns.map((c) => ({ key: c.key, label: c.label })) as FieldOption[]} value={filters} onChange={setFilters} />
               <SortButton fields={visibleColumns.map((c) => ({ key: c.key, label: c.label })) as FieldOption[]} value={sorts} onChange={setSorts} />
-              <ColumnSettingsButton fields={roleColumns.map((c) => ({ key: c.key, label: c.label }))} hidden={hiddenCols} onToggle={toggleCol} />
+              <ColumnSettingsButton fields={roleColumns.map((c) => ({ key: c.key, label: c.label }))} hidden={hiddenCols} onToggle={toggleCol} frozen={frozenCols} onToggleFreeze={toggleFreezeCol} onToggleFreezeAll={toggleFreezeAllCols} headerFrozen={headerFrozen} onToggleHeaderFrozen={setHeaderFrozen} />
               <ExportButton onClick={handleExport} />
-              <button onClick={handleImport} className={cn('h-8 px-2.5 text-[11px] rounded-lg flex items-center gap-1.5 font-medium transition-colors', selectedRows.size > 0 ? 'bg-blue-500 text-white hover:bg-blue-600' : 'border border-gray-200 text-slate-400')}>📥 Import ({selectedRows.size})</button>
+              <button onClick={handleImport} className={cn('h-8 px-2.5 text-[11px] rounded-lg flex items-center gap-1.5 font-medium transition-colors', selectedRows.size > 0 ? 'bg-primary text-white hover:bg-primary/90' : 'border border-gray-200 text-slate-400')}>📥 Import ({selectedRows.size})</button>
               {selectedRows.size > 0 && (
                 <button onClick={handleBulkDelete} className="h-8 px-2.5 text-[11px] rounded-lg flex items-center gap-1.5 font-medium bg-red-500 text-white hover:bg-red-600 transition-colors">
                   <Trash2 className="w-3 h-3" /> Delete ({selectedRows.size})
@@ -520,62 +807,22 @@ export function TargetJahitPage() {
             </div>
 
             <div className={T_WRAP}>
-              <table className={cn(T_TABLE, 'w-auto min-w-full whitespace-nowrap')}>
-                <thead><tr className={T_HEAD_ROW}>
-                  <th className={cn(T_TH, 'w-12 text-center')}><input type="checkbox" checked={selectedRows.size === normalized.length && normalized.length > 0} onChange={handleToggleAll} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 align-middle" /></th>
-                  {visibleColumns.map((c) => (
-                    <th key={c.key} className={cn(T_TH, c.align === 'right' ? 'text-right' : 'text-left')}>{c.label}</th>
-                  ))}
-                  <th className={cn(T_TH, 'w-8')} />
-                </tr></thead>
-                <tbody>
-                  {normalized.length === 0 && <tr><td colSpan={visibleColumns.length + 2} className="py-10 text-center text-[13px] text-gray-400">{enriched.length === 0 ? 'Belum ada target jahit' : 'Tidak ada hasil yang cocok dengan filter'}</td></tr>}
-                  {normalized.map((row, i) => {
-                    const selected = selectedRows.has(Number(row.id));
-                    return (
-                      <tr key={String(row.id)} className={cn(rowClass(i, selected), 'cursor-pointer')} onClick={() => setOverlayId(Number(row.id))} title="Klik untuk lihat rincian per desain">
-                        <td className={cn(T_TD, 'text-center')} onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={selected} onChange={() => handleToggleRow(Number(row.id))} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 align-middle" /></td>
-                        {visibleColumns.map((c) => (
-                          <td key={c.key} className={cn(T_TD, c.align === 'right' ? 'text-right tabular-nums text-gray-700' : 'text-gray-700')}>
-                            {c.key === 'salary' && canSeeDebt ? (
-                              editingSalaryId === Number(row.id) ? (
-                                <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-                                  <input type="number" min={0} value={salaryDraft} onChange={(e) => setSalaryDraft(e.target.value)} autoFocus
-                                    onKeyDown={(e) => { if (e.key === 'Enter') void handleSaveSalary(Number(row.id)); if (e.key === 'Escape') setEditingSalaryId(null); }}
-                                    className="h-7 w-24 px-2 text-[11px] text-right border border-blue-300 rounded-md outline-none focus:ring-2 focus:ring-blue-100" />
-                                  <button onClick={() => void handleSaveSalary(Number(row.id))} className="h-7 px-2 text-[10px] font-semibold bg-blue-600 text-white rounded-md hover:bg-blue-700">Simpan</button>
-                                  <button onClick={() => setEditingSalaryId(null)} className="h-7 px-2 text-[10px] text-slate-500 border border-gray-200 rounded-md hover:bg-gray-50">✕</button>
-                                </div>
-                              ) : (
-                                <button onClick={(e) => { e.stopPropagation(); setEditingSalaryId(Number(row.id)); setSalaryDraft(String(row.salary ?? 0)); }} className="underline decoration-dotted decoration-slate-300 underline-offset-2 hover:text-blue-600 cursor-text" title="Klik untuk edit salary">
-                                  {formatCurrency(row.salary as number)}
-                                </button>
-                              )
-                            ) : c.key === 'benefitRate' && canSeeDebt ? (
-                              editingBenefitId === Number(row.id) ? (
-                                <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-                                  <input type="number" min={0} value={benefitDraft} onChange={(e) => setBenefitDraft(e.target.value)} autoFocus
-                                    onKeyDown={(e) => { if (e.key === 'Enter') void handleSaveBenefit(Number(row.id)); if (e.key === 'Escape') setEditingBenefitId(null); }}
-                                    className="h-7 w-28 px-2 text-[11px] text-right border border-blue-300 rounded-md outline-none focus:ring-2 focus:ring-blue-100" />
-                                  <button onClick={() => void handleSaveBenefit(Number(row.id))} className="h-7 px-2 text-[10px] font-semibold bg-blue-600 text-white rounded-md hover:bg-blue-700">Simpan</button>
-                                  <button onClick={() => setEditingBenefitId(null)} className="h-7 px-2 text-[10px] text-slate-500 border border-gray-200 rounded-md hover:bg-gray-50">✕</button>
-                                </div>
-                              ) : (
-                                <button onClick={(e) => { e.stopPropagation(); setEditingBenefitId(Number(row.id)); setBenefitDraft(String(row.benefitRate ?? 0)); }} className="underline decoration-dotted decoration-slate-300 underline-offset-2 hover:text-blue-600 cursor-text" title="Klik untuk edit benefit rate">
-                                  {(row.benefitRate as number) !== undefined && (row.benefitRate as number) !== null && (row.benefitRate as number) > 0 ? formatCurrency(row.benefitRate as number) : '-'}
-                                </button>
-                              )
-                            ) : renderCell(c, row)}
-                          </td>
-                        ))}
-                        <td className={cn(T_TD, 'text-center text-slate-300')}>
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="inline-block"><path d="m9 18 6-6-6-6" /></svg>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+              <DataTable
+                variant="plain"
+                columns={targetColumns}
+                data={normalized as unknown as Record<string, unknown>[]}
+                selectedRows={selectedRows}
+                onToggleRow={handleToggleRow}
+                onRowClick={(row) => setOverlayId(Number(row.id))}
+                hiddenColumns={hiddenCols}
+                frozenColumns={frozenCols}
+                headerFrozen={headerFrozen}
+                emptyMessage={
+                  <div className="py-10 text-center text-[13px] text-gray-400">
+                    {enriched.length === 0 ? 'Belum ada target jahit' : 'Tidak ada hasil yang cocok dengan filter'}
+                  </div>
+                }
+              />
             </div>
           </>
         )}
@@ -590,7 +837,7 @@ export function TargetJahitPage() {
                   placeholder="Cari product note, work code, warna, size..."
                   value={backlogSearch}
                   onChange={(e) => setBacklogSearch(e.target.value)}
-                  className="w-full h-8 pl-8 pr-3 text-[12px] border border-gray-200 rounded-lg outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                  className="w-full h-8 pl-8 pr-3 text-[12px] border border-gray-200 rounded-lg outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
                 />
               </div>
               <button onClick={refresh} className={cn(T_TOOLBAR_BTN, T_TOOLBAR_BTN_IDLE)}>
@@ -618,78 +865,38 @@ export function TargetJahitPage() {
               <p className="text-slate-400 text-sm">Tidak ada hasil yang cocok dengan pencarian.</p>
             ) : (
               <div className={T_WRAP}>
-                <table className={cn(T_TABLE, 'w-auto min-w-full whitespace-nowrap')}>
-                  <thead><tr className={T_HEAD_ROW}>
-                    <th className={cn(T_TH, 'w-8')} />
-                    <th className={cn(T_TH, 'text-left')}>Product Note</th>
-                    <th className={cn(T_TH, 'text-left')}>Product</th>
-                    <th className={cn(T_TH, 'text-right')}>Total Qty Order</th>
-                    <th className={cn(T_TH, 'text-right')}>Qty Jahit</th>
-                    <th className={cn(T_TH, 'text-right')}>Total Belum Jahit</th>
-                    <th className={cn(T_TH, 'text-right')}>Tarif Jahit + Obras</th>
-                  </tr></thead>
-                  <tbody>
-                    {visibleBacklogGroups.map((g, gi) => {
-                      const expanded = expandedNotes.has(g.key);
-                      return (
-                        <Fragment key={g.key}>
-                          <tr
-                            className={cn(rowClass(gi), 'cursor-pointer')}
-                            onClick={() => setExpandedNotes(prev => { const n = new Set(prev); if (n.has(g.key)) n.delete(g.key); else n.add(g.key); return n; })}
-                            title="Klik untuk lihat rincian Work Order"
-                          >
-                            <td className={cn(T_TD, 'text-center text-slate-400')}>
-                              {expanded ? <ChevronDown className="w-3.5 h-3.5 inline-block" /> : <ChevronRight className="w-3.5 h-3.5 inline-block" />}
-                            </td>
-                            <td className={cn(T_TD, 'text-gray-700')}>{g.productNote || <span className="text-gray-300">—</span>}</td>
-                            <td className={cn(T_TD, 'font-medium text-gray-900')}>{g.productLabel}</td>
-                            <td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>{g.totalQtyOrder}</td>
-                            <td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>{g.totalQtyJahit}</td>
-                            <td className={cn(T_TD, 'text-right tabular-nums font-semibold text-rose-600')}>{g.totalBelumJahit}</td>
-                            <td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>{formatRate(g.rate)}</td>
-                          </tr>
-                          {expanded && (
-                            <tr className="bg-slate-50 border-b border-[#E5E7EB]">
-                              <td colSpan={7} className="px-4 py-3">
-                                <table className={cn(T_TABLE, 'w-auto min-w-full whitespace-nowrap')}>
-                                  <thead><tr>
-                                    <th className={cn(T_TH, 'text-left')}>Work Code</th>
-                                    <th className={cn(T_TH, 'text-left')}>Product</th>
-                                    <th className={cn(T_TH, 'text-left')}>Warna</th>
-                                    <th className={cn(T_TH, 'text-left')}>Size</th>
-                                    <th className={cn(T_TH, 'text-right')}>Qty Order</th>
-                                    <th className={cn(T_TH, 'text-right')}>Qty Jahit</th>
-                                    <th className={cn(T_TH, 'text-right')}>Total Belum Jahit</th>
-                                    <th className={cn(T_TH, 'text-right')}>Tarif Jahit + Obras</th>
-                                  </tr></thead>
-                                  <tbody>
-                                    {g.workOrders.map((w, wi) => (
-                                      <tr key={w.workOrderId} className={rowClass(wi)}>
-                                        <td className={cn(T_TD, 'text-gray-700')}>{w.workCode}</td>
-                                        <td className={cn(T_TD, 'font-medium text-gray-900')}>{w.product}</td>
-                                        <td className={cn(T_TD, 'text-gray-700')}>{w.warna || <span className="text-gray-300">—</span>}</td>
-                                        <td className={cn(T_TD, 'text-gray-700')}>{w.size || <span className="text-gray-300">—</span>}</td>
-                                        <td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>{w.qtyOrder}</td>
-                                        <td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>{w.qtyJahit}</td>
-                                        <td className={cn(T_TD, 'text-right tabular-nums font-semibold text-rose-600')}>{w.totalBelumJahit}</td>
-                                        <td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>{formatRateValue(w.rate)}</td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
-                              </td>
-                            </tr>
-                          )}
-                        </Fragment>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                <DataTable
+                  variant="plain"
+                  columns={backlogColumns}
+                  data={backlogRows as unknown as Record<string, unknown>[]}
+                  onRowClick={(row) => {
+                    const key = String(row.key);
+                    setExpandedNotes(prev => {
+                      const n = new Set(prev);
+                      if (n.has(key)) n.delete(key); else n.add(key);
+                      return n;
+                    });
+                  }}
+                  isRowExpanded={(row) => expandedNotes.has(String(row.key))}
+                  expandedRow={(row) => {
+                    const g = backlogRows.find((x) => x.key === String(row.key));
+                    if (!g) return null;
+                    return (
+                      <DataTable
+                        variant="plain"
+                        columns={backlogDetailColumns}
+                        data={g.workOrders as unknown as Record<string, unknown>[]}
+                      />
+                    );
+                  }}
+                  emptyMessage={
+                    <div className="py-10 text-center text-[13px] text-gray-400">
+                      Tidak ada hasil yang cocok dengan pencarian.
+                    </div>
+                  }
+                />
               </div>
             )}
-            <p className="text-[11px] text-slate-400 mt-3">
-              Total Belum Jahit = Qty Order − seluruh Qty Jahit Work Order (lintas penjahit dan bulan). Daftar bersifat global dan baca-saja.
-            </p>
           </>
         )}
 
@@ -703,29 +910,18 @@ export function TargetJahitPage() {
               </p>
             ) : (
               <div className={T_WRAP}>
-                <table className={cn(T_TABLE, 'w-auto min-w-full whitespace-nowrap')}>
-                  <thead><tr className={T_HEAD_ROW}>
-                    <th className={cn(T_TH, 'text-left')}>Nama</th>
-                    <th className={cn(T_TH, 'text-right')}>Total Gaji</th>
-                    <th className={cn(T_TH, 'text-right')}>Total Nilai PCS</th>
-                    <th className={cn(T_TH, 'text-right')}>Utang</th>
-                  </tr></thead>
-                  <tbody>
-                    {visibleDebtRows.map((r, i) => (
-                      <tr key={r.nama} className={rowClass(i)}>
-                        <td className={cn(T_TD, 'font-medium text-gray-900')}>{r.nama}</td>
-                        <td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>{formatCurrency(r.totalGaji)}</td>
-                        <td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>{formatCurrency(r.totalNilai)}</td>
-                        <td className={cn(T_TD, 'text-right tabular-nums font-semibold text-rose-600')}>{formatCurrency(r.utang)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <DataTable
+                  variant="plain"
+                  columns={debtColumns}
+                  data={debtGridRows as unknown as Record<string, unknown>[]}
+                  emptyMessage={
+                    <div className="py-10 text-center text-[13px] text-gray-400">
+                      Belum ada data utang staf.
+                    </div>
+                  }
+                />
               </div>
             )}
-            <p className="text-[11px] text-slate-400 mt-3">
-              Utang = Total Gaji − Total Nilai PCS (hasil kerja berharga). Ditampilkan bila Selisih Akumulasi bulan terbaru masih negatif dan nominal utang lebih dari Rp0.
-            </p>
           </>
         )}
 
@@ -735,79 +931,75 @@ export function TargetJahitPage() {
               <p className="text-slate-400 text-sm">Belum ada staf yang produksinya melebihi target.</p>
             ) : (
               <div className={T_WRAP}>
-                <table className={cn(T_TABLE, 'w-auto min-w-full whitespace-nowrap')}>
-                  <thead><tr className={T_HEAD_ROW}>
-                    <th className={cn(T_TH, 'text-left')}>Nama</th>
-                    <th className={cn(T_TH, 'text-left')}>Bulan</th>
-                    <th className={cn(T_TH, 'text-right')}>Target | Monthly</th>
-                    <th className={cn(T_TH, 'text-right')}>Realisasi | Monthly</th>
-                    <th className={cn(T_TH, 'text-right')}>Extra Production</th>
-                    <th className={cn(T_TH, 'text-right')}>Benefit Rate /Pcs</th>
-                    <th className={cn(T_TH, 'text-right')}>Benefit Amount</th>
-                    <th className={cn(T_TH, 'w-8')} />
-                  </tr></thead>
-                  <tbody>
-                    {benefitRows.map((r, i) => (
-                      <tr
-                        key={r.id}
-                        className={cn(rowClass(i), 'cursor-pointer')}
-                        onClick={() => setOverlayId(r.id)}
-                        title="Klik untuk lihat rincian per desain"
-                      >
-                        <td className={cn(T_TD, 'font-medium text-gray-900')}>{r.nama}</td>
-                        <td className={cn(T_TD, 'text-gray-700')}>{r.bulan ? formatMonthYearFromYm(r.bulan) : <span className="text-gray-300">—</span>}</td>
-                        <td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>{r.targetMonthly}</td>
-                        <td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>{r.realisasiMonthly}</td>
-                        <td className={cn(T_TD, 'text-right tabular-nums text-emerald-600 font-semibold')}>+{r.extraProduction}</td>
-                        <td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>{r.benefitRate != null && r.benefitRate > 0 ? formatCurrency(r.benefitRate) : '-'}</td>
-                        <td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>{formatCurrency(r.benefitAmount)}</td>
-                        <td className={cn(T_TD, 'text-center text-slate-300')}>
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="inline-block"><path d="m9 18 6-6-6-6" /></svg>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <DataTable
+                  variant="plain"
+                  columns={benefitColumns}
+                  data={benefitRows as unknown as Record<string, unknown>[]}
+                  onRowClick={(row) => setOverlayId(Number(row.id))}
+                  emptyMessage={
+                    <div className="py-10 text-center text-[13px] text-gray-400">
+                      Belum ada staf yang produksinya melebihi target.
+                    </div>
+                  }
+                />
               </div>
             )}
-            <p className="text-[11px] text-slate-400 mt-3">
-              Benefit = Extra Production × Benefit Rate /Pcs. Hanya staf dengan realisasi melebihi target bulanan yang ditampilkan.
-            </p>
           </>
         )}
       </div>
 
       {/* ===== Full-screen detail overlay (pola Kanban card detail) ===== */}
-      {overlayId != null && (() => {
-        const src = enriched.find((r) => r.id === overlayId);
+      <Dialog
+        open={overlayRow !== null}
+        onOpenChange={(open) => { if (!open) setOverlayId(null); }}
+      >
+        {/* `sm:max-w-none` wajib: DialogContent bawaan shadcn memasang
+            `sm:max-w-lg` (512px), yang di CSS hasil build justru muncul
+            SETELAH `max-w-none` — jadi tanpa awalan `sm:` lebarnya akan tetap
+            terjepit 512px di layar ≥640px. */}
+        <DialogContent className="flex h-[min(86vh,900px)] w-[min(960px,96vw)] max-w-none flex-col gap-0 p-0 sm:max-w-none">
+        {(() => {
+        const src = overlayRow;
         if (!src) return null;
-        const myDetails = details.filter((d) => d.targetJahitId === overlayId);
+        const myDetails = details.filter((d) => d.targetJahitId === src.id);
         const enrichedD = enrichDetails(myDetails, sewing, src.nama, src.bulan_tahun, workOrderDesign);
+        // Benefit dihitung PER DESAIN (tarif beda-beda per kode produksi), dan
+        // hanya untuk owner/finance — sama seperti kolom biaya lainnya.
+        const designBenefits = canSeeDebt
+          ? calculateDesignBenefits(myDetails, enrichedD.map((e) => e.qtyRealisasi), prices)
+          : [];
+        const totalBenefit = designBenefits.reduce((sum, b) => sum + b.benefitAmount, 0);
+        // The grid reads the realized qty and value from the enriched row, so
+        // both are merged onto the raw detail row here — the cell renderers
+        // stay free of index lookups into a parallel array.
+        const detailGridRows = myDetails.map((d, di) => ({
+          ...d,
+          qtyRealisasi: enrichedD[di]?.qtyRealisasi ?? 0,
+          nilai: enrichedD[di]?.nilai ?? 0,
+          extraProduction: designBenefits[di]?.extraProduction ?? 0,
+          benefitRate: designBenefits[di]?.benefitRate ?? 0,
+          benefitAmount: designBenefits[di]?.benefitAmount ?? 0,
+        }));
         const progressPct = src.progressMonthly * 100;
         // Sisa Uang bersifat bulanan dan hanya untuk owner/finance (role gating
         // dilakukan di render, bukan sekadar disembunyikan).
         const remainingMoney = canSeeDebt
-          ? calculateMonthlyRemainingMoney(src.salary, src.realisasiCostPosisi)
+          ? calculateMonthlyRemainingMoney(src.target_cost_posisi, src.realisasiCostPosisi)
           : null;
         return (
-          <div className="fixed inset-0 z-[100] bg-slate-900/40 backdrop-blur-[2px] flex items-center justify-center p-4" onClick={() => setOverlayId(null)}>
-            <div
-              className="relative bg-white rounded-2xl shadow-2xl w-[min(960px,96vw)] h-[min(86vh,900px)] flex flex-col overflow-hidden border border-gray-100"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {/* Header */}
-              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-                <div className="flex items-center gap-3 min-w-0">
-                  <span className="text-[15px] font-bold text-slate-900 truncate">{src.nama}</span>
-                  <span className="text-[12px] text-slate-400">{formatMonthYearFromYm(src.bulan_tahun)}</span>
+          <>
+              {/* pr-12 memberi ruang bagi tombol tutup bawaan DialogContent. */}
+              <DialogHeader className="shrink-0 border-b border-gray-100 px-6 py-4 pr-12">
+                <DialogTitle className="flex items-center gap-3">
+                  <span className="truncate text-[15px] font-bold text-slate-900">{src.nama}</span>
+                  <span className="text-[12px] font-normal text-slate-400">{formatMonthYearFromYm(src.bulan_tahun)}</span>
                   {src.posisi && <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap bg-slate-100 text-slate-600">{src.posisi}</span>}
-                </div>
-                <button onClick={() => setOverlayId(null)} className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors" title="Tutup">
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
+                </DialogTitle>
+              </DialogHeader>
 
-              <div className="flex-1 overflow-y-auto px-6 py-5">
+              {/* min-h-0 perlu agar badan benar-benar menyusut dan scroll,
+                  bukan mendorong tinggi dialog melebihi batasnya. */}
+              <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
                 {/* Stat cards */}
                 <div className={cn('grid gap-3 mb-5', canSeeDebt
                   ? 'grid-cols-2 md:grid-cols-3 lg:grid-cols-5'
@@ -845,50 +1037,139 @@ export function TargetJahitPage() {
                     <p className="text-[12px] font-semibold text-slate-600 tabular-nums">{progressPct.toFixed(1)}%</p>
                   </div>
                   <div className="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
-                    <div className={cn('h-full rounded-full transition-all', progressPct >= 100 ? 'bg-emerald-500' : 'bg-blue-500')} style={{ width: `${Math.min(progressPct, 100)}%` }} />
+                    <div className={cn('h-full rounded-full transition-all', progressPct >= 100 ? 'bg-emerald-500' : 'bg-slate-400')} style={{ width: `${Math.min(progressPct, 100)}%` }} />
                   </div>
                 </div>
 
                 {/* Per-design realization */}
                 <h3 className="text-[12px] font-bold text-slate-700 mb-2">Rincian Realisasi per Desain</h3>
-                <div className="bg-white border border-gray-200 rounded-lg overflow-auto">
+                <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
                   {myDetails.length === 0 ? (
                     <p className="text-[13px] text-slate-400 py-8 text-center">Tidak ada rincian desain untuk bulan ini.</p>
                   ) : (
-                    <table className={cn(T_TABLE, 'w-auto min-w-full whitespace-nowrap')}>
-                      <thead><tr className={T_HEAD_ROW}>
-                        <th className={cn(T_TH, 'text-left')}>Product Note</th>
-                        <th className={cn(T_TH, 'text-left')}>Product</th>
-                        <th className={cn(T_TH, 'text-left')}>Warna</th>
-                        <th className={cn(T_TH, 'text-right')}>Qty Target</th>
-                        <th className={cn(T_TH, 'text-right')}>Qty Realisasi</th>
-                        <th className={cn(T_TH, 'text-center')}>Progress</th>
-                        {canSeeDebt && <th className={cn(T_TH, 'text-right')}>Harga Jahit+Obras</th>}
-                        {canSeeDebt && <th className={cn(T_TH, 'text-right')}>Nilai Realisasi</th>}
-                      </tr></thead>
-                      <tbody>
-                        {myDetails.map((d, di) => {
-                          const qty = enrichedD[di]?.qtyRealisasi ?? 0;
-                          const pct = d.qtyTarget > 0 ? (qty / d.qtyTarget) * 100 : 0;
-                          return (
-                            <tr key={d.id} className={rowClass(di)}>
-                              <td className={cn(T_TD, 'text-gray-700')}>
-                                {d.productNote || <span className="text-gray-300">—</span>}
-                              </td>
-                              <td className={cn(T_TD, 'font-medium text-gray-900')}>{d.product}</td>
-                              <td className={cn(T_TD, 'text-gray-700')}>{d.warna || <span className="text-gray-300">—</span>}</td>
-                              <td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>{d.qtyTarget}</td>
-                              <td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>{qty}</td>
-                              <td className={cn(T_TD, 'text-center')}>
-                                <span className={cn('inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap tabular-nums', pct >= 100 ? 'bg-emerald-100 text-emerald-700' : qty > 0 ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500')}>{pct.toFixed(0)}%</span>
-                              </td>
-                              {canSeeDebt && <td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>{formatCurrency(d.hargaJahit + d.hargaObras)}</td>}
-                              {canSeeDebt && <td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>{formatCurrency(enrichedD[di]?.nilai ?? 0)}</td>}
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+                    <DataTable
+                      variant="plain"
+                      columns={[
+                        {
+                          key: 'productNote',
+                          label: 'Product Note',
+                          width: '150px',
+                          render: (row: Record<string, unknown>) => {
+                            const note = String(row.productNote ?? '').trim();
+                            return note ? note : <span className="text-gray-300">—</span>;
+                          },
+                        },
+                        { key: 'product', label: 'Product', width: '150px' },
+                        {
+                          key: 'warna',
+                          label: 'Warna',
+                          width: '110px',
+                          render: (row: Record<string, unknown>) => {
+                            const w = String(row.warna ?? '').trim();
+                            return w ? w : <span className="text-gray-300">—</span>;
+                          },
+                        },
+                        {
+                          key: 'qtyTarget',
+                          label: 'Qty Target',
+                          width: '90px',
+                          align: 'right' as const,
+                          render: (row: Record<string, unknown>) => <span className="tabular-nums text-gray-700">{String(row.qtyTarget)}</span>,
+                        },
+                        {
+                          key: 'qtyRealisasi',
+                          label: 'Qty Realisasi',
+                          width: '110px',
+                          align: 'right' as const,
+                          render: (row: Record<string, unknown>) => <span className="tabular-nums text-gray-700">{String(row.qtyRealisasi)}</span>,
+                        },
+                        {
+                          key: 'progress',
+                          label: 'Progress',
+                          width: '90px',
+                          align: 'center' as const,
+                          render: (row: Record<string, unknown>) => {
+                            const qty = Number(row.qtyRealisasi) || 0;
+                            const target = Number(row.qtyTarget) || 0;
+                            const pct = target > 0 ? (qty / target) * 100 : 0;
+                            // Token soft bersama supaya badge di sini sama
+                            // bentuknya dengan badge tabel lain (pill solid
+                            // lama punya tinggi dan padding berbeda).
+                            const tone = pct >= 100 ? 'emerald' : qty > 0 ? 'blue' : 'slate';
+                            return <span className={softBadgeClass(tone)}>{pct.toFixed(0)}%</span>;
+                          },
+                        },
+                        ...(canSeeDebt ? [
+                          {
+                            key: 'hargaJahitObras',
+                            label: 'Harga Jahit+Obras',
+                            width: '130px',
+                            align: 'right' as const,
+                            render: (row: Record<string, unknown>) => (
+                              <span className="tabular-nums text-gray-700">
+                                {formatCurrency(Number(row.hargaJahit) + Number(row.hargaObras))}
+                              </span>
+                            ),
+                          },
+                          {
+                            key: 'nilai',
+                            label: 'Nilai Realisasi',
+                            width: '130px',
+                            align: 'right' as const,
+                            render: (row: Record<string, unknown>) => (
+                              <span className="tabular-nums text-gray-700">{formatCurrency(Number(row.nilai))}</span>
+                            ),
+                          },
+                          // Benefit per desain. Tarifnya sengaja di sini, bukan di
+                          // tabel utama: tiap kode produksi punya tarif sendiri,
+                          // jadi satu kolom di tabel utama tidak bisa mewakilinya.
+                          {
+                            key: 'extraProduction',
+                            label: 'Extra Production',
+                            width: '120px',
+                            align: 'right' as const,
+                            render: (row: Record<string, unknown>) => {
+                              const extra = Number(row.extraProduction) || 0;
+                              return extra > 0
+                                ? <span className="font-semibold text-emerald-600 tabular-nums">+{extra}</span>
+                                : <span className="text-gray-300">—</span>;
+                            },
+                          },
+                          {
+                            key: 'benefitRate',
+                            label: 'Benefit Rate /Pcs',
+                            width: '130px',
+                            align: 'right' as const,
+                            render: (row: Record<string, unknown>) => (
+                              <span className="tabular-nums text-gray-700">{formatCurrency(Number(row.benefitRate))}</span>
+                            ),
+                          },
+                          {
+                            key: 'benefitAmount',
+                            label: 'Benefit',
+                            width: '120px',
+                            align: 'right' as const,
+                            render: (row: Record<string, unknown>) => {
+                              const amount = Number(row.benefitAmount) || 0;
+                              return amount > 0
+                                ? <span className="font-semibold tabular-nums text-gray-900">{formatCurrency(amount)}</span>
+                                : <span className="text-gray-300">—</span>;
+                            },
+                          },
+                        ] : []),
+                      ]}
+                      data={detailGridRows as unknown as Record<string, unknown>[]}
+                      footer={canSeeDebt && myDetails.length > 0 ? (
+                        <tr className="border-t-2 border-[#D1D5DB] bg-[#F9FAFB]">
+                          <td className={cn(T_TD, 'text-[12px] font-semibold text-[#4B5563]')} colSpan={10}>
+                            Total Benefit
+                          </td>
+                          <td className={cn(T_TD, 'text-right text-[12px] font-semibold tabular-nums text-gray-900')}>
+                            {formatCurrency(totalBenefit)}
+                          </td>
+                        </tr>
+                      ) : undefined}
+                    />
                   )}
                 </div>
 
@@ -898,39 +1179,28 @@ export function TargetJahitPage() {
                   <p className="text-[13px] text-slate-400 py-6 text-center border border-gray-200 rounded-lg">Semua Work Order sudah selesai dijahit.</p>
                 ) : (
                   <>
-                    <div className="bg-white border border-gray-200 rounded-lg overflow-auto">
-                      <table className={cn(T_TABLE, 'w-auto min-w-full whitespace-nowrap')}>
-                        <thead><tr className={T_HEAD_ROW}>
-                          <th className={cn(T_TH, 'text-left')}>Product Note</th>
-                          <th className={cn(T_TH, 'text-left')}>Product</th>
-                          <th className={cn(T_TH, 'text-right')}>Total Belum Jahit</th>
-                          <th className={cn(T_TH, 'text-right')}>Tarif Jahit + Obras</th>
-                        </tr></thead>
-                        <tbody>
-                          {backlogGroups.slice(0, 5).map((g, gi) => (
-                            <tr key={g.key} className={rowClass(gi)}>
-                              <td className={cn(T_TD, 'text-gray-700')}>{g.productNote || <span className="text-gray-300">—</span>}</td>
-                              <td className={cn(T_TD, 'font-medium text-gray-900')}>{g.productLabel}</td>
-                              <td className={cn(T_TD, 'text-right tabular-nums font-semibold text-rose-600')}>{g.totalBelumJahit}</td>
-                              <td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>{formatRate(g.rate)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                      <DataTable
+                        variant="plain"
+                        columns={backlogSummaryColumns}
+                        data={backlogGroups.slice(0, 5) as unknown as Record<string, unknown>[]}
+                      />
                     </div>
-                    <button
+                    <Button
+                      variant="outline"
                       onClick={() => { setOverlayId(null); setTab('belum-jahit'); }}
-                      className="mt-3 h-8 px-3 text-[12px] font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
+                      className="mt-3 h-8 border-slate-200 bg-slate-50 px-3 text-[12px] font-medium text-blue-700 hover:bg-slate-100"
                     >
                       Lihat Semua Belum Jahit
-                    </button>
+                    </Button>
                   </>
                 )}
               </div>
-            </div>
-          </div>
+          </>
         );
       })()}
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }

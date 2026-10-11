@@ -72,7 +72,7 @@ export function Toolbar({
                   className={cn(
                     'inline-flex items-center px-2.5 h-7 text-[12px] font-medium rounded-lg transition-colors',
                     isActive
-                      ? 'bg-sky-100 text-sky-700'
+                      ? 'bg-slate-200 text-sky-700'
                       : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100'
                   )}
                 >
@@ -140,7 +140,7 @@ function ToolbarButton({
   icon: Icon,
   label,
   badge,
-  badgeClass = 'bg-sky-400',
+  badgeClass = 'bg-slate-500',
   active,
   onClick,
 }: {
@@ -157,7 +157,7 @@ function ToolbarButton({
       className={cn(
         'inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] font-medium rounded-lg transition-colors relative',
         active
-          ? 'text-sky-600 bg-sky-50'
+          ? 'text-sky-600 bg-slate-100'
           : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
       )}
     >

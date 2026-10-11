@@ -1,21 +1,35 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Download, RefreshCw, Search, Sparkles, Wallet } from 'lucide-react'
+import { Download, Loader2, RefreshCw, Search, Sparkles, Trash2, Wallet } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { fetchAllInvoices } from '@/services/invoices'
+import { deleteInvoice, fetchAllInvoices } from '@/services/invoices'
 import { fetchPaymentsByInvoiceIds } from '@/services/invoicePayments'
 import { fetchByIds as fetchWorkOrdersByIds } from '@/services/workOrders'
 import { backfillMissingInvoices } from '@/services/autoInvoice'
 import { computeFinanceValidation, computeOutstanding } from '@/lib/invoiceCompute'
-import { useToast } from '@/hooks/useToast'
+import { useAuth } from '@/contexts/AuthContext'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { FilterButton, SortButton, ExportButton } from '@/components/Table/TableTools'
-import { ColumnSettingsButton, HiddenColgroup } from '@/components/Table/ColumnSettings'
+import { ColumnSettingsButton } from '@/components/Table/ColumnSettings'
+import { DataTable } from '@/components/Table/DataTable'
 import { PaymentModal } from '@/components/Modals/PaymentModal'
 import { InvoiceImage } from '@/components/Invoice/InvoiceImage'
 import { useColumnSettings } from '@/lib/columnSettings'
 import { applyFilters, applySorts } from '@/lib/tableQuery'
 import type { FieldOption, FilterRule, SortRule } from '@/lib/tableQuery'
-import { T_WRAP, T_TABLE, T_HEAD_ROW, T_TH, T_TD, rowClass } from '@/lib/tableStyles'
+import { T_WRAP, T_ROW_BTN, softBadgeClass } from '@/lib/tableStyles'
+import { matchesPoJump, poCodeFromWorkCode } from '@/lib/poJump'
+import { PoFilterBanner } from '@/components/Table/PoFilterBanner'
 import type { InvoiceRow, InvoicePaymentRow, WorkOrder } from '@/types/pipeline'
+import type { PoJump } from '@/types'
 
 interface PaymentBundle {
   payments: InvoicePaymentRow[]
@@ -32,12 +46,19 @@ type InvoiceTableRow = InvoiceRow & {
 
 const PAGE_SIZE = 10
 
+// Badge status pembayaran soft (lihat `softBadgeClass` di '@/lib/tableStyles').
+//
+// `hover:` SENGAJA DIHAPUS. Sebelumnya badge ini solid dengan hover yang lebih
+// gelap, tetapi baris tabelnya sendiri tidak punya hover/aksi apa pun — jadi
+// hover itu menandakan interaktivitas yang tidak ada. Kelas soft tidak punya
+// varian hover, dan menghapusnya justru memperbaiki sinyalnya.
+// Nilainya nama warna, bukan kelas penuh.
 const STATUS_BADGE: Record<PaymentStatus, string> = {
-  Paid: 'bg-green-600 hover:bg-green-700',
-  'Partial Paid': 'bg-emerald-500 hover:bg-emerald-600',
-  'Collect Payment': 'bg-amber-500 hover:bg-amber-600',
-  'Need Register Invoice': 'bg-slate-500 hover:bg-slate-600',
-  Unavailable: 'bg-slate-400 hover:bg-slate-500',
+  Paid: 'emerald',
+  'Partial Paid': 'emerald',
+  'Collect Payment': 'amber',
+  'Need Register Invoice': 'slate',
+  Unavailable: 'slate',
 }
 
 const STATUS_LABEL: Record<PaymentStatus, string> = {
@@ -48,7 +69,7 @@ const STATUS_LABEL: Record<PaymentStatus, string> = {
   Unavailable: 'Tidak tersedia',
 }
 
-export function InvoicingPage() {
+export function InvoicingPage({ poJump, onClearPoJump }: { poJump?: PoJump | null; onClearPoJump?: () => void } = {}) {
   const [invoices, setInvoices] = useState<InvoiceRow[]>([])
   const [paymentsByInvoice, setPaymentsByInvoice] = useState<Record<string, PaymentBundle>>({})
   const [workOrdersById, setWorkOrdersById] = useState<Record<string, WorkOrder>>({})
@@ -58,19 +79,33 @@ export function InvoicingPage() {
   const [paymentTarget, setPaymentTarget] = useState<InvoiceRow | null>(null)
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
   const [backfilling, setBackfilling] = useState(false)
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const invoiceImageRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const refreshRequestRef = useRef(0)
   const [searchQuery, setSearchQuery] = useState('')
   const [filters, setFilters] = useState<FilterRule[]>([])
   const [sorts, setSorts] = useState<SortRule[]>([])
-  const { showToast } = useToast()
+  const { profile } = useAuth()
+  // `useToast` di sini adalah hook per-komponen, sedangkan satu-satunya
+  // `ToastContainer` hidup di App dan memakai instance-nya sendiri — jadi
+  // pesan dari halaman ini tidak pernah terlihat. Umpan balik karena itu
+  // ditampilkan sebagai banner di dalam halaman, mengikuti pola yang sudah
+  // dipakai Production Monitoring dan Complain & Penalti.
+  const [feedback, setFeedback] = useState<{ tone: 'success' | 'error'; message: string } | null>(null)
+  const showFeedback = useCallback((tone: 'success' | 'error', message: string) => {
+    setFeedback({ tone, message })
+  }, [])
 
-  const { hidden: hiddenCols, toggle: toggleCol } = useColumnSettings('invoicing')
+  // Hanya owner dan finance yang boleh membatalkan tagihan; role lain tidak
+  // melihat tombolnya sama sekali.
+  const canDeleteInvoice = profile.role === 'owner' || profile.role === 'finance'
 
   const filterFields: FieldOption[] = [
     { key: 'monthYear', label: 'Bulan' },
     { key: 'clientName', label: 'Client' },
-    { key: 'workCode', label: 'Work Code' },
+    { key: 'workCode', label: 'Kode Produksi Konveksi' },
+    { key: 'clientProductionCode', label: 'Kode Produksi Client' },
     { key: 'pcsLinked', label: 'Total Qty' },
     { key: 'unitPrice', label: 'Nominal/PCS' },
     { key: 'invoiceCode', label: 'Kode Invoice' },
@@ -86,7 +121,7 @@ export function InvoicingPage() {
     const { data, error } = await fetchAllInvoices()
     if (requestId !== refreshRequestRef.current) return
     if (error) {
-      showToast(`Gagal load invoice: ${error.message}`, 'error')
+      showFeedback('error', `Gagal load invoice: ${error.message}`)
       return
     }
 
@@ -98,7 +133,7 @@ export function InvoicingPage() {
       setPaymentsByInvoice({})
       setPaymentLoadError(paymentError.message)
       setPage(1)
-      showToast(`Gagal load total pembayaran: ${paymentError.message}`, 'error')
+      showFeedback('error', `Gagal load total pembayaran: ${paymentError.message}`)
       return
     }
 
@@ -119,7 +154,7 @@ export function InvoicingPage() {
     )
     if (requestId !== refreshRequestRef.current) return
     if (workOrderError) {
-      showToast(`Gagal load detail work order: ${workOrderError.message}`, 'error')
+      showFeedback('error', `Gagal load detail work order: ${workOrderError.message}`)
     }
 
     const workOrderMap: Record<string, WorkOrder> = {}
@@ -132,7 +167,7 @@ export function InvoicingPage() {
     setWorkOrdersById(workOrderMap)
     setPaymentLoadError(null)
     setPage(1)
-  }, [showToast])
+  }, [showFeedback])
 
   useEffect(() => {
     void refresh()
@@ -140,23 +175,66 @@ export function InvoicingPage() {
 
   useEffect(() => {
     setPage(1)
-  }, [searchQuery, filters, sorts])
+  }, [searchQuery, filters, sorts, poJump])
 
-  const columns = [
-    { key: '__sel', label: '', width: '32px' },
+  // Bentuk kolom untuk DataGrid (variant "plain"). Sel yang butuh badge,
+  // format mata uang, atau teks pengganti memakai `render` supaya tabel
+  // bersama tidak perlu tahu soal status pembayaran.
+  const invoiceColumns = useMemo(() => [
     { key: 'monthYear', label: 'Bulan', width: '100px' },
     { key: 'clientName', label: 'Client', width: '150px' },
-    { key: 'workCode', label: 'Work Code', width: '120px' },
+    {
+      key: 'workCode', label: 'Kode Produksi Konveksi', width: '170px',
+      render: (row: Record<string, unknown>) => <span className="font-mono">{String(row.workCode)}</span>,
+    },
+    {
+      key: 'clientProductionCode', label: 'Kode Produksi Client', width: '180px',
+      render: (row: Record<string, unknown>) => (
+        <span className="font-mono">{row.clientProductionCode ? String(row.clientProductionCode) : '—'}</span>
+      ),
+    },
     { key: 'pcsLinked', label: 'Total Qty', align: 'right' as const, width: '90px' },
-    { key: 'unitPrice', label: 'Nominal/PCS', align: 'right' as const, width: '110px' },
-    { key: 'invoiceCode', label: 'Kode Invoice', width: '140px' },
-    { key: 'totalAmount', label: 'Total', align: 'right' as const, width: '120px' },
-    { key: 'totalPayment', label: 'Total Dibayar', align: 'right' as const, width: '125px' },
-    { key: 'outstanding', label: 'Sisa', align: 'right' as const, width: '120px' },
-    { key: 'paymentStatus', label: 'Status', width: '120px' },
-    { key: 'createdAt', label: 'Created At', width: '130px' },
-    { key: 'action', label: 'Action', width: '160px', align: 'center' as const },
-  ]
+    { key: 'unitPrice', label: 'Nominal/PCS', align: 'right' as const, width: '110px', format: 'currency' as const },
+    {
+      key: 'invoiceCode', label: 'Kode Invoice', width: '140px',
+      render: (row: Record<string, unknown>) => <span className="font-mono">{String(row.invoiceCode)}</span>,
+    },
+    { key: 'totalAmount', label: 'Total', align: 'right' as const, width: '120px', format: 'currency' as const },
+    {
+      key: 'totalPayment', label: 'Total Dibayar', align: 'right' as const, width: '125px',
+      render: (row: Record<string, unknown>) => (
+        row.totalPayment === null ? 'Tidak tersedia' : formatCurrency(row.totalPayment as number)
+      ),
+    },
+    {
+      key: 'outstanding', label: 'Sisa', align: 'right' as const, width: '120px',
+      render: (row: Record<string, unknown>) => (
+        row.outstanding === null ? 'Tidak tersedia' : formatCurrency(row.outstanding as number)
+      ),
+    },
+    {
+      key: 'paymentStatus', label: 'Status', width: '120px',
+      render: (row: Record<string, unknown>) => {
+        const status = row.paymentStatus as PaymentStatus
+        return <span className={softBadgeClass(STATUS_BADGE[status])}>{STATUS_LABEL[status]}</span>
+      },
+    },
+    {
+      key: 'createdAt', label: 'Created At', width: '130px',
+      render: (row: Record<string, unknown>) => (
+        row.createdAt ? formatDate(row.createdAt as string) : '—'
+      ),
+    },
+  ], [])
+
+  // Hide/show kolom + freeze (persist per tabel). Dipanggil setelah
+  // `invoiceColumns` ada: urutan kolom itu yang dipakai hook untuk merapikan
+  // daftar beku menjadi awalan yang rapat — mesin pinning mengangkat kolom yang
+  // di-pin ke depan mengikuti urutan tersebut, jadi daftar yang berlubang akan
+  // mengubah urutan kolom di layar. Tidak ada `return` lebih awal di antara
+  // keduanya, jadi urutan hook-nya tetap sama di setiap render.
+  const invoiceColumnKeys = useMemo(() => invoiceColumns.map((c) => c.key), [invoiceColumns])
+  const { hidden: hiddenCols, toggle: toggleCol, frozen: frozenCols, toggleFreeze: toggleFreezeCol, toggleFreezeAll: toggleFreezeAllCols, headerFrozen, setHeaderFrozen } = useColumnSettings('invoicing', invoiceColumnKeys)
 
   const tableRows = useMemo<InvoiceTableRow[]>(() => invoices.map((invoice) => {
     const bundle = paymentsByInvoice[invoice.id]
@@ -189,7 +267,20 @@ export function InvoicingPage() {
   }), [invoices, paymentLoadError, paymentsByInvoice])
 
   const filteredInvoices = useMemo(() => {
-    let rows = applyFilters(tableRows as unknown as Record<string, unknown>[], filters)
+    // Lompatan dari nomor PO di Register Harga disaring LEBIH DULU, saat
+    // barisnya masih bertipe `InvoiceTableRow[]`. Kunci utamanya
+    // `productionOrderId`; `poCodeFromWorkCode` jadi cadangan untuk invoice
+    // lama yang kolom relasinya NULL (lihat catatan di `matchesPoJump`).
+    const scoped = poJump
+      ? tableRows.filter(inv =>
+          matchesPoJump(poJump, {
+            orderId: inv.productionOrderId,
+            code: poCodeFromWorkCode(inv.workCode),
+          }),
+        )
+      : tableRows
+
+    let rows = applyFilters(scoped as unknown as Record<string, unknown>[], filters)
     rows = applySorts(rows, sorts)
     if (searchQuery) {
       const q = searchQuery.toLowerCase()
@@ -197,32 +288,20 @@ export function InvoicingPage() {
         String(inv.monthYear ?? '').toLowerCase().includes(q) ||
         String(inv.clientName ?? '').toLowerCase().includes(q) ||
         String(inv.workCode ?? '').toLowerCase().includes(q) ||
+        String(inv.clientProductionCode ?? '').toLowerCase().includes(q) ||
         String(inv.invoiceCode ?? '').toLowerCase().includes(q),
       )
     }
     return rows as unknown as InvoiceTableRow[]
-  }, [tableRows, filters, sorts, searchQuery])
+  }, [tableRows, filters, sorts, searchQuery, poJump])
 
   const paginatedInvoices = useMemo(() => {
     const start = (page - 1) * PAGE_SIZE
     return filteredInvoices.slice(start, start + PAGE_SIZE)
   }, [filteredInvoices, page])
 
-  const allPageSelected = paginatedInvoices.length > 0 && paginatedInvoices.every(inv => selectedRows.has(inv.id))
-
-  const handleSelectAll = useCallback(() => {
-    const pageIds = paginatedInvoices.map(inv => inv.id)
-    setSelectedRows((previous) => {
-      const next = new Set(previous)
-      const shouldClear = pageIds.length > 0 && pageIds.every(id => next.has(id))
-      for (const id of pageIds) {
-        if (shouldClear) next.delete(id)
-        else next.add(id)
-      }
-      return next
-    })
-  }, [paginatedInvoices])
-
+  // "Select all" is owned by the grid now — it toggles every visible row and
+  // replays the difference through `handleSelectRow`.
   const handleSelectRow = useCallback((id: string) => {
     setSelectedRows((previous) => {
       const next = new Set(previous)
@@ -232,14 +311,64 @@ export function InvoicingPage() {
     })
   }, [])
 
+  const clearSelection = useCallback(() => setSelectedRows(new Set()), [])
+
+  /** Ringkasan akibat yang akan ditanggung, dihitung dari data yang sudah dimuat. */
+  const deleteImpact = useMemo(() => {
+    const targets = invoices.filter((invoice) => selectedRows.has(invoice.id))
+    const paymentCount = targets.reduce(
+      (total, invoice) => total + (paymentsByInvoice[invoice.id]?.payments.length ?? 0),
+      0,
+    )
+    return { targets, paymentCount }
+  }, [invoices, selectedRows, paymentsByInvoice])
+
+  const handleBulkDelete = useCallback(async () => {
+    setDeleting(true)
+    let deleted = 0
+    const failures: string[] = []
+
+    for (const invoice of deleteImpact.targets) {
+      const { error, cleanupError } = await deleteInvoice(invoice.id)
+      if (error) {
+        failures.push(`${invoice.invoiceCode}: ${error.message}`)
+        continue
+      }
+      if (cleanupError) {
+        // Invoice sudah hilang di titik ini, jadi ini bukan kegagalan hapus —
+        // tetapi status WO-nya belum kembali dan itu harus terlihat.
+        failures.push(`${invoice.invoiceCode}: invoice terhapus, status WO gagal dikembalikan — ${cleanupError.message}`)
+      }
+      deleted++
+      // Peta gambar tidak pernah dibersihkan sendiri; entri invoice yang sudah
+      // hilang akan menahan node lama tanpa guna.
+      delete invoiceImageRefs.current[invoice.id]
+    }
+
+    setDeleting(false)
+    setConfirmDeleteOpen(false)
+    setSelectedRows(new Set())
+    // Modal pembayaran tidak boleh terus menunjuk invoice yang sudah tidak ada.
+    setPaymentTarget((current) => (current && selectedRows.has(current.id) ? null : current))
+    await refresh()
+
+    if (failures.length === 0) {
+      showFeedback('success', `${deleted} invoice berhasil dihapus. Work order-nya kembali berstatus Waiting Invoice.`)
+    } else {
+      console.error('[InvoicingPage] gagal hapus invoice:', failures)
+      const summary = deleted > 0 ? `${deleted} terhapus, ${failures.length} bermasalah` : 'Tidak ada yang terhapus'
+      showFeedback('error', `${summary} — ${failures[0]}`)
+    }
+  }, [deleteImpact.targets, refresh, selectedRows, showFeedback])
+
   async function handleDownload(invoice: InvoiceRow) {
     if (!paymentsByInvoice[invoice.id] || paymentLoadError) {
-      showToast('Data pembayaran belum tersedia. Refresh lalu coba lagi.', 'error')
+      showFeedback('error', 'Data pembayaran belum tersedia. Refresh lalu coba lagi.')
       return
     }
     const target = invoiceImageRefs.current[invoice.id]
     if (!target) {
-      showToast('Image element belum siap, coba lagi sebentar.', 'error')
+      showFeedback('error', 'Image element belum siap, coba lagi sebentar.')
       return
     }
     setDownloadingId(invoice.id)
@@ -248,9 +377,9 @@ export function InvoicingPage() {
       const { sanitizeInvoiceCodeForFile } = await import('@/lib/invoiceCode')
       const baseName = sanitizeInvoiceCodeForFile(invoice.invoiceCode)
       await downloadInvoicePng(target, baseName)
-      showToast(`Invoice ${invoice.invoiceCode} didownload`, 'success')
+      showFeedback('success', `Invoice ${invoice.invoiceCode} didownload`)
     } catch (error) {
-      showToast(`Gagal download: ${error instanceof Error ? error.message : 'unknown'}`, 'error')
+      showFeedback('error', `Gagal download: ${error instanceof Error ? error.message : 'unknown'}`)
     } finally {
       setDownloadingId(null)
     }
@@ -261,17 +390,17 @@ export function InvoicingPage() {
     try {
       const createdCount = await backfillMissingInvoices()
       if (createdCount > 0) {
-        showToast(`✅ ${createdCount} invoice baru dibuat!`, 'success')
+        showFeedback('success', `✅ ${createdCount} invoice baru dibuat!`)
       } else {
-        showToast('⚠️ Tidak ada invoice baru yang dapat dibuat.', 'info')
+        showFeedback('error', 'Tidak ada invoice baru yang dapat dibuat.')
       }
       await refresh()
     } catch (error) {
-      showToast(`❌ Error: ${error instanceof Error ? error.message : JSON.stringify(error)}`, 'error')
+      showFeedback('error', `❌ Error: ${error instanceof Error ? error.message : JSON.stringify(error)}`)
     } finally {
       setBackfilling(false)
     }
-  }, [showToast, refresh])
+  }, [showFeedback, refresh])
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr)
@@ -286,8 +415,8 @@ export function InvoicingPage() {
 
   return (
     <main className="flex-1 flex flex-col min-w-0 overflow-auto">
-      <div className="px-8 pt-4 pb-0">
-        <div className="flex items-center justify-between mb-4">
+      <div className="px-6 pt-3 pb-0">
+        <div className="flex items-center justify-between mb-3">
           <h1 className="text-[17px] font-semibold tracking-tight text-slate-900">Invoicing</h1>
           <div className="flex items-center gap-2.5">
             <button
@@ -307,7 +436,7 @@ export function InvoicingPage() {
         </div>
       </div>
 
-      <div className="flex-1 px-8 pt-5 pb-6 overflow-auto">
+      <div className="flex-1 px-6 pt-4 pb-5 overflow-auto">
         <div className="flex items-center gap-2 mb-3">
           <div className="relative flex-1 max-w-xs">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
@@ -316,13 +445,13 @@ export function InvoicingPage() {
               placeholder="Cari invoice..."
               value={searchQuery}
               onChange={event => setSearchQuery(event.target.value)}
-              className="w-full h-8 pl-8 pr-3 text-[12px] border border-gray-200 rounded-lg outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+              className="w-full h-8 pl-8 pr-3 text-[12px] border border-gray-200 rounded-lg outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
             />
           </div>
           <FilterButton fields={filterFields} value={filters} onChange={setFilters} />
           <SortButton fields={filterFields} value={sorts} onChange={setSorts} />
-          <ColumnSettingsButton fields={filterFields} hidden={hiddenCols} onToggle={toggleCol} />
-          <ExportButton onClick={() => showToast('Export feature coming soon!', 'info')} />
+          <ColumnSettingsButton fields={filterFields} hidden={hiddenCols} onToggle={toggleCol} frozen={frozenCols} onToggleFreeze={toggleFreezeCol} onToggleFreezeAll={toggleFreezeAllCols} headerFrozen={headerFrozen} onToggleHeaderFrozen={setHeaderFrozen} />
+          <ExportButton onClick={() => showFeedback('error', 'Fitur export belum tersedia.')} />
           <span className="text-[11px] text-slate-400 ml-auto">{filteredInvoices.length} invoice</span>
         </div>
 
@@ -332,130 +461,108 @@ export function InvoicingPage() {
           </div>
         )}
 
-        <div className={T_WRAP}>
-          <table className={cn(T_TABLE, 'w-auto min-w-full whitespace-nowrap')}>
-            <HiddenColgroup
-              hidden={hiddenCols}
-              cols={['__sel', 'monthYear', 'clientName', 'workCode', 'pcsLinked', 'unitPrice', 'invoiceCode', 'totalAmount', 'totalPayment', 'outstanding', 'paymentStatus', 'createdAt', 'action']}
-            />
-            <thead>
-              <tr className={T_HEAD_ROW}>
-                <th className={cn(T_TH, 'text-center w-[32px]')}>
-                  <input
-                    type="checkbox"
-                    checked={allPageSelected}
-                    onChange={handleSelectAll}
-                    className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 align-middle"
-                  />
-                </th>
-                <th className={cn(T_TH, 'text-left')}>Bulan</th>
-                <th className={cn(T_TH, 'text-left')}>Client</th>
-                <th className={cn(T_TH, 'text-left')}>Work Code</th>
-                <th className={cn(T_TH, 'text-right')}>Total Qty</th>
-                <th className={cn(T_TH, 'text-right')}>Nominal/PCS</th>
-                <th className={cn(T_TH, 'text-left')}>Kode Invoice</th>
-                <th className={cn(T_TH, 'text-right')}>Total</th>
-                <th className={cn(T_TH, 'text-right')}>Total Dibayar</th>
-                <th className={cn(T_TH, 'text-right')}>Sisa</th>
-                <th className={cn(T_TH, 'text-center')}>Status</th>
-                <th className={cn(T_TH, 'text-left')}>Created At</th>
-                <th className={cn(T_TH, 'text-center')}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {paginatedInvoices.length === 0 && (
-                <tr>
-                  <td colSpan={columns.length} className="py-10 text-center text-[13px] text-gray-400">
-                    {invoices.length === 0 ? 'Belum ada invoice' : 'Tidak ada hasil yang cocok dengan filter'}
-                  </td>
-                </tr>
-              )}
-              {paginatedInvoices.map((invoice, index) => {
-                const isDownloading = downloadingId === invoice.id
-                const isSelected = selectedRows.has(invoice.id)
-                return (
-                  <tr key={invoice.id} className={rowClass(index, isSelected)}>
-                    <td className={cn(T_TD, 'text-center')}>
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={() => handleSelectRow(invoice.id)}
-                        className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 align-middle"
-                      />
-                    </td>
-                    <td className={cn(T_TD, 'text-left text-gray-700')}>{invoice.monthYear}</td>
-                    <td className={cn(T_TD, 'text-left text-gray-700')}>{invoice.clientName}</td>
-                    <td className={cn(T_TD, 'text-left text-gray-700')}>{invoice.workCode}</td>
-                    <td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>{invoice.pcsLinked}</td>
-                    <td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>{formatCurrency(invoice.unitPrice)}</td>
-                    <td className={cn(T_TD, 'text-left text-gray-700')}>{invoice.invoiceCode}</td>
-                    <td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>{formatCurrency(invoice.totalAmount)}</td>
-                    <td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>
-                      {invoice.totalPayment === null ? 'Tidak tersedia' : formatCurrency(invoice.totalPayment)}
-                    </td>
-                    <td className={cn(T_TD, 'text-right tabular-nums text-gray-700')}>
-                      {invoice.outstanding === null ? 'Tidak tersedia' : formatCurrency(invoice.outstanding)}
-                    </td>
-                    <td className={cn(T_TD, 'text-center whitespace-nowrap')}>
-                      <span className={cn('inline-block px-2.5 py-1 rounded-md text-[11px] font-medium text-white', STATUS_BADGE[invoice.paymentStatus])}>
-                        {STATUS_LABEL[invoice.paymentStatus]}
-                      </span>
-                    </td>
-                    <td className={cn(T_TD, 'text-left text-gray-700')}>
-                      {invoice.createdAt ? formatDate(invoice.createdAt) : '—'}
-                    </td>
-                    <td className={cn(T_TD, 'text-center')}>
-                      <div className="flex items-center justify-center gap-1">
-                        <button
-                          onClick={(event) => {
-                            event.stopPropagation()
-                            setPaymentTarget(invoice)
-                          }}
-                          className="w-8 h-8 rounded-md flex items-center justify-center text-slate-400 hover:bg-blue-50 hover:text-blue-700 transition-colors"
-                          title="Input atau edit pembayaran"
-                        >
-                          <Wallet className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={(event) => {
-                            event.stopPropagation()
-                            void handleDownload(invoice)
-                          }}
-                          className="w-8 h-8 rounded-md flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors disabled:opacity-50"
-                          title={invoice.paymentStatus === 'Unavailable' ? 'Data pembayaran belum tersedia' : 'Download Invoice'}
-                          disabled={isDownloading || invoice.paymentStatus === 'Unavailable'}
-                        >
-                          <Download className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
+        {feedback && (
+          <div
+            role="status"
+            className={cn(
+              'mb-3 flex items-start gap-2 rounded-lg border px-3 py-2 text-[12px]',
+              feedback.tone === 'success'
+                ? 'border-green-200 bg-green-50 text-green-800'
+                : 'border-red-200 bg-red-50 text-red-700',
+            )}
+          >
+            <span className="flex-1">{feedback.message}</span>
+            <button
+              type="button"
+              onClick={() => setFeedback(null)}
+              className="shrink-0 font-medium underline underline-offset-2"
+              aria-label="Tutup pesan"
+            >
+              Tutup
+            </button>
+          </div>
+        )}
 
-        <div className="flex items-center justify-between mt-4">
-          <div className="text-sm text-gray-500">
-            Page {page} of {Math.ceil(filteredInvoices.length / PAGE_SIZE) || 1}
-          </div>
-          <div className="flex items-center gap-2">
+        {poJump && (
+          <PoFilterBanner
+            code={poJump.code}
+            orderId={poJump.orderId}
+            count={filteredInvoices.length}
+            note="Invoice lama yang belum punya relasi ke order hanya bisa ditemukan lewat nomor PO-nya, jadi sebagian invoice lama mungkin tidak muncul di sini."
+            onClear={() => onClearPoJump?.()}
+          />
+        )}
+
+        {canDeleteInvoice && selectedRows.size > 0 && (
+          <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2">
+            <span className="text-[12px] font-medium text-red-800">{selectedRows.size} invoice dipilih</span>
             <button
-              onClick={() => setPage(current => Math.max(1, current - 1))}
-              disabled={page <= 1}
-              className="h-8 px-3 text-[12px] font-medium border border-gray-200 rounded-lg hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200 transition-all disabled:opacity-50 disabled:hover:border-gray-200 disabled:hover:text-gray-500"
+              type="button"
+              onClick={() => setConfirmDeleteOpen(true)}
+              className="h-8 px-2.5 text-[11px] rounded-lg flex items-center gap-1.5 font-medium bg-red-500 text-white hover:bg-red-600 transition-colors"
             >
-              Previous
+              <Trash2 className="w-3 h-3" /> Delete ({selectedRows.size})
             </button>
             <button
-              onClick={() => setPage(current => current + 1)}
-              disabled={page >= Math.ceil(filteredInvoices.length / PAGE_SIZE)}
-              className="h-8 px-3 text-[12px] font-medium border border-gray-200 rounded-lg hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200 transition-all disabled:opacity-50 disabled:hover:border-gray-200 disabled:hover:text-gray-500"
+              type="button"
+              onClick={clearSelection}
+              className="h-8 px-2.5 text-[11px] rounded-lg font-medium text-red-700 hover:bg-red-100 transition-colors"
             >
-              Next
+              Bersihkan pilihan
             </button>
           </div>
+        )}
+
+        <div className={T_WRAP}>
+          <DataTable
+            variant="plain"
+            columns={invoiceColumns}
+            data={paginatedInvoices as unknown as Record<string, unknown>[]}
+            selectedRows={selectedRows}
+            onToggleRow={handleSelectRow}
+            rowActions={(row) => {
+              const invoice = row as unknown as InvoiceTableRow
+              const isDownloading = downloadingId === invoice.id
+              return (
+                <div className="flex items-center justify-center gap-1">
+                  <button
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      setPaymentTarget(invoice)
+                    }}
+                    className={cn(T_ROW_BTN, 'text-slate-400 hover:bg-slate-50 hover:text-blue-700')}
+                    title="Input atau edit pembayaran"
+                  >
+                    <Wallet className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      void handleDownload(invoice)
+                    }}
+                    className={cn(T_ROW_BTN, 'text-slate-400 hover:bg-slate-100 hover:text-slate-600 disabled:opacity-50')}
+                    title={invoice.paymentStatus === 'Unavailable' ? 'Data pembayaran belum tersedia' : 'Download Invoice'}
+                    disabled={isDownloading || invoice.paymentStatus === 'Unavailable'}
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )
+            }}
+            actionsLabel="Actions"
+            hiddenColumns={hiddenCols}
+            frozenColumns={frozenCols}
+            headerFrozen={headerFrozen}
+            totalCount={filteredInvoices.length}
+            page={page}
+            pageSize={PAGE_SIZE}
+            onPageChange={setPage}
+            emptyMessage={
+              <div className="py-10 text-center text-[13px] text-gray-400">
+                {invoices.length === 0 ? 'Belum ada invoice' : 'Tidak ada hasil yang cocok dengan filter'}
+              </div>
+            }
+          />
         </div>
       </div>
 
@@ -481,9 +588,56 @@ export function InvoicingPage() {
           setPaymentTarget(null)
           void refresh()
         }}
-        onError={message => showToast(message, 'error')}
-        onSuccess={message => showToast(message, 'success')}
+        onError={message => showFeedback('error', message)}
+        onSuccess={message => showFeedback('success', message)}
       />
+
+      <AlertDialog
+        open={confirmDeleteOpen}
+        onOpenChange={(open) => { if (!open && !deleting) setConfirmDeleteOpen(false) }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Hapus {deleteImpact.targets.length} invoice?
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-[13px]">
+                <ul className="list-inside list-disc font-mono text-[12px]">
+                  {deleteImpact.targets.slice(0, 5).map((invoice) => (
+                    <li key={invoice.id}>{invoice.invoiceCode} — {invoice.clientName}</li>
+                  ))}
+                </ul>
+                {deleteImpact.targets.length > 5 && (
+                  <p>Dan {deleteImpact.targets.length - 5} invoice lainnya.</p>
+                )}
+                <p>
+                  <strong>{deleteImpact.paymentCount} data pembayaran</strong> beserta file bukti bayarnya
+                  ikut terhapus <strong>permanen</strong> dan tidak dapat dikembalikan.
+                </p>
+                <p>
+                  Work order terkait kembali berstatus <strong>Waiting Invoice</strong> dan bisa ditagih ulang.
+                  Karena itu, tombol <strong>Generate Missing Invoices</strong> dapat membuat invoice baru
+                  dengan kode berbeda.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Kembali</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault()
+                void handleBulkDelete()
+              }}
+              disabled={deleting}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {deleting && <Loader2 className="animate-spin" />} Hapus invoice
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </main>
   )
 }

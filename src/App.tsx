@@ -9,20 +9,22 @@ import InvoicingPage from '@/pages/InvoicingPage';
 import { PlanningProduksiPage } from '@/pages/PlanningProduksiPage';
 import { ComplainPenaltiPage } from '@/pages/ComplainPenaltiPage';
 import { TargetJahitPage } from '@/pages/TargetJahitPage';
-import { RegisterKaryawanPage } from '@/pages/RegisterKaryawanPage';
-import { RegisterClientPage } from '@/pages/RegisterClientPage';
+import { RegisterHargaPage } from '@/pages/RegisterHargaPage';
+import { KategoriBiayaPage } from '@/pages/KategoriBiayaPage';
+import { ExpensePage } from '@/pages/ExpensePage';
+import { ContactPage } from '@/pages/ContactPage';
+import { LaporanTargetJahitPage } from '@/pages/LaporanTargetJahitPage';
+import StockMonitoringPage from '@/pages/StockMonitoringPage';
+import ProfitLossPage from '@/pages/ProfitLossPage';
 import OrderEntry from '@/pages/OrderEntry';
 import { SidebarProvider, SidebarInset, SidebarTrigger } from '@/components/ui/sidebar';
 import { AppSidebar } from '@/components/Layout/AppSidebar';
-import { Breadcrumb, BreadcrumbList, BreadcrumbItem, BreadcrumbPage, BreadcrumbSeparator } from '@/components/ui/breadcrumb';
-import { Separator } from '@/components/ui/separator';
 import { AuthGate } from '@/components/Auth/AuthGate';
 import { TopBar } from '@/components/Layout/TopBar';
 import { ViewTabs } from '@/components/Layout/ViewTabs';
 import { Toolbar } from '@/components/Layout/Toolbar';
 import { SearchBar } from '@/components/Layout/SearchBar';
 import { DataTable } from '@/components/Table/DataTable';
-import { Pagination } from '@/components/Table/Pagination';
 import { DetailPanel } from '@/components/Panel/DetailPanel';
 import { ToastContainer } from '@/components/Layout/ToastContainer';
 import { CustomizeFieldModal } from '@/components/Modals/CustomizeFieldModal';
@@ -34,14 +36,14 @@ import { ConditionalColorModal } from '@/components/Modals/ConditionalColorModal
 import { DateRangeModal } from '@/components/Modals/DateRangeModal';
 import { AddViewModal } from '@/components/Modals/AddViewModal';
 import { useToast } from '@/hooks/useToast';
-import { viewConfig, navGroups } from '@/data/mockData';
+import { viewConfig } from '@/data/mockData';
 import * as targetJahitSvc from '@/services/targetJahit';
 import * as registerPenjahitSvc from '@/services/registerPenjahit';
 import * as daftarLiburSvc from '@/services/daftarLibur';
 import { supabase } from '@/lib/supabase';
-import type { ModuleId, ViewTabSettings, ModuleViews } from '@/types';
+import type { ModuleId, PoJump, ViewTabSettings, ModuleViews } from '@/types';
 
-const PAGE_SIZE = 10;
+const DEFAULT_PAGE_SIZE = 10;
 type ModalType = 'customize' | 'filter' | 'dateRange' | 'group' | 'sort' | 'rowHeight' | 'condColor' | 'addView' | null;
 
 function makeDefaultSettings(moduleId: ModuleId): ViewTabSettings {
@@ -70,6 +72,7 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
   const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [modalOpen, setModalOpen] = useState<ModalType>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const [panelRow, setPanelRow] = useState<Record<string, unknown> | null>(null);
@@ -274,9 +277,9 @@ export default function App() {
   }, [data, searchQuery, settings.filters, settings.sorts, dateField, dateFrom, dateTo]);
 
   const paginatedData = useMemo(() => {
-    const start = (currentPage - 1) * PAGE_SIZE;
-    return processedData.slice(start, start + PAGE_SIZE);
-  }, [processedData, currentPage]);
+    const start = (currentPage - 1) * pageSize;
+    return processedData.slice(start, start + pageSize);
+  }, [processedData, currentPage, pageSize]);
 
   const displayColumns = useMemo(() => {
     const orderedIndices = settings.columnOrder.length > 0
@@ -329,6 +332,40 @@ export default function App() {
     setPanelOpen(false);
     if (view === 'production-data') setActiveSubModule('register-jahit');
   }, [showToast]);
+
+  /**
+   * Niat lompat dari nomor PO di Register Harga.
+   *
+   * Halaman aktif disimpan `currentView`; state ini menyertakan MUATAN yang
+   * tidak bisa dibawa `handleSwitchView` (yang hanya menerima id view). Karena
+   * tiap halaman dirender kondisional (`currentView === 'x' && <Page />`),
+   * komponen tujuan ter-mount ULANG setiap lompatan — jadi ia boleh menyemai
+   * state awalnya dari sini tanpa risiko menimpa ketikan user sebelumnya.
+   *
+   * Dibersihkan saat user pindah lewat sidebar, supaya filter PO tidak
+   * tertinggal dan menyaring halaman yang dibuka dengan cara biasa.
+   */
+  const [poJump, setPoJump] = useState<PoJump | null>(null);
+
+  const openPoIn = useCallback((target: ModuleId, jump: PoJump) => {
+    setPoJump(jump);
+    handleSwitchView(target);
+  }, [handleSwitchView]);
+
+  const clearPoJump = useCallback(() => setPoJump(null), []);
+
+  /**
+   * Navigasi lewat sidebar.
+   *
+   * Berbeda dari `openPoIn`: pindah halaman dengan cara biasa berarti user
+   * TIDAK ingin filter PO terbawa, jadi muatannya dibersihkan lebih dulu.
+   * Tanpa ini, filter dari lompatan sebelumnya akan diam-diam menyaring
+   * halaman yang baru dibuka — daftar pendek tanpa sebab yang jelas.
+   */
+  const handleSidebarSwitch = useCallback((view: string) => {
+    setPoJump(null);
+    handleSwitchView(view);
+  }, [handleSwitchView]);
 
   const handleSubTabChange = useCallback((sub: ModuleId) => {
     setActiveSubModule(sub);
@@ -523,48 +560,63 @@ export default function App() {
           <SidebarProvider>
             <AppSidebar
               currentView={currentView}
-              onSwitchView={handleSwitchView}
+              onSwitchView={handleSidebarSwitch}
               renames={sidebarRenames}
             />
             <SidebarInset>
-              <header className="group-has-data-[collapsible=icon]/sidebar-wrapper:h-12 flex h-16 shrink-0 items-center gap-2 border-b transition-[width,height] ease-linear">
-                <div className="flex w-full items-center gap-1 px-4 lg:gap-2 lg:px-6">
-                  <SidebarTrigger className="-ml-1" />
-                  <Separator
-                    orientation="vertical"
-                    className="mx-2 data-[orientation=vertical]:h-4"
-                  />
-                  <Breadcrumb>
-                    <BreadcrumbList>
-                      <BreadcrumbItem>
-                        <BreadcrumbPage>{navGroups.find(g => g.items.some(i => i.id === currentView))?.label || 'Dashboard'}</BreadcrumbPage>
-                      </BreadcrumbItem>
-                      <BreadcrumbSeparator />
-                      <BreadcrumbItem>
-                        <BreadcrumbPage>{currentView.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</BreadcrumbPage>
-                      </BreadcrumbItem>
-                    </BreadcrumbList>
-                  </Breadcrumb>
-                </div>
+              {/* Bilah atas 64px berisi breadcrumb "Dashboard > …" DIHAPUS
+                  (2026-09-29) atas permintaan user. Judul halaman sudah ada di
+                  header tiap halaman, jadi bilah itu hanya memakan tinggi dan
+                  menambah padding kiri-kanan di atas padding halaman sendiri.
+
+                  SidebarTrigger TIDAK ikut dihapus di mobile: di sana sidebar
+                  dirender sebagai `Sheet` dan tombol ini satu-satunya pembukanya.
+                  Di desktop sidebar ditoggle lewat `SidebarRail` (strip tipis di
+                  tepi sidebar) dan pintasan keyboard `b`, jadi tidak perlu bilah
+                  sama sekali — karena itu bar-nya `md:hidden`. */}
+              <header className="flex h-11 shrink-0 items-center border-b px-1 md:hidden">
+                <SidebarTrigger />
               </header>
-              <div className="flex flex-1 flex-col gap-4 p-4 pt-0 overflow-auto">
+              {/* Pembungkus ini SENGAJA tanpa padding: setiap halaman sudah punya
+                  `px-6 pt-3` sendiri. Dulu di sini ada `p-4 pt-0`, yang berarti
+                  padding pembungkus (16px) DITAMBAHKAN di atas padding halaman —
+                  total 48px kiri-kanan saat halaman masih memakai `px-8`. Itu
+                  sumber utama ruang kosong yang dikeluhkan user. `gap-4` juga
+                  dihapus: anak-anaknya (TopBar, ViewTabs, Toolbar, SearchBar,
+                  DataTable) memang dirancang menempel, bukan berjarak. */}
+              <div className="flex flex-1 flex-col overflow-auto">
                 {/* All views rendered inside consistent wrapper */}
                 {currentView === 'sewing-entry' && <SewingEntryForm onBack={() => setCurrentView('production-monitoring')} />}
                 {currentView === 'finishing-entry' && <FinishingEntryForm onBack={() => setCurrentView('production-monitoring')} />}
                 {currentView === 'kancing-entry' && <KancingEntryForm onBack={() => setCurrentView('production-monitoring')} />}
                 {currentView === 'production-monitoring' && (
-                  <ProductionMonitoring onOpenSewingEntry={() => setCurrentView('sewing-entry')} onOpenFinishingEntry={() => setCurrentView('finishing-entry')} onOpenKancingEntry={() => setCurrentView('kancing-entry')} />
+                  <ProductionMonitoring
+                    poJump={poJump}
+                    onClearPoJump={clearPoJump}
+                    onOpenSewingEntry={() => setCurrentView('sewing-entry')}
+                    onOpenFinishingEntry={() => setCurrentView('finishing-entry')}
+                    onOpenKancingEntry={() => setCurrentView('kancing-entry')}
+                  />
                 )}
-                {currentView === 'invoicing' && <InvoicingPage />}
-                {currentView === 'order-entry' && <OrderEntry />}
+                {currentView === 'invoicing' && (
+                  <InvoicingPage poJump={poJump} onClearPoJump={clearPoJump} />
+                )}
+                {currentView === 'order-entry' && (
+                  <OrderEntry poJump={poJump} onClearPoJump={clearPoJump} />
+                )}
                 {currentView === 'planning-produksi' && <PlanningProduksiPage />}
                 {currentView === 'complain-penalti' && <ComplainPenaltiPage />}
                 {currentView === 'target-jahit' && <TargetJahitPage />}
-                {currentView === 'register-penjahit' && <RegisterKaryawanPage />}
-                {currentView === 'register-client' && <RegisterClientPage />}
+                {currentView === 'register-harga' && <RegisterHargaPage onOpenPo={openPoIn} />}
+                {currentView === 'kategori-biaya' && <KategoriBiayaPage />}
+                {currentView === 'expense' && <ExpensePage />}
+                {currentView === 'contact' && <ContactPage />}
+                {currentView === 'laporan-target-jahit' && <LaporanTargetJahitPage />}
+                {currentView === 'stock-monitoring' && <StockMonitoringPage />}
+                {currentView === 'profit-loss' && <ProfitLossPage />}
 
                 {/* DataTable pages with toolbar - only for views not listed above */}
-                {!['sewing-entry', 'finishing-entry', 'kancing-entry', 'production-monitoring', 'invoicing', 'order-entry', 'planning-produksi', 'complain-penalti', 'target-jahit', 'register-penjahit', 'register-client'].includes(currentView) && (
+                {!['sewing-entry', 'finishing-entry', 'kancing-entry', 'production-monitoring', 'invoicing', 'order-entry', 'planning-produksi', 'complain-penalti', 'target-jahit', 'register-penjahit', 'register-client', 'register-harga', 'kategori-biaya', 'expense', 'vendor', 'contact', 'laporan-target-jahit', 'stock-monitoring', 'profit-loss'].includes(currentView) && (
                   <>
                     <TopBar onRefresh={handleRefresh} onAddNew={handleAddNew} />
                     <ViewTabs
@@ -685,8 +737,12 @@ export default function App() {
                         });
                         showToast(`Source indicator updated for "${key}"`, 'success');
                       }}
+                      totalCount={processedData.length}
+                      page={currentPage}
+                      pageSize={pageSize}
+                      onPageChange={setCurrentPage}
+                      onPageSizeChange={(size) => { setPageSize(size); setCurrentPage(1); }}
                     />
-                    <Pagination total={processedData.length} currentPage={currentPage} pageSize={PAGE_SIZE} onPageChange={setCurrentPage} />
                   </>
                 )}
               </div>

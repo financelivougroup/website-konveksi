@@ -36,7 +36,7 @@ export function ProductionDashboard() {
         const targets: TargetJahitRow[] = tjResult.data || []
 
         const total = orders.length
-        const active = orders.filter((o) => ['CUTTING', 'PROGRESS'].includes(o.productionStatus)).length
+        const active = orders.filter((o) => o.productionStatus === 'PROGRESS').length
         const completed = orders.filter((o) => o.productionStatus === 'FINISHED').length
         const rate = total > 0 ? Math.round((completed / total) * 100) : 0
 

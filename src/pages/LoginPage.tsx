@@ -38,7 +38,7 @@ export default function LoginPage() {
     <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center px-4 font-sans">
       <Card className="w-full max-w-[360px] shadow-sm">
         <CardHeader className="flex flex-col items-center text-center gap-2">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-400 to-sky-500 flex items-center justify-center shadow-sm shadow-sky-200">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-slate-700 to-slate-900 flex items-center justify-center shadow-sm shadow-slate-300">
             <Factory className="w-5 h-5 text-white" />
           </div>
           <CardTitle className="text-[17px] font-semibold text-slate-800">Konveksi Pro</CardTitle>
@@ -81,7 +81,7 @@ export default function LoginPage() {
               </p>
             )}
 
-            <Button type="submit" disabled={submitting} className="w-full h-9 text-[13px] bg-sky-500 hover:bg-sky-600">
+            <Button type="submit" disabled={submitting} className="w-full h-9 text-[13px] bg-primary hover:bg-primary/90">
               {submitting ? (
                 <>
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />

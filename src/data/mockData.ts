@@ -1,10 +1,13 @@
 import type { ViewConfig, ModuleId } from '@/types';
 
 export const viewConfig: Record<ModuleId, ViewConfig> = {
-  'production-monitoring': { title: 'Production Monitoring', editable: false, sync: false, columns: [] },
+  'production-monitoring': { title: 'Production Order', editable: false, sync: false, columns: [] },
   'sewing-entry': { title: 'Sewing Entry', editable: false, sync: false, columns: [] },
   'finishing-entry': { title: 'Finishing Entry', editable: false, sync: false, columns: [] },
   'kancing-entry': { title: 'Pasang Kancing Entry', editable: false, sync: false, columns: [] },
+  // Halaman ini memuat sendiri snapshot stok + produksinya, jadi tidak memakai
+  // tabel generik: kolom dikosongkan dan modulnya dikecualikan di App.tsx.
+  'stock-monitoring': { title: 'Stock Monitoring', editable: false, sync: false, columns: [] },
   'invoicing': {
     title: 'Invoicing',
     editable: true,
@@ -56,7 +59,6 @@ export const viewConfig: Record<ModuleId, ViewConfig> = {
       { key: 'bulanTahun', label: 'Bulan Tahun', width: '110px', icon: 'CalendarDays' },
       { key: 'nama', label: 'Nama', width: '130px', icon: 'User' },
       { key: 'posisi', label: 'Posisi', width: '90px', badge: true, icon: 'Briefcase' },
-      { key: 'salary', label: 'Salary', width: '100px', align: 'right', format: 'currency', icon: 'Banknote' },
       { key: 'sisaHari', label: 'Sisa Hari', width: '80px', align: 'right', icon: 'Hourglass' },
       { key: 'targetDaily', label: 'Target | Daily', width: '90px', align: 'right', icon: 'Target' },
       { key: 'targetNgebutHari', label: 'Target Ngebut | Daily', width: '130px', align: 'right', icon: 'Zap' },
@@ -73,7 +75,6 @@ export const viewConfig: Record<ModuleId, ViewConfig> = {
       { key: 'targetNgebutHariAkumulasi', label: 'Target Ngebut | Akumulasi', width: '150px', align: 'right', icon: 'Zap' },
       { key: 'progressAccum', label: 'Progress Akumulasi', width: '120px', align: 'right', format: 'percent', icon: 'Percent' },
       { key: 'statusFinalAkumulasi', label: 'Status Final | Akumulasi', width: '150px', badge: true, icon: 'Award' },
-      { key: 'benefitRate', label: 'Benefit Rate /Pcs', width: '110px', align: 'right', format: 'currency', icon: 'Banknote' },
       { key: 'extraProduction', label: 'Extra Production', width: '90px', align: 'right', icon: 'TrendingUp' },
       { key: 'benefitAmount', label: 'Benefit Amount', width: '120px', align: 'right', format: 'currency', icon: 'TrendingUp' },
     ],
@@ -157,6 +158,64 @@ export const viewConfig: Record<ModuleId, ViewConfig> = {
       { key: 'status', label: 'Status', width: '100px', badge: true, icon: 'Activity' },
     ],
   },
+  // Register Harga dibaca langsung dari Supabase lewat RegisterHargaPage,
+  // jadi columns dikosongkan seperti halaman custom lainnya.
+  'register-harga': {
+    title: 'Register Harga',
+    editable: false,
+    sync: false,
+    columns: [],
+  },
+  // Kategori Biaya dibaca langsung dari Supabase lewat KategoriBiayaPage,
+  // jadi columns dikosongkan seperti halaman custom lainnya.
+  'kategori-biaya': {
+    title: 'Kategori Biaya',
+    editable: false,
+    sync: false,
+    columns: [],
+  },
+  // Expense dibaca langsung dari Supabase lewat ExpensePage.
+  expense: {
+    title: 'Expense',
+    editable: false,
+    sync: false,
+    columns: [],
+  },
+  // Vendor dibaca langsung dari Supabase lewat VendorPage.
+  vendor: {
+    title: 'Vendor',
+    editable: false,
+    sync: false,
+    columns: [],
+  },
+  // Contact menggabungkan Karyawan, Client, dan Vendor jadi satu halaman
+  // bertab. Entri viewConfig ketiga modul lama SENGAJA DIBIARKAN: `register-penjahit`
+  // masih dipakai `production-data` sebagai sub-tab, dan menghapus entri-nya
+  // akan memutus makeDefaultSettings di App.tsx.
+  contact: {
+    title: 'Contact',
+    editable: false,
+    sync: false,
+    columns: [],
+  },
+  // Laporan Jahit / Pasang Kancing / Finishing sudah dilebur menjadi tab di
+  // Production Order (tab Sewing / Kancing / Finishing), jadi tidak ada
+  // lagi halaman laporan tersendiri untuk ketiganya.
+  'laporan-target-jahit': {
+    title: 'Laporan Target Jahit',
+    editable: false,
+    sync: false,
+    columns: [],
+  },
+  // Profit & Loss dibaca langsung dari Supabase lewat ProfitLossPage (menggabung
+  // invoices + expense_entries), jadi columns dikosongkan seperti halaman
+  // custom lainnya.
+  'profit-loss': {
+    title: 'Profit & Loss',
+    editable: false,
+    sync: false,
+    columns: [],
+  },
   'master-product': {
     title: 'Master Data Product',
     editable: false,
@@ -231,9 +290,9 @@ export const mockData: Record<ModuleId, Record<string, unknown>[]> = {
     { id: 4, workCode: 'CSC-003-Navy-XL', product: 'Celana', warna: 'Navy', size: 'XL', brand: 'Cassca', totalSelesaiJahit: 40, picPenjahit: 'Budi Santoso', tanggalLaporan: '2026-06-05', bulanTahun: 'Juni 2026', tanggal: '05 Jun', buktiBarang: 'img4.jpg' },
   ],
   'target-jahit': [
-    { id: 1, bulanTahun: 'Juni 2026', nama: 'Budi Santoso', posisi: 'Penjahit', salary: 4000000, sisaHari: 17, targetDaily: 45, targetNgebutHari: 52, targetMonthly: 1000, realisasiMonthly: 850, sisaTargetMonthly: 150, progressMonthly: 85, statusFinal: 'SEDANG MENGEJAR', targetCostPosisi: 4000, realisasiCostPosisi: 4705, targetAccum: 5000, realisasiAccum: 4500, selisihAccum: 500, targetNgebutHariAkumulasi: 50, progressAccum: 90, statusFinalAkumulasi: 'SEDANG MENGEJAR' },
-    { id: 2, bulanTahun: 'Juni 2026', nama: 'Ani Wulandari', posisi: 'Leader', salary: 8000000, sisaHari: 17, targetDaily: 90, targetNgebutHari: 105, targetMonthly: 2000, realisasiMonthly: 1800, sisaTargetMonthly: 200, progressMonthly: 90, statusFinal: 'SEDANG MENGEJAR', targetCostPosisi: 4000, realisasiCostPosisi: 4444, targetAccum: 12000, realisasiAccum: 10800, selisihAccum: 1200, targetNgebutHariAkumulasi: 75, progressAccum: 90, statusFinalAkumulasi: 'SEDANG MENGEJAR' },
-    { id: 3, bulanTahun: 'Juni 2026', nama: 'Caca', posisi: 'Finishing', salary: 3500000, sisaHari: 17, targetDaily: 39, targetNgebutHari: 46, targetMonthly: 875, realisasiMonthly: 700, sisaTargetMonthly: 175, progressMonthly: 80, statusFinal: 'SEDANG MENGEJAR', targetCostPosisi: 4000, realisasiCostPosisi: 5000, targetAccum: 3500, realisasiAccum: 2800, selisihAccum: 700, targetNgebutHariAkumulasi: 58, progressAccum: 80, statusFinalAkumulasi: 'SEDANG MENGEJAR' },
+    { id: 1, bulanTahun: 'Juni 2026', nama: 'Budi Santoso', posisi: 'Penjahit', sisaHari: 17, targetDaily: 45, targetNgebutHari: 52, targetMonthly: 1000, realisasiMonthly: 850, sisaTargetMonthly: 150, progressMonthly: 85, statusFinal: 'SEDANG MENGEJAR', targetCostPosisi: 4000, realisasiCostPosisi: 4705, targetAccum: 5000, realisasiAccum: 4500, selisihAccum: 500, targetNgebutHariAkumulasi: 50, progressAccum: 90, statusFinalAkumulasi: 'SEDANG MENGEJAR' },
+    { id: 2, bulanTahun: 'Juni 2026', nama: 'Ani Wulandari', posisi: 'Leader', sisaHari: 17, targetDaily: 90, targetNgebutHari: 105, targetMonthly: 2000, realisasiMonthly: 1800, sisaTargetMonthly: 200, progressMonthly: 90, statusFinal: 'SEDANG MENGEJAR', targetCostPosisi: 4000, realisasiCostPosisi: 4444, targetAccum: 12000, realisasiAccum: 10800, selisihAccum: 1200, targetNgebutHariAkumulasi: 75, progressAccum: 90, statusFinalAkumulasi: 'SEDANG MENGEJAR' },
+    { id: 3, bulanTahun: 'Juni 2026', nama: 'Caca', posisi: 'Finishing', sisaHari: 17, targetDaily: 39, targetNgebutHari: 46, targetMonthly: 875, realisasiMonthly: 700, sisaTargetMonthly: 175, progressMonthly: 80, statusFinal: 'SEDANG MENGEJAR', targetCostPosisi: 4000, realisasiCostPosisi: 5000, targetAccum: 3500, realisasiAccum: 2800, selisihAccum: 700, targetNgebutHariAkumulasi: 58, progressAccum: 80, statusFinalAkumulasi: 'SEDANG MENGEJAR' },
   ],
   'register-jahit': [
     { id: 1, bulanTahun: 'Juni 2026', hariKerjaEfektif: 22, targetTotalProduksi: 10000, costLeaderTarget: 800, costPenjahitTarget: 400, costFinishingTarget: 200, totalCostTarget: 1400, realisasiTotalProduksi: 8500, totalCostRealisasi: 1647, aTotalCostTarget: 1500, aTotalCostRealisasi: 1800 },
@@ -253,6 +312,22 @@ export const mockData: Record<ModuleId, Record<string, unknown>[]> = {
   // Live data: Register Client dibaca langsung dari Supabase lewat
   // src/services/registerClient.ts di RegisterClientPage.
   'register-client': [],
+  // Live data: Register Harga dibaca langsung dari Supabase lewat
+  // src/services/registerHarga.ts di RegisterHargaPage.
+  'register-harga': [],
+  // Live data: Kategori Biaya dibaca langsung dari Supabase lewat
+  // src/services/expenseCategories.ts di KategoriBiayaPage.
+  'kategori-biaya': [],
+  // Live data: Expense dibaca langsung dari Supabase lewat
+  // src/services/expenseEntries.ts di ExpensePage.
+  expense: [],
+  // Live data: Vendor dibaca langsung dari Supabase lewat
+  // src/services/vendors.ts di VendorPage.
+  vendor: [],
+  // Contact menggabungkan Karyawan, Client, dan Vendor dalam satu halaman
+  // bertab. Datanya tetap dari service masing-masing (registerPenjahit,
+  // registerClient, vendors) — tidak ada sumber data baru.
+  contact: [],
   'master-product': [
     { id: 1, brand: 'Cassca', productId: 'CSC-001', product: 'Kaos Polos', category: 'Atasan', statusProduct: 'Aktif', warningStock: '-' },
     { id: 2, brand: 'Livou', productId: 'LVU-002', product: 'Kemeja', category: 'Atasan', statusProduct: 'Aktif', warningStock: 'Stok Menipis' },
@@ -282,6 +357,17 @@ export const mockData: Record<ModuleId, Record<string, unknown>[]> = {
   'kancing-entry': [],
   'invoicing': [],
   'order-entry': [],
+  // Laporan Jahit / Pasang Kancing / Finishing kini menjadi tab di Production
+  // Monitoring; datanya dibaca lewat src/lib/laporanCompute.ts.
+  // Live data: Laporan Target Jahit dibaca lewat src/services/targetJahit.ts dan
+  // diagregasi baca-saja di src/components/Laporan/TargetJahitReportPage.tsx.
+  'laporan-target-jahit': [],
+  // Live data: snapshot stok + produksi dibaca lewat src/services/lowStock.ts.
+  // Fixture kosong ini bukan sumber persistent dan tidak pernah dipakai halaman.
+  'stock-monitoring': [],
+  // Live data: Profit & Loss menggabungkan invoices + expense_entries lewat
+  // src/services/profitLoss.ts dan diagregasi baca-saja di src/lib/profitLoss.ts.
+  'profit-loss': [],
 };
 
 export const supabaseWorkCodes = [
@@ -336,7 +422,7 @@ export const navGroups = [
   {
     label: '',
     items: [
-      { id: 'production-monitoring' as const, label: 'Production Monitoring', icon: 'Layers', dot: '#2563EB' },
+      { id: 'production-monitoring' as const, label: 'Production Order', icon: 'Layers', dot: '#2563EB' },
       { id: 'order-entry' as const, label: 'Order Entry', icon: 'ClipboardList' },
     ],
   },
@@ -348,8 +434,9 @@ export const navGroups = [
       { id: 'master-import' as const, label: 'Master Data Import', icon: 'Package', locked: true },
       { id: 'target-jahit' as const, label: 'Target Jahit', icon: 'Target' },
       { id: 'planning-produksi' as const, label: 'Planning Produksi', icon: 'Target' },
-      { id: 'register-penjahit' as const, label: 'Register Karyawan', icon: 'Users' },
-      { id: 'register-client' as const, label: 'Register Client', icon: 'Building2' },
+      { id: 'contact' as const, label: 'Contact', icon: 'Contact' },
+      { id: 'register-harga' as const, label: 'Register Harga', icon: 'DollarSign' },
+      { id: 'kategori-biaya' as const, label: 'Kategori Biaya', icon: 'Tags' },
       { id: 'complain-penalti' as const, label: 'Complain & Penalti', icon: 'AlertTriangle' },
     ],
   },
@@ -357,12 +444,20 @@ export const navGroups = [
     label: 'Finance',
     items: [
       { id: 'invoicing' as const, label: 'Invoicing', icon: 'BarChart3' },
+      { id: 'expense' as const, label: 'Expense', icon: 'Receipt' },
+    ],
+  },
+  {
+    label: 'Reports',
+    items: [
+      { id: 'profit-loss' as const, label: 'Profit & Loss', icon: 'TrendingUp' },
+      { id: 'laporan-target-jahit' as const, label: 'Laporan Target Jahit', icon: 'Target' },
+      { id: 'stock-monitoring' as const, label: 'Stock Monitoring', icon: 'PackageSearch' },
     ],
   },
   {
     label: 'System',
     items: [
-      { id: 'reports' as const, label: 'Reports', icon: 'BarChart3' },
       { id: 'settings' as const, label: 'Settings', icon: 'Settings' },
     ],
   },

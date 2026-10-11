@@ -20,7 +20,7 @@ export function ViewTabs({ views, activeIndex, onSwitch, onRemove, onAdd }: View
           className={cn(
             'flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium cursor-pointer border-b-[1.5px] transition-all duration-150 whitespace-nowrap rounded-t-md group relative',
             i === activeIndex
-              ? 'text-sky-600 border-b-sky-400 bg-sky-50/40'
+              ? 'text-sky-600 border-b-slate-500 bg-slate-50/40'
               : 'text-slate-400 border-b-transparent hover:text-slate-600 hover:bg-slate-50/50'
           )}
         >
@@ -41,7 +41,7 @@ export function ViewTabs({ views, activeIndex, onSwitch, onRemove, onAdd }: View
       ))}
       <button
         onClick={onAdd}
-        className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] text-slate-400 hover:text-sky-500 hover:bg-sky-50/50 rounded-md transition-all whitespace-nowrap ml-1"
+        className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] text-slate-400 hover:text-sky-500 hover:bg-slate-50/50 rounded-md transition-all whitespace-nowrap ml-1"
       >
         <Plus className="w-3.5 h-3.5" />
         Add View

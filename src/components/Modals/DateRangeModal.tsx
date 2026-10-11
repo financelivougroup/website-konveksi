@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import type { ColumnDef } from '@/types';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { AppSelect } from '@/components/AppSelect';
 
 interface DateRangeModalProps {
   open: boolean;
@@ -64,15 +65,11 @@ export function DateRangeModal({ open, onClose, columns, dateField, dateFrom, da
               Date Field
             </label>
             {dateColumns.length > 0 ? (
-              <select
+              <AppSelect
                 value={localField}
-                onChange={(e) => setLocalField(e.target.value)}
-                className="w-full h-9 px-3 text-sm border border-gray-200 rounded-lg outline-none focus:border-sky-300 focus:ring-2 focus:ring-sky-100 bg-white"
-              >
-                {dateColumns.map((c) => (
-                  <option key={c.key} value={c.key}>{c.label}</option>
-                ))}
-              </select>
+                onValueChange={setLocalField}
+                options={dateColumns.map((c) => ({ value: c.key, label: c.label }))}
+              />
             ) : (
               <div className="w-full h-9 px-3 flex items-center text-sm text-slate-400 bg-slate-50 border border-gray-200 rounded-lg">
                 No date fields available
@@ -90,7 +87,7 @@ export function DateRangeModal({ open, onClose, columns, dateField, dateFrom, da
                 type="date"
                 value={localFrom}
                 onChange={(e) => setLocalFrom(e.target.value)}
-                className="w-full h-9 px-3 text-sm border border-gray-200 rounded-lg outline-none focus:border-sky-300 focus:ring-2 focus:ring-sky-100"
+                className="w-full h-9 px-3 text-sm border border-gray-200 rounded-lg outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
               />
             </div>
             <div>
@@ -101,14 +98,14 @@ export function DateRangeModal({ open, onClose, columns, dateField, dateFrom, da
                 type="date"
                 value={localTo}
                 onChange={(e) => setLocalTo(e.target.value)}
-                className="w-full h-9 px-3 text-sm border border-gray-200 rounded-lg outline-none focus:border-sky-300 focus:ring-2 focus:ring-sky-100"
+                className="w-full h-9 px-3 text-sm border border-gray-200 rounded-lg outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
               />
             </div>
           </div>
 
           {/* Active Range Display */}
           {hasActiveRange && (
-            <div className="p-3 bg-sky-50 rounded-lg border border-sky-100 flex items-center gap-2">
+            <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 flex items-center gap-2">
               <span className="text-sm text-sky-700 font-medium">
                 {localFrom && localTo
                   ? `${formatDate(localFrom)} — ${formatDate(localTo)}`
@@ -133,7 +130,7 @@ export function DateRangeModal({ open, onClose, columns, dateField, dateFrom, da
           <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-500 hover:text-slate-700 hover:bg-slate-50 rounded-lg transition-colors">
             Cancel
           </button>
-          <button onClick={handleApply} className="px-4 py-2 text-sm font-medium text-white bg-sky-400 hover:bg-sky-500 rounded-lg transition-colors shadow-sm shadow-sky-200">
+          <button onClick={handleApply} className="px-4 py-2 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg transition-colors shadow-sm shadow-slate-300">
             Apply
           </button>
         </DialogFooter>

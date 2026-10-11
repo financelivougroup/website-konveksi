@@ -1,9 +1,11 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Plus, RefreshCw, Search, Trash2, TriangleAlert, X } from 'lucide-react';
+import { Plus, RefreshCw, Search, Trash2, TriangleAlert } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { T_WRAP, T_TABLE, T_HEAD_ROW, T_TH, T_TD, rowClass } from '@/lib/tableStyles';
+import { AddClientDialog } from '@/components/Modals/AddClientDialog';
+import { T_WRAP, softBadgeClass} from '@/lib/tableStyles';
+import { DataTable } from '@/components/Table/DataTable';
 import { FilterButton, SortButton, ExportButton } from '@/components/Table/TableTools';
-import { ColumnSettingsButton, HiddenColgroup } from '@/components/Table/ColumnSettings';
+import { ColumnSettingsButton } from '@/components/Table/ColumnSettings';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -16,42 +18,41 @@ import {
 } from '@/components/ui/alert-dialog';
 import { useColumnSettings } from '@/lib/columnSettings';
 import { applyFilters, applySorts, type FieldOption, type FilterRule, type SortRule } from '@/lib/tableQuery';
-import type { ClientUsage } from '@/lib/clientCode';
+import { type ClientUsage } from '@/lib/clientCode';
 import {
   fetchAll as fetchAllClient,
-  create as createClient,
-  update as updateClient,
   remove as removeClient,
   fetchClientUsage,
   type RegisterClientRow,
 } from '@/services/registerClient';
 
+// Badge status soft (lihat `softBadgeClass` di '@/lib/tableStyles'). Nilai
+// disimpan sebagai nama warna, bukan kelas penuh, supaya tidak ada kelas
+// setengah jadi yang tertinggal saat polanya berubah.
 const STATUS_BADGE: Record<string, string> = {
-  'Aktif': 'bg-emerald-600',
-  'Non-Aktif': 'bg-slate-500',
+  'Aktif': 'emerald',
+  'Non-Aktif': 'slate',
 };
 
-interface ClientForm {
-  namaClient: string;
-  kodeClient: string;
-  status: string;
-}
+const EMPTY_CELL = <span className="text-gray-300">—</span>;
 
-const EMPTY_FORM: ClientForm = { namaClient: '', kodeClient: '', status: 'Aktif' };
-
-export function RegisterClientPage() {
+/**
+ * Tab Client di halaman Contact.
+ *
+ * Isinya dipindah apa adanya dari `RegisterClientPage` — hanya `<main>` dan
+ * `<h1>` yang naik ke shell `ContactPage`. Kunci `useColumnSettings` sengaja
+ * tidak diubah supaya pengaturan kolom user tidak kembali ke awal.
+ */
+export function ClientTab() {
   const [items, setItems] = useState<RegisterClientRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
   const [filters, setFilters] = useState<FilterRule[]>([]);
   const [sorts, setSorts] = useState<SortRule[]>([]);
-  const { hidden: hiddenCols, toggle: toggleCol } = useColumnSettings('register-client');
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<RegisterClientRow | null>(null);
-  const [form, setForm] = useState<ClientForm>(EMPTY_FORM);
-  const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteTargets, setDeleteTargets] = useState<RegisterClientRow[]>([]);
@@ -80,82 +81,92 @@ export function RegisterClientPage() {
 
   const openCreate = useCallback(() => {
     setEditTarget(null);
-    setForm(EMPTY_FORM);
     setModalOpen(true);
   }, []);
 
   const openEdit = useCallback((item: RegisterClientRow) => {
     setEditTarget(item);
-    setForm({
-      namaClient: item.namaClient,
-      kodeClient: item.kodeClient,
-      status: item.status ?? 'Aktif',
-    });
     setModalOpen(true);
   }, []);
 
-  // Kode client dipakai di dalam kode invoice (INV/MP/LVU/...), jadi hanya huruf/angka
-  // yang diterima dan disimpan huruf besar.
-  const normalizedCode = form.kodeClient.trim().toUpperCase();
-  const isValid = form.namaClient.trim() && /^[A-Z0-9]+$/.test(normalizedCode);
-
-  async function handleSave() {
-    if (!isValid) {
-      setMessage('❌ Lengkapi Nama Client dan Kode Client (huruf/angka saja).');
-      setTimeout(() => setMessage(null), 3000);
-      return;
-    }
-    setSaving(true);
-    const payload = {
-      namaClient: form.namaClient.trim(),
-      kodeClient: normalizedCode,
-      status: form.status,
-    };
-    if (editTarget) {
-      const { error } = await updateClient(editTarget.id, payload);
-      if (error) {
-        setMessage(`❌ Error: ${error.message}`);
-      } else {
-        setMessage(`✅ Client "${payload.namaClient}" berhasil diupdate!`);
-        setModalOpen(false);
-        refresh();
-      }
-    } else {
-      const { error } = await createClient(payload);
-      if (error) {
-        setMessage(`❌ Error: ${error.message}`);
-      } else {
-        setMessage(`✅ Client "${payload.namaClient}" berhasil ditambahkan!`);
-        setModalOpen(false);
-        refresh();
-      }
-    }
-    setSaving(false);
+  /**
+   * Dipanggil setelah AddClientDialog menyimpan.
+   *
+   * Dialog yang sama dipakai untuk tambah dan edit (sama dengan yang dipakai
+   * Order Entry), jadi penyimpanan terjadi di dalam dialog dan tab ini hanya
+   * perlu menyegarkan tabel.
+   */
+  const handleSaved = useCallback((client: RegisterClientRow) => {
+    setModalOpen(false);
+    setEditTarget(null);
+    setMessage(`✅ Client "${client.namaClient}" berhasil disimpan!`);
     setTimeout(() => setMessage(null), 3500);
-  }
+    refresh();
+  }, [refresh]);
 
   const filtered = useMemo(() => {
     return items.filter((d) => {
       if (!search) return true;
       const q = search.toLowerCase();
-      return [d.namaClient, d.kodeClient, d.status].some((v) => String(v).toLowerCase().includes(q));
+      return [d.namaClient, d.kodeClient, d.noHp, d.alamat, d.status].some((v) => String(v).toLowerCase().includes(q));
     });
   }, [items, search]);
 
   const CLIENT_FIELDS: FieldOption[] = [
     { key: 'namaClient', label: 'Nama Client' },
     { key: 'kodeClient', label: 'Kode Client' },
+    { key: 'noHp', label: 'No HP' },
+    { key: 'alamat', label: 'Alamat' },
     { key: 'status', label: 'Status' },
   ];
   const rows = useMemo(() => applySorts(applyFilters(filtered.map((r) => ({ ...r } as unknown as Record<string, unknown>)), filters), sorts) as unknown as RegisterClientRow[], [filtered, filters, sorts]);
 
+  // Bentuk kolom untuk DataGrid (variant "plain"). Sel yang butuh badge atau
+  // pemotongan teks memakai `render` supaya tabel bersama tidak perlu tahu.
+  const clientColumns = useMemo(() => [
+    { key: 'namaClient', label: 'Nama Client', width: '200px' },
+    { key: 'kodeClient', label: 'Kode Client', width: '140px' },
+    {
+      key: 'noHp', label: 'No HP', width: '150px',
+      render: (row: Record<string, unknown>) => (row.noHp as string) || EMPTY_CELL,
+    },
+    {
+      key: 'alamat', label: 'Alamat', width: '280px',
+      // Alamat bisa panjang; dipotong supaya tidak melebarkan tabel, teks
+      // lengkapnya tetap terbaca lewat tooltip.
+      render: (row: Record<string, unknown>) => {
+        const alamat = row.alamat as string | null;
+        if (!alamat) return EMPTY_CELL;
+        return <span className="block truncate" title={alamat}>{alamat}</span>;
+      },
+    },
+    {
+      key: 'status', label: 'Status', width: '110px',
+      render: (row: Record<string, unknown>) => (
+        <span className={softBadgeClass(STATUS_BADGE[row.status as string])}>{String(row.status)}</span>
+      ),
+    },
+  ], []);
+
+  // Pengaturan kolom (tampil/sembunyi + freeze) dipanggil di sini, bukan di blok
+  // state di atas, karena butuh urutan kolom yang baru lengkap setelah
+  // `clientColumns` selesai disusun. Tidak ada `return` lebih awal di antaranya,
+  // jadi urutan hook tetap stabil.
+  const columnKeys = useMemo(() => clientColumns.map((c) => c.key), [clientColumns]);
+  const {
+    hidden: hiddenCols, toggle: toggleCol,
+    frozen: frozenCols, toggleFreeze: toggleFreezeCol, toggleFreezeAll: toggleFreezeAllCols,
+    headerFrozen, setHeaderFrozen,
+  } = useColumnSettings('register-client', columnKeys);
+
   // Multi-select + toolbar (same pattern as Production Monitoring RAW DATA).
+  // "Select all" is owned by the grid now — it toggles every visible row and
+  // replays the difference through `handleToggleRow`.
   const handleToggleRow = (id: number) => setSelectedRows(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
-  const handleToggleAll = () => { if (selectedRows.size === rows.length) setSelectedRows(new Set()); else setSelectedRows(new Set(rows.map(r => r.id))); };
   const handleExport = () => {
     const esc = (v: string | number | null | undefined) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-    const header = ['Nama Client', 'Kode Client', 'Status'];
-    const lines = filtered.map((r) => [r.namaClient, r.kodeClient, r.status].map(esc).join(','));
+    const header = ['Nama Client', 'Kode Client', 'No HP', 'Alamat', 'Status'];
+    const lines = filtered.map((r) => [r.namaClient, r.kodeClient, r.noHp, r.alamat, r.status].map(esc).join(','));
     const csv = '﻿' + [header.map(esc).join(','), ...lines].join('\r\n'); // BOM for Excel UTF-8
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
     const a = document.createElement('a');
@@ -221,44 +232,38 @@ export function RegisterClientPage() {
 
   if (loading) {
     return (
-      <main className="flex-1 flex items-center justify-center">
-        <p className="text-slate-400 text-sm">Loading Register Client...</p>
-      </main>
+      <div className="flex-1 flex items-center justify-center">
+        <p className="text-slate-400 text-sm">Loading Client...</p>
+      </div>
     );
   }
 
-  const setField = (k: keyof ClientForm, v: string) => setForm((f) => ({ ...f, [k]: v }));
   const totalActiveWorkOrders = deleteUsage.reduce((sum, usage) => sum + usage.activeWorkOrders, 0);
   const totalInvoices = deleteUsage.reduce((sum, usage) => sum + usage.invoices, 0);
 
   return (
-    <main className="flex-1 flex flex-col min-w-0 overflow-auto">
-      <div className="px-8 pt-4 pb-0">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h1 className="text-[17px] font-semibold tracking-tight text-slate-900">Register Client</h1>
-          </div>
-          <div className="flex items-center gap-2.5">
-            <button onClick={refresh} className="h-8 px-3.5 text-[12px] font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 hover:shadow-md hover:shadow-slate-200 transition-all flex items-center gap-2">
-              <RefreshCw className="w-3.5 h-3.5" /> Refresh
-            </button>
-            <button onClick={openCreate} className="h-8 px-3.5 text-[12px] font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 hover:shadow-md hover:shadow-blue-200 transition-all flex items-center gap-2">
-              <Plus className="w-3.5 h-3.5" /> Tambah Client
-            </button>
-          </div>
+    <>
+      <div className="px-6 pt-3 pb-0">
+        <div className="flex items-center justify-end gap-2.5 mb-4">
+          <button onClick={refresh} className="h-8 px-3.5 text-[12px] font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 hover:shadow-md hover:shadow-slate-200 transition-all flex items-center gap-2">
+            <RefreshCw className="w-3.5 h-3.5" /> Refresh
+          </button>
+          <button onClick={openCreate} className="h-8 px-3.5 text-[12px] font-medium bg-primary text-white rounded-lg hover:bg-primary/90 hover:shadow-md hover:shadow-slate-300 transition-all flex items-center gap-2">
+            <Plus className="w-3.5 h-3.5" /> Tambah Client
+          </button>
         </div>
-        {message && <div className="mb-3 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-[12px] text-blue-700">{message}</div>}
+        {message && <div className="mb-3 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[12px] text-blue-700">{message}</div>}
       </div>
 
-      <div className="flex-1 px-8 pt-5 pb-6 overflow-auto">
+      <div className="flex-1 px-6 pt-2 pb-5 overflow-auto">
         <div className="flex items-center gap-2 mb-3">
           <div className="relative flex-1 max-w-xs">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-            <input type="text" placeholder="Cari client..." value={search} onChange={e => setSearch(e.target.value)} className="w-full h-8 pl-8 pr-3 text-[12px] border border-gray-200 rounded-lg outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100" />
+            <input type="text" placeholder="Cari client..." value={search} onChange={e => setSearch(e.target.value)} className="w-full h-8 pl-8 pr-3 text-[12px] border border-gray-200 rounded-lg outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200" />
           </div>
           <FilterButton fields={CLIENT_FIELDS} value={filters} onChange={setFilters} />
           <SortButton fields={CLIENT_FIELDS} value={sorts} onChange={setSorts} />
-          <ColumnSettingsButton fields={CLIENT_FIELDS} hidden={hiddenCols} onToggle={toggleCol} />
+          <ColumnSettingsButton fields={CLIENT_FIELDS} hidden={hiddenCols} onToggle={toggleCol} frozen={frozenCols} onToggleFreeze={toggleFreezeCol} onToggleFreezeAll={toggleFreezeAllCols} headerFrozen={headerFrozen} onToggleHeaderFrozen={setHeaderFrozen} />
           <ExportButton onClick={handleExport} />
           {selectedRows.size > 0 && (
             <button onClick={prepareBulkDelete} disabled={checkingUsage} className="h-8 px-2.5 text-[11px] rounded-lg flex items-center gap-1.5 font-medium bg-red-500 text-white hover:bg-red-600 disabled:opacity-60 disabled:cursor-wait transition-colors">
@@ -269,31 +274,22 @@ export function RegisterClientPage() {
         </div>
 
         <div className={T_WRAP}>
-          <table className={cn(T_TABLE, 'w-auto min-w-full whitespace-nowrap')}>
-            <HiddenColgroup hidden={hiddenCols} cols={['__sel', 'namaClient', 'kodeClient', 'status']} />
-            <thead><tr className={T_HEAD_ROW}>
-              <th className={cn(T_TH, 'w-12 text-center')}><input type="checkbox" checked={selectedRows.size === rows.length && rows.length > 0} onChange={handleToggleAll} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 align-middle" /></th>
-              <th className={cn(T_TH, 'text-left')}>Nama Client</th>
-              <th className={cn(T_TH, 'text-left')}>Kode Client</th>
-              <th className={cn(T_TH, 'text-left')}>Status</th>
-            </tr></thead>
-            <tbody>
-              {rows.length === 0 && <tr><td colSpan={4} className="py-10 text-center text-[13px] text-gray-400">{filtered.length === 0 ? 'Belum ada client terdaftar' : 'Tidak ada hasil yang cocok dengan filter'}</td></tr>}
-              {rows.map((item, i) => {
-                const selected = selectedRows.has(item.id);
-                return (
-                  <tr key={item.id} className={cn(rowClass(i, selected), 'cursor-pointer')} onClick={() => openEdit(item)} title="Klik untuk edit">
-                    <td className={cn(T_TD, 'text-center')} onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={selected} onChange={() => handleToggleRow(item.id)} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 align-middle" /></td>
-                    <td className={cn(T_TD, 'text-gray-700')}>{item.namaClient}</td>
-                    <td className={cn(T_TD, 'text-gray-700')}>{item.kodeClient}</td>
-                    <td className={T_TD}>
-                      <span className={cn('inline-block px-2.5 py-1 rounded-md text-[11px] font-medium text-white whitespace-nowrap', STATUS_BADGE[item.status] || 'bg-gray-500')}>{item.status}</span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <DataTable
+            variant="plain"
+            columns={clientColumns}
+            data={rows as unknown as Record<string, unknown>[]}
+            selectedRows={selectedRows}
+            onToggleRow={handleToggleRow}
+            onRowClick={(row) => openEdit(row as unknown as RegisterClientRow)}
+            hiddenColumns={hiddenCols}
+            frozenColumns={frozenCols}
+            headerFrozen={headerFrozen}
+            emptyMessage={
+              <div className="py-10 text-center text-[13px] text-gray-400">
+                {filtered.length === 0 ? 'Belum ada client terdaftar' : 'Tidak ada hasil yang cocok dengan filter'}
+              </div>
+            }
+          />
         </div>
       </div>
 
@@ -328,11 +324,11 @@ export function RegisterClientPage() {
 
           <div className="max-h-60 overflow-y-auto rounded-lg border border-slate-200">
             <table className="w-full text-[12px]">
-              <thead className="sticky top-0 bg-slate-50 text-slate-500">
+              <thead className="sticky top-0 bg-slate-50 text-black">
                 <tr>
-                  <th className="px-3 py-2 text-left font-medium">Client</th>
-                  <th className="px-3 py-2 text-right font-medium">WO Belum Invoice</th>
-                  <th className="px-3 py-2 text-right font-medium">Invoice Lama</th>
+                  <th className="px-3 py-2 text-left font-bold">Client</th>
+                  <th className="px-3 py-2 text-right font-bold">WO Belum Invoice</th>
+                  <th className="px-3 py-2 text-right font-bold">Invoice Lama</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -381,43 +377,20 @@ export function RegisterClientPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Add/Edit Modal */}
-      {modalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/30 backdrop-blur-[2px] flex items-center justify-center p-4" onClick={() => setModalOpen(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-[480px] max-h-[86vh] flex flex-col overflow-hidden border border-gray-100" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-              <h2 className="text-[14px] font-semibold text-slate-800">{editTarget ? 'Edit Client' : 'Tambah Client Baru'}</h2>
-              <button onClick={() => setModalOpen(false)} className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"><X className="w-4 h-4" /></button>
-            </div>
-            <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Nama Client *</label>
-                <input type="text" value={form.namaClient} onChange={(e) => setField('namaClient', e.target.value)} placeholder="e.g. Livou" className="w-full h-9 px-3 text-[12px] border border-gray-200 rounded-lg outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100" />
-              </div>
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Kode Client *</label>
-                <input type="text" value={form.kodeClient} onChange={(e) => setField('kodeClient', e.target.value)} placeholder="e.g. LVU" maxLength={10} className="w-full h-9 px-3 text-[12px] border border-gray-200 rounded-lg outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100 uppercase" />
-                <p className="text-[10px] text-slate-400 mt-1.5">Huruf/angka saja, otomatis huruf besar. Dipakai pada kode invoice (INV/MP/LVU/…).</p>
-              </div>
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Status</label>
-                <select value={form.status} onChange={(e) => setField('status', e.target.value)} className="w-full h-9 px-3 text-[12px] border border-gray-200 rounded-lg outline-none bg-white focus:border-blue-300">
-                  <option value="Aktif">Aktif</option>
-                  <option value="Non-Aktif">Non-Aktif</option>
-                </select>
-              </div>
-            </div>
-            <div className="flex justify-end gap-2 px-6 py-4 border-t border-gray-100">
-              <button onClick={() => setModalOpen(false)} className="h-8 px-4 text-[12px] text-slate-600 border border-gray-200 rounded-lg hover:bg-slate-50 transition-colors">Batal</button>
-              <button onClick={handleSave} disabled={!isValid || saving} className={cn('h-8 px-4 text-[12px] font-medium rounded-lg transition-colors flex items-center gap-1.5', isValid && !saving ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-gray-200 text-gray-400 cursor-not-allowed')}>
-                {saving ? 'Menyimpan...' : 'Simpan'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </main>
+      {/* Popup tambah/edit client — komponen yang SAMA dengan yang dipakai
+          Order Entry, supaya keduanya tidak bisa menyimpang. `key` me-remount
+          tiap dialog dibuka, jadi formnya selalu terisi dari awal (baik
+          kosong maupun dari baris yang diedit). */}
+      <AddClientDialog
+        key={String(modalOpen)}
+        open={modalOpen}
+        initial={editTarget}
+        onOpenChange={(open) => {
+          setModalOpen(open);
+          if (!open) setEditTarget(null);
+        }}
+        onSaved={handleSaved}
+      />
+    </>
   );
 }
-
-export default RegisterClientPage;

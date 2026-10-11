@@ -6,9 +6,13 @@ interface PaginationProps {
   currentPage: number;
   pageSize: number;
   onPageChange: (page: number) => void;
+  /** Opsional: menyesuaikan tepi luar saat kontrol digabung ke dalam kartu
+   *  tabel. Pemanggil lama (App.tsx) tidak mengirimnya dan tampilannya tetap
+   *  sama seperti sebelumnya. */
+  className?: string;
 }
 
-export function Pagination({ total, currentPage, pageSize, onPageChange }: PaginationProps) {
+export function Pagination({ total, currentPage, pageSize, onPageChange, className }: PaginationProps) {
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const start = total === 0 ? 0 : (currentPage - 1) * pageSize + 1;
   const end = Math.min(currentPage * pageSize, total);
@@ -30,7 +34,7 @@ export function Pagination({ total, currentPage, pageSize, onPageChange }: Pagin
   };
 
   return (
-    <div className="h-11 bg-white border-t border-gray-200/60 flex items-center justify-between px-6 flex-shrink-0">
+    <div className={cn('h-11 bg-white border-t border-gray-200/60 flex items-center justify-between px-6 flex-shrink-0', className)}>
       <span className="text-[11px] text-slate-400">
         Showing <span className="font-medium text-slate-600">{start}-{end}</span> of <span className="font-medium text-slate-600">{total}</span>
       </span>
@@ -50,7 +54,7 @@ export function Pagination({ total, currentPage, pageSize, onPageChange }: Pagin
             className={cn(
               'min-w-[28px] h-7 flex items-center justify-center rounded-lg border text-[12px] font-medium transition-all',
               p === currentPage
-                ? 'bg-sky-50 border-sky-200 text-sky-600'
+                ? 'bg-slate-200 border-slate-300 text-sky-600'
                 : typeof p === 'number'
                 ? 'border-gray-200 bg-white text-slate-500 hover:bg-slate-50 hover:border-gray-300'
                 : 'border-transparent bg-transparent text-slate-300 cursor-default'

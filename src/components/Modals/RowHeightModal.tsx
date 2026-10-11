@@ -33,7 +33,7 @@ export function RowHeightModal({ open, onClose, currentHeight, onSelect, onApply
               className={cn(
                 'flex flex-col items-center gap-3 p-3 border rounded-lg transition-all',
                 currentHeight === opt.value
-                  ? 'border-sky-300 bg-sky-50/60 shadow-sm shadow-sky-100'
+                  ? 'border-slate-400 bg-slate-50/60 shadow-sm shadow-slate-200'
                   : 'border-gray-200 bg-white hover:border-gray-300'
               )}
             >
@@ -43,7 +43,7 @@ export function RowHeightModal({ open, onClose, currentHeight, onSelect, onApply
                     key={li}
                     className={cn(
                       'h-[2px] rounded-full',
-                      currentHeight === opt.value ? 'bg-sky-200' : 'bg-gray-200'
+                      currentHeight === opt.value ? 'bg-slate-400' : 'bg-gray-200'
                     )}
                     style={{ width: li === opt.lines - 1 ? '40%' : `${75 - li * 8}%` }}
                   />
@@ -59,7 +59,7 @@ export function RowHeightModal({ open, onClose, currentHeight, onSelect, onApply
           <Button onClick={onClose} variant="outline">
             Cancel
           </Button>
-          <Button onClick={onApply} className="bg-sky-400 hover:bg-sky-500">
+          <Button onClick={onApply} className="bg-primary hover:bg-primary/90">
             Apply
           </Button>
         </DialogFooter>

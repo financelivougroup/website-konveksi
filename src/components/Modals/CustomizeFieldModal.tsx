@@ -109,7 +109,7 @@ export function CustomizeFieldModal({ open, onClose, columns, visibleColumns, co
                         onChange={(e) => setRenameValue(e.target.value)}
                         onBlur={() => saveRename(col.key)}
                         onKeyDown={(e) => { if (e.key === 'Enter') saveRename(col.key); if (e.key === 'Escape') setEditingRename(''); }}
-                        className="flex-1 h-7 px-2 text-sm border border-sky-300 rounded-md outline-none bg-white"
+                        className="flex-1 h-7 px-2 text-sm border border-slate-400 rounded-md outline-none bg-white"
                       />
                     ) : (
                       <button
@@ -183,7 +183,7 @@ export function CustomizeFieldModal({ open, onClose, columns, visibleColumns, co
           <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-500 hover:text-slate-700 hover:bg-slate-50 rounded-lg transition-colors">
             Cancel
           </button>
-          <button onClick={onApply} className="px-4 py-2 text-sm font-medium text-white bg-sky-400 hover:bg-sky-500 rounded-lg transition-colors shadow-sm shadow-sky-200">
+          <button onClick={onApply} className="px-4 py-2 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg transition-colors shadow-sm shadow-slate-300">
             Apply
           </button>
         </DialogFooter>

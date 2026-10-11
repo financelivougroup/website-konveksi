@@ -1,6 +1,7 @@
 import { X } from 'lucide-react';
 import type { ColumnDef, FilterRule } from '@/types';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { AppSelect } from '@/components/AppSelect';
 
 interface FilterModalProps {
   open: boolean;
@@ -43,31 +44,30 @@ export function FilterModal({ open, onClose, columns, filters, onUpdate, onApply
           ) : (
             filters.map((f, i) => (
               <div key={i} className="flex items-center gap-2 p-2.5 bg-slate-50 rounded-lg border border-slate-100">
-                <select
+                <AppSelect
+                  bare
                   value={f.field}
-                  onChange={(e) => updateFilter(i, 'field', e.target.value)}
-                  className="flex-1 min-w-0 h-8 px-2.5 text-sm border border-gray-200 rounded-lg bg-white outline-none focus:border-sky-300 focus:ring-2 focus:ring-sky-100"
-                >
-                  {columns.map((c) => (
-                    <option key={c.key} value={c.key}>{c.label}</option>
-                  ))}
-                </select>
-                <select
+                  onValueChange={(next) => updateFilter(i, 'field', next)}
+                  triggerClassName="flex-1 min-w-0"
+                  options={columns.map((c) => ({ value: c.key, label: c.label }))}
+                />
+                <AppSelect
+                  bare
                   value={f.operator}
-                  onChange={(e) => updateFilter(i, 'operator', e.target.value)}
-                  className="h-8 px-2.5 text-sm border border-gray-200 rounded-lg bg-white outline-none focus:border-sky-300 focus:ring-2 focus:ring-sky-100"
-                >
-                  <option value="contains">contains</option>
-                  <option value="equals">equals</option>
-                  <option value="starts">starts with</option>
-                  <option value="ends">ends with</option>
-                </select>
+                  onValueChange={(next) => updateFilter(i, 'operator', next)}
+                  options={[
+                    { value: 'contains', label: 'contains' },
+                    { value: 'equals', label: 'equals' },
+                    { value: 'starts', label: 'starts with' },
+                    { value: 'ends', label: 'ends with' },
+                  ]}
+                />
                 <input
                   type="text"
                   value={f.value}
                   onChange={(e) => updateFilter(i, 'value', e.target.value)}
                   placeholder="Value..."
-                  className="flex-1 min-w-0 h-8 px-2.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-sky-300 focus:ring-2 focus:ring-sky-100"
+                  className="flex-1 min-w-0 h-8 px-2.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
                 />
                 <button onClick={() => removeFilter(i)} className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-rose-50 transition-colors flex-shrink-0">
                   <X className="w-3.5 h-3.5" />
@@ -77,7 +77,7 @@ export function FilterModal({ open, onClose, columns, filters, onUpdate, onApply
           )}
         </div>
 
-        <button onClick={addFilter} className="mt-3 px-3 py-1.5 text-xs font-medium text-sky-600 bg-sky-50 hover:bg-sky-100 border border-sky-100 rounded-lg transition-colors">
+        <button onClick={addFilter} className="mt-3 px-3 py-1.5 text-xs font-medium text-sky-600 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors">
           + Add Filter
         </button>
 
@@ -88,7 +88,7 @@ export function FilterModal({ open, onClose, columns, filters, onUpdate, onApply
           <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-500 hover:text-slate-700 hover:bg-slate-50 rounded-lg transition-colors">
             Cancel
           </button>
-          <button onClick={onApply} className="px-4 py-2 text-sm font-medium text-white bg-sky-400 hover:bg-sky-500 rounded-lg transition-colors shadow-sm shadow-sky-200">
+          <button onClick={onApply} className="px-4 py-2 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg transition-colors shadow-sm shadow-slate-300">
             Apply Filter
           </button>
         </DialogFooter>

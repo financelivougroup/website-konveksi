@@ -55,11 +55,11 @@ export function AddViewModal({ open, onClose, onCreate }: AddViewModalProps) {
               Duplicate From
             </label>
             <div className="grid grid-cols-2 gap-2">
-              <button className="flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-lg hover:border-sky-300 hover:bg-sky-50/50 transition-all text-left">
+              <button className="flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-lg hover:border-slate-400 hover:bg-slate-50/50 transition-all text-left">
                 <LayoutList className="w-4 h-4 text-slate-400" />
                 <span className="text-sm text-slate-600">Empty View</span>
               </button>
-              <button className="flex items-center gap-2 px-3 py-2 border border-sky-200 bg-sky-50/40 rounded-lg transition-all text-left">
+              <button className="flex items-center gap-2 px-3 py-2 border border-slate-200 bg-slate-50/40 rounded-lg transition-all text-left">
                 <Copy className="w-4 h-4 text-sky-500" />
                 <span className="text-sm text-sky-600 font-medium">All Data</span>
               </button>
@@ -74,7 +74,7 @@ export function AddViewModal({ open, onClose, onCreate }: AddViewModalProps) {
           <Button
             onClick={handleCreate}
             disabled={!name.trim()}
-            className="bg-sky-400 hover:bg-sky-500"
+            className="bg-primary hover:bg-primary/90"
           >
             Create View
           </Button>

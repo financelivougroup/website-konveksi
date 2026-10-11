@@ -16,7 +16,7 @@ export function SearchBar({ query, onQueryChange, recordCount }: SearchBarProps)
           placeholder="Search in this view..."
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
-          className="w-full h-8 bg-slate-50 border border-gray-200 rounded-lg pl-9 pr-3 text-[13px] text-slate-700 placeholder-gray-400 outline-none focus:border-sky-300 focus:ring-2 focus:ring-sky-100 transition-all"
+          className="w-full h-8 bg-slate-50 border border-gray-200 rounded-lg pl-9 pr-3 text-[13px] text-slate-700 placeholder-gray-400 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200 transition-all"
         />
       </div>
       <span className="text-[11px] text-slate-400 font-medium">{recordCount} records</span>
