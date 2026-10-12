@@ -1,6 +1,4 @@
 import {
-  Area,
-  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
@@ -35,13 +33,6 @@ export interface TrendPoint {
 export interface PencapaianPoint extends TrendPoint {
   pencapaian: number;
   pencapaianPct: number;
-}
-
-/** Titik grafik biaya per bulan. */
-export interface CostPoint {
-  label: string;
-  targetCost: number;
-  realisasiCost: number;
 }
 
 /** Titik perbandingan antar penjahit (sumbu kategori, bukan waktu). */
@@ -81,6 +72,39 @@ export const CHART_CONFIG = {
   },
   pencapaian: {
     label: 'Pencapaian',
+    theme: { light: '#2a78d6', dark: '#3987e5' },
+  },
+  // Label legend/tooltip untuk seri biaya. Seri akumulasi memakai `dataKey`
+  // `targetCostAccum`/`realisasiCostAccum` tetapi diberi `name`
+  // `targetCost`/`realisasiCost`, sehingga tooltip memakai entri `targetCost`/
+  // `realisasiCost` di bawah sementara LEGEND tetap memakai `dataKey`-nya —
+  // karena itu keempat kunci ada, dengan label yang sama per entitas. Warna
+  // mengikuti entitas (merah = target, biru = realisasi), bukan satuan.
+  targetCost: {
+    label: 'Target Cost',
+    theme: { light: '#e34948', dark: '#e66767' },
+  },
+  realisasiCost: {
+    label: 'Realisasi Cost',
+    theme: { light: '#2a78d6', dark: '#3987e5' },
+  },
+  targetCostAccum: {
+    label: 'Target Cost',
+    theme: { light: '#e34948', dark: '#e66767' },
+  },
+  realisasiCostAccum: {
+    label: 'Realisasi Cost',
+    theme: { light: '#2a78d6', dark: '#3987e5' },
+  },
+  // Seri akumulasi pcs memakai `name` `target`/`realisasi` untuk tooltip, tetapi
+  // legend membaca `dataKey` `targetAccum`/`realisasiAccum` — jadi keduanya perlu
+  // entri dengan label yang sama.
+  targetAccum: {
+    label: 'Target',
+    theme: { light: '#e34948', dark: '#e66767' },
+  },
+  realisasiAccum: {
+    label: 'Realisasi',
     theme: { light: '#2a78d6', dark: '#3987e5' },
   },
 } satisfies ChartConfig;
@@ -187,101 +211,6 @@ export function TargetRealisasiTrend({ months, penjahitPerBulan, className }: Tr
   );
 }
 
-interface CostProps {
-  months: CostPoint[];
-  className?: string;
-}
-
-/**
- * Tren Target Cost vs Realisasi Cost per bulan (owner/finance saja).
- *
- * Bidang tipis di bawah tiap garis dipakai karena jarak antara keduanya — yaitu
- * uang yang belum dikejar — justru inti ceritanya; garis telanjang menyembunyikan
- * selisih itu. Keduanya bersatuan rupiah, jadi tetap SATU sumbu Y.
- *
- * Label aksis memakai rupiah ringkas ("26 jt") karena "Rp 26.000.000" tidak muat
- * di tick dan akan saling tumpang tindih; nilai penuh ada di tooltip dan tabel.
- */
-export function TrenBiayaPerBulan({ months, className }: CostProps) {
-  return (
-    <ChartContainer
-      config={CHART_CONFIG}
-      className={cn('aspect-auto h-[260px] w-full', className)}
-      role="img"
-      aria-label="Grafik garis target cost dan realisasi cost per bulan"
-    >
-      <AreaChart data={months} margin={{ top: 8, right: 12, bottom: 4, left: 4 }}>
-        <defs>
-          <linearGradient id="isiTargetCost" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={WARNA_TARGET} stopOpacity={0.18} />
-            <stop offset="100%" stopColor={WARNA_TARGET} stopOpacity={0.02} />
-          </linearGradient>
-          <linearGradient id="isiRealisasiCost" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={WARNA_REALISASI} stopOpacity={0.18} />
-            <stop offset="100%" stopColor={WARNA_REALISASI} stopOpacity={0.02} />
-          </linearGradient>
-        </defs>
-        <CartesianGrid vertical={false} stroke="hsl(var(--border))" strokeWidth={1} />
-        <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} fontSize={11} />
-        <YAxis
-          tickLine={false}
-          axisLine={false}
-          tickMargin={8}
-          fontSize={11}
-          width={52}
-          tickFormatter={(v: number) => formatRupiahRingkas(v)}
-        />
-        <ChartTooltip
-          cursor={{ stroke: 'hsl(var(--border))', strokeWidth: 1 }}
-          content={
-            <ChartTooltipContent
-              indicator="line"
-              labelFormatter={(_, payload) => {
-                const p = payload?.[0]?.payload as CostPoint | undefined;
-                if (!p) return '';
-                const selisih = Math.max(0, p.targetCost - p.realisasiCost);
-                return `${p.label} · sisa ${formatCurrency(selisih)}`;
-              }}
-              formatter={(value, name) => (
-                <>
-                  <span className="font-semibold tabular-nums text-foreground">
-                    {formatCurrency(Number(value))}
-                  </span>
-                  <span className="text-muted-foreground">
-                    {' '}
-                    {name === 'realisasiCost' ? 'Realisasi Cost' : 'Target Cost'}
-                  </span>
-                </>
-              )}
-            />
-          }
-        />
-        <ChartLegend content={<ChartLegendContent />} />
-        <Area
-          dataKey="targetCost"
-          name="targetCost"
-          type="monotone"
-          stroke={WARNA_TARGET}
-          strokeWidth={2}
-          fill="url(#isiTargetCost)"
-          dot={{ r: 4, fill: WARNA_TARGET, strokeWidth: 2, stroke: 'hsl(var(--card))' }}
-          activeDot={{ r: 6, strokeWidth: 2, stroke: 'hsl(var(--card))' }}
-        />
-        <Area
-          dataKey="realisasiCost"
-          name="realisasiCost"
-          type="monotone"
-          stroke={WARNA_REALISASI}
-          strokeWidth={2}
-          fill="url(#isiRealisasiCost)"
-          dot={{ r: 4, fill: WARNA_REALISASI, strokeWidth: 2, stroke: 'hsl(var(--card))' }}
-          activeDot={{ r: 6, strokeWidth: 2, stroke: 'hsl(var(--card))' }}
-        />
-      </AreaChart>
-    </ChartContainer>
-  );
-}
-
 /**
  * Titik batang pencapaian. `pencapaianPct` sudah dalam persen (0..100) — konversi
  * dari rasio 0..1 dilakukan di pemanggil supaya nilai aksis dan tooltip memakai
@@ -373,161 +302,57 @@ function tinggiUntuk(n: number): number {
 
 // ===== Keseluruhan: per bulan & akumulasi =====
 
+/**
+ * Bentuk data grafik bulanan. Kedua mode memakai sumbu X dan warna yang sama;
+ * yang berganti hanya seri yang diplot (per bulan vs kumulatif). Didefinisikan di
+ * sini (bukan di halaman) karena `BulananProps` memakainya; hanya tipenya yang
+ * diekspor agar berkas komponen ini tetap lolos `react-refresh/only-export-components`.
+ */
+export type MonthlyMode = 'bulan' | 'akumulasi';
+
 interface BulananProps {
   /** Bentuk seragam untuk tab Keseluruhan & Per Penjahit. */
   months: MonthAggregateLike[];
+  /** Bentuk data yang diplot; dikendalikan toggle di header kartu. */
+  mode: MonthlyMode;
   className?: string;
   height?: number;
 }
 
 const TINGGI_BULANAN = 260;
 
-/** Grid + aksis bersama agar keempat grafik bulanan punya chrome yang identik. */
-function ChromeBulanan({ tickFormatter }: { tickFormatter: (v: number) => string }) {
-  return (
-    <>
-      <CartesianGrid vertical={false} stroke="hsl(var(--border))" strokeWidth={1} />
-      <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} fontSize={11} />
-      <YAxis
-        tickLine={false}
-        axisLine={false}
-        tickMargin={8}
-        fontSize={11}
-        width={52}
-        tickFormatter={tickFormatter}
-      />
-    </>
-  );
-}
-
 /**
- * Target vs Realisasi per BULAN (batang) — tab Keseluruhan.
+ * Grid + aksis bersama agar grafik bulanan punya chrome yang identik.
  *
- * Sumbu Y sengaja TIDAK memuat nama penjahit: satu batang mewakili satu bulan
- * yang sudah dijumlahkan lintas penjahit. Sumbu kategori per orang hanya dipakai
- * di tempat yang memang membandingkan orang.
+ * PENTING: ini FUNGSI BIASA yang mengembalikan ARRAY elemen — bukan komponen
+ * `<ChromeBulanan />` dan bukan pula fragment `<>…</>`. Recharts menemukan
+ * `XAxis`/`YAxis`/`CartesianGrid` dengan menelusuri `Children` lewat `toArray`
+ * (`renderByOrder`/`findAllByType`), dan penelusuran itu:
+ *  - TIDAK membuka komponen pembungkus (hanya anak langsung yang dikenali), dan
+ *  - TIDAK membuka fragment, karena `isFragment()` dari `react-is@18` (dipakai
+ *    Recharts 2.15.4) tidak mengenali `Symbol(react.transitional.element)` milik
+ *    React 19 — `isFragment()` selalu `false`.
+ * Array aman karena `Children.forEach` memang meratakan array. Tanpa bentuk ini
+ * sumbu dan gridline hilang tanpa error apa pun.
  */
-export function TargetRealisasiBulanan({ months, className }: BulananProps) {
-  return (
-    <ChartContainer
-      config={CHART_CONFIG}
-      className={cn('aspect-auto w-full', className)}
-      style={{ height: TINGGI_BULANAN }}
-      role="img"
-      aria-label="Grafik batang target dan realisasi per bulan"
-    >
-      <BarChart data={months} margin={{ top: 8, right: 12, bottom: 4, left: 4 }} barGap={2} barCategoryGap="35%">
-        <ChromeBulanan tickFormatter={formatAngka} />
-        <ChartTooltip
-          cursor={{ fill: 'hsl(var(--muted))', fillOpacity: 0.4 }}
-          content={
-            <ChartTooltipContent
-              indicator="dot"
-              labelFormatter={(_, payload) => {
-                const p = payload?.[0]?.payload as MonthAggregateLike | undefined;
-                if (!p) return '';
-                return `${p.label} · kurang ${formatAngka(p.kurang)} pcs`;
-              }}
-              formatter={(value, name) => (
-                <>
-                  <span className="font-semibold tabular-nums text-foreground">
-                    {formatAngka(Number(value))}
-                  </span>
-                  <span className="text-muted-foreground">
-                    {' '}
-                    pcs · {name === 'realisasi' ? 'Realisasi' : 'Target'}
-                  </span>
-                </>
-              )}
-            />
-          }
-        />
-        <ChartLegend content={<ChartLegendContent />} />
-        <Bar dataKey="target" name="target" fill="var(--color-target)" radius={[4, 4, 0, 0]} maxBarSize={24} />
-        <Bar
-          dataKey="realisasi"
-          name="realisasi"
-          fill="var(--color-realisasi)"
-          radius={[4, 4, 0, 0]}
-          maxBarSize={24}
-        />
-      </BarChart>
-    </ChartContainer>
-  );
+function chromeBulanan(tickFormatter: (v: number) => string) {
+  return [
+    <CartesianGrid key="grid" vertical={false} stroke="hsl(var(--border))" strokeWidth={1} />,
+    <XAxis key="x" dataKey="label" tickLine={false} axisLine={false} tickMargin={8} fontSize={11} />,
+    <YAxis
+      key="y"
+      tickLine={false}
+      axisLine={false}
+      tickMargin={8}
+      fontSize={11}
+      width={52}
+      tickFormatter={tickFormatter}
+    />,
+  ];
 }
 
 /**
- * Target vs Realisasi AKUMULASI (garis) — tab Keseluruhan.
- *
- * Garis, bukan batang: akumulasi adalah besaran yang menumpuk sepanjang waktu,
- * dan bentuk garis menyampaikan "sedang mengejar" jauh lebih jelas daripada
- * deretan batang yang makin tinggi.
- */
-export function TargetRealisasiAkumulasi({ months, className }: BulananProps) {
-  return (
-    <ChartContainer
-      config={CHART_CONFIG}
-      className={cn('aspect-auto w-full', className)}
-      style={{ height: TINGGI_BULANAN }}
-      role="img"
-      aria-label="Grafik garis target dan realisasi akumulasi per bulan"
-    >
-      <LineChart data={months} margin={{ top: 8, right: 12, bottom: 4, left: 4 }}>
-        <ChromeBulanan tickFormatter={formatAngka} />
-        <ChartTooltip
-          cursor={{ stroke: 'hsl(var(--border))', strokeWidth: 1 }}
-          content={
-            <ChartTooltipContent
-              indicator="line"
-              labelFormatter={(_, payload) => {
-                const p = payload?.[0]?.payload as MonthAggregateLike | undefined;
-                if (!p) return '';
-                return `${p.label} · selisih akumulasi ${formatAngka(p.kurangAccum)} pcs`;
-              }}
-              formatter={(value, name) => (
-                <>
-                  <span className="font-semibold tabular-nums text-foreground">
-                    {formatAngka(Number(value))}
-                  </span>
-                  <span className="text-muted-foreground">
-                    {' '}
-                    pcs · {name === 'realisasiAccum' ? 'Realisasi' : 'Target'}
-                  </span>
-                </>
-              )}
-            />
-          }
-        />
-        <ChartLegend content={<ChartLegendContent />} />
-        <Line
-          dataKey="targetAccum"
-          name="targetAccum"
-          type="monotone"
-          stroke={WARNA_TARGET}
-          strokeWidth={2}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          dot={{ r: 4, fill: WARNA_TARGET, strokeWidth: 2, stroke: 'hsl(var(--card))' }}
-          activeDot={{ r: 6, strokeWidth: 2, stroke: 'hsl(var(--card))' }}
-        />
-        <Line
-          dataKey="realisasiAccum"
-          name="realisasiAccum"
-          type="monotone"
-          stroke={WARNA_REALISASI}
-          strokeWidth={2}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          dot={{ r: 4, fill: WARNA_REALISASI, strokeWidth: 2, stroke: 'hsl(var(--card))' }}
-          activeDot={{ r: 6, strokeWidth: 2, stroke: 'hsl(var(--card))' }}
-        />
-      </LineChart>
-    </ChartContainer>
-  );
-}
-
-/**
- * Kontrak bulanan yang dibaca empat grafik Keseluruhan. Dipenuhi `MonthAggregate`.
+ * Kontrak bulanan yang dibaca kedua grafik Keseluruhan. Dipenuhi `MonthAggregate`.
  */
 export interface MonthAggregateLike {
   label: string;
@@ -544,13 +369,147 @@ export interface MonthAggregateLike {
 }
 
 /**
- * Akumulasi Target Cost vs Realisasi Cost (owner/finance).
+ * Target vs Realisasi per bulan — satu grafik, dua bentuk data.
  *
- * Jarak vertikal antar kedua garis = total uang yang belum dikejar sampai bulan
- * itu; itu sebabnya bentuk garis lebih tepat daripada batang.
+ * Sumbu Y sengaja TIDAK memuat nama penjahit: satu batang/titik mewakili satu
+ * bulan yang sudah dijumlahkan lintas penjahit. Sumbu kategori per orang hanya
+ * dipakai di tempat yang memang membandingkan orang.
+ *
+ * Bentuk batang (per bulan) dan garis (akumulasi) memakai seri yang BERBEDA —
+ * `target`/`realisasi` versus `targetAccum`/`realisasiAccum` — bukan sekadar
+ * memakai ulang seri yang sama. Keduanya diplot di dalam SATU `ChartContainer`
+ * dan bertukar menurut `mode`: bila memakai dua komponen `ChartContainer` yang
+ * di-mount bergantian, React akan melepas-pasang seluruh subtree Recharts setiap
+ * toggle ditekan, sementara di sini Recharts hanya mengganti elemen chart-nya.
  */
-export function AkumulasiBiayaPerBulan({ months, className }: BulananProps) {
-  const adaAngka = months.some((m) => m.targetCostAccum > 0 || m.realisasiCostAccum > 0);
+export function TargetRealisasiChart({ months, mode, className }: BulananProps) {
+  const akumulasi = mode === 'akumulasi';
+
+  return (
+    <ChartContainer
+      config={CHART_CONFIG}
+      className={cn('aspect-auto w-full', className)}
+      style={{ height: TINGGI_BULANAN }}
+      role="img"
+      aria-label={
+        akumulasi
+          ? 'Grafik garis akumulasi target dan realisasi per bulan'
+          : 'Grafik batang target dan realisasi per bulan'
+      }
+    >
+      {akumulasi ? (
+        <LineChart data={months} margin={{ top: 8, right: 12, bottom: 4, left: 4 }}>
+          {chromeBulanan(formatAngka)}
+          <ChartTooltip
+            cursor={{ stroke: 'hsl(var(--border))', strokeWidth: 1 }}
+            content={
+              <ChartTooltipContent
+                indicator="line"
+                labelFormatter={(_, payload) => {
+                  const p = payload?.[0]?.payload as MonthAggregateLike | undefined;
+                  if (!p) return '';
+                  return `${p.label} · selisih akumulasi ${formatAngka(p.kurangAccum)} pcs`;
+                }}
+                formatter={(value, name) => (
+                  <>
+                    <span className="font-semibold tabular-nums text-foreground">
+                      {formatAngka(Number(value))}
+                    </span>
+                    <span className="text-muted-foreground">
+                      {' '}
+                      pcs · {name === 'realisasi' ? 'Realisasi' : 'Target'}
+                    </span>
+                  </>
+                )}
+              />
+            }
+          />
+          <ChartLegend content={<ChartLegendContent />} />
+          <Line
+            dataKey="targetAccum"
+            name="target"
+            type="monotone"
+            stroke={WARNA_TARGET}
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            dot={{ r: 4, fill: WARNA_TARGET, strokeWidth: 2, stroke: 'hsl(var(--card))' }}
+            activeDot={{ r: 6, strokeWidth: 2, stroke: 'hsl(var(--card))' }}
+          />
+          <Line
+            dataKey="realisasiAccum"
+            name="realisasi"
+            type="monotone"
+            stroke={WARNA_REALISASI}
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            dot={{ r: 4, fill: WARNA_REALISASI, strokeWidth: 2, stroke: 'hsl(var(--card))' }}
+            activeDot={{ r: 6, strokeWidth: 2, stroke: 'hsl(var(--card))' }}
+          />
+        </LineChart>
+      ) : (
+        <BarChart data={months} margin={{ top: 8, right: 12, bottom: 4, left: 4 }} barGap={2} barCategoryGap="35%">
+          {chromeBulanan(formatAngka)}
+          <ChartTooltip
+            cursor={{ fill: 'hsl(var(--muted))', fillOpacity: 0.4 }}
+            content={
+              <ChartTooltipContent
+                indicator="dot"
+                labelFormatter={(_, payload) => {
+                  const p = payload?.[0]?.payload as MonthAggregateLike | undefined;
+                  if (!p) return '';
+                  return `${p.label} · kurang ${formatAngka(p.kurang)} pcs`;
+                }}
+                formatter={(value, name) => (
+                  <>
+                    <span className="font-semibold tabular-nums text-foreground">
+                      {formatAngka(Number(value))}
+                    </span>
+                    <span className="text-muted-foreground">
+                      {' '}
+                      pcs · {name === 'realisasi' ? 'Realisasi' : 'Target'}
+                    </span>
+                  </>
+                )}
+              />
+            }
+          />
+          <ChartLegend content={<ChartLegendContent />} />
+          <Bar dataKey="target" name="target" fill="var(--color-target)" radius={[4, 4, 0, 0]} maxBarSize={24} />
+          <Bar
+            dataKey="realisasi"
+            name="realisasi"
+            fill="var(--color-realisasi)"
+            radius={[4, 4, 0, 0]}
+            maxBarSize={24}
+          />
+        </BarChart>
+      )}
+    </ChartContainer>
+  );
+}
+
+/**
+ * Target Cost vs Realisasi Cost per bulan (owner/finance saja) — satu grafik,
+ * dua bentuk data seperti versi pcs-nya.
+ *
+ * Seri `targetCost`/`realisasiCost` dan `targetCostAccum`/`realisasiCostAccum`
+ * memakai label yang sama per entitas — tooltip lewat `name` (yang sengaja
+ * disamakan menjadi `targetCost`/`realisasiCost`), legend lewat `dataKey` — jadi
+ * yang berganti saat toggle adalah bentuk datanya, bukan identitas serinya.
+ * Keduanya bersatuan rupiah, jadi tetap SATU sumbu Y.
+ *
+ * Label aksis memakai rupiah ringkas ("26 jt") karena "Rp 26.000.000" tidak muat
+ * di tick dan akan saling tumpang tindih; nilai penuh ada di tooltip dan tabel.
+ */
+export function CostRealisasiChart({ months, mode, className }: BulananProps) {
+  const akumulasi = mode === 'akumulasi';
+
+  // Seri kosong (mis. role tanpa biaya) tidak boleh menampilkan grafik datar.
+  const adaAngka = months.some(
+    (m) => (akumulasi ? m.targetCostAccum > 0 || m.realisasiCostAccum > 0 : m.targetCost > 0 || m.realisasiCost > 0),
+  );
   if (!adaAngka) return null;
 
   return (
@@ -559,59 +518,109 @@ export function AkumulasiBiayaPerBulan({ months, className }: BulananProps) {
       className={cn('aspect-auto w-full', className)}
       style={{ height: TINGGI_BULANAN }}
       role="img"
-      aria-label="Grafik garis akumulasi target cost dan realisasi cost"
+      aria-label={
+        akumulasi
+          ? 'Grafik garis akumulasi target cost dan realisasi cost'
+          : 'Grafik batang target cost dan realisasi cost per bulan'
+      }
     >
-      <LineChart data={months} margin={{ top: 8, right: 12, bottom: 4, left: 4 }}>
-        <ChromeBulanan tickFormatter={formatRupiahRingkas} />
-        <ChartTooltip
-          cursor={{ stroke: 'hsl(var(--border))', strokeWidth: 1 }}
-          content={
-            <ChartTooltipContent
-              indicator="line"
-              labelFormatter={(_, payload) => {
-                const p = payload?.[0]?.payload as MonthAggregateLike | undefined;
-                if (!p) return '';
-                const sisa = Math.max(0, p.targetCostAccum - p.realisasiCostAccum);
-                return `${p.label} · sisa ${formatCurrency(sisa)}`;
-              }}
-              formatter={(value, name) => (
-                <>
-                  <span className="font-semibold tabular-nums text-foreground">
-                    {formatCurrency(Number(value))}
-                  </span>
-                  <span className="text-muted-foreground">
-                    {' '}
-                    {name === 'realisasiCostAccum' ? 'Realisasi Cost' : 'Target Cost'}
-                  </span>
-                </>
-              )}
-            />
-          }
-        />
-        <ChartLegend content={<ChartLegendContent />} />
-        <Line
-          dataKey="targetCostAccum"
-          name="targetCostAccum"
-          type="monotone"
-          stroke={WARNA_TARGET}
-          strokeWidth={2}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          dot={{ r: 4, fill: WARNA_TARGET, strokeWidth: 2, stroke: 'hsl(var(--card))' }}
-          activeDot={{ r: 6, strokeWidth: 2, stroke: 'hsl(var(--card))' }}
-        />
-        <Line
-          dataKey="realisasiCostAccum"
-          name="realisasiCostAccum"
-          type="monotone"
-          stroke={WARNA_REALISASI}
-          strokeWidth={2}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          dot={{ r: 4, fill: WARNA_REALISASI, strokeWidth: 2, stroke: 'hsl(var(--card))' }}
-          activeDot={{ r: 6, strokeWidth: 2, stroke: 'hsl(var(--card))' }}
-        />
-      </LineChart>
+      {akumulasi ? (
+        <LineChart data={months} margin={{ top: 8, right: 12, bottom: 4, left: 4 }}>
+          {chromeBulanan(formatRupiahRingkas)}
+          <ChartTooltip
+            cursor={{ stroke: 'hsl(var(--border))', strokeWidth: 1 }}
+            content={
+              <ChartTooltipContent
+                indicator="line"
+                labelFormatter={(_, payload) => {
+                  const p = payload?.[0]?.payload as MonthAggregateLike | undefined;
+                  if (!p) return '';
+                  const sisa = Math.max(0, p.targetCostAccum - p.realisasiCostAccum);
+                  return `${p.label} · sisa ${formatCurrency(sisa)}`;
+                }}
+                formatter={(value, name) => (
+                  <>
+                    <span className="font-semibold tabular-nums text-foreground">
+                      {formatCurrency(Number(value))}
+                    </span>
+                    <span className="text-muted-foreground">
+                      {' '}
+                      {name === 'realisasiCost' ? 'Realisasi Cost' : 'Target Cost'}
+                    </span>
+                  </>
+                )}
+              />
+            }
+          />
+          <ChartLegend content={<ChartLegendContent />} />
+          <Line
+            dataKey="targetCostAccum"
+            name="targetCost"
+            type="monotone"
+            stroke={WARNA_TARGET}
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            dot={{ r: 4, fill: WARNA_TARGET, strokeWidth: 2, stroke: 'hsl(var(--card))' }}
+            activeDot={{ r: 6, strokeWidth: 2, stroke: 'hsl(var(--card))' }}
+          />
+          <Line
+            dataKey="realisasiCostAccum"
+            name="realisasiCost"
+            type="monotone"
+            stroke={WARNA_REALISASI}
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            dot={{ r: 4, fill: WARNA_REALISASI, strokeWidth: 2, stroke: 'hsl(var(--card))' }}
+            activeDot={{ r: 6, strokeWidth: 2, stroke: 'hsl(var(--card))' }}
+          />
+        </LineChart>
+      ) : (
+        <BarChart data={months} margin={{ top: 8, right: 12, bottom: 4, left: 4 }} barGap={2} barCategoryGap="35%">
+          {chromeBulanan(formatRupiahRingkas)}
+          <ChartTooltip
+            cursor={{ fill: 'hsl(var(--muted))', fillOpacity: 0.4 }}
+            content={
+              <ChartTooltipContent
+                indicator="dot"
+                labelFormatter={(_, payload) => {
+                  const p = payload?.[0]?.payload as MonthAggregateLike | undefined;
+                  if (!p) return '';
+                  const sisa = Math.max(0, p.targetCost - p.realisasiCost);
+                  return `${p.label} · sisa ${formatCurrency(sisa)}`;
+                }}
+                formatter={(value, name) => (
+                  <>
+                    <span className="font-semibold tabular-nums text-foreground">
+                      {formatCurrency(Number(value))}
+                    </span>
+                    <span className="text-muted-foreground">
+                      {' '}
+                      {name === 'realisasiCost' ? 'Realisasi Cost' : 'Target Cost'}
+                    </span>
+                  </>
+                )}
+              />
+            }
+          />
+          <ChartLegend content={<ChartLegendContent />} />
+          <Bar
+            dataKey="targetCost"
+            name="targetCost"
+            fill="var(--color-target)"
+            radius={[4, 4, 0, 0]}
+            maxBarSize={24}
+          />
+          <Bar
+            dataKey="realisasiCost"
+            name="realisasiCost"
+            fill="var(--color-realisasi)"
+            radius={[4, 4, 0, 0]}
+            maxBarSize={24}
+          />
+        </BarChart>
+      )}
     </ChartContainer>
   );
 }

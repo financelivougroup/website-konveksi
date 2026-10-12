@@ -13,11 +13,11 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { AppSelect } from '@/components/AppSelect';
 import {
-  AkumulasiBiayaPerBulan,
-  TargetRealisasiAkumulasi,
-  TargetRealisasiBulanan,
-  TrenBiayaPerBulan,
+  CostRealisasiChart,
+  TargetRealisasiChart,
+  type MonthlyMode,
 } from '@/components/Laporan/TargetJahitCharts';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Badge } from '@/components/reui/badge';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn, formatCurrency } from '@/lib/utils';
@@ -50,6 +50,12 @@ type TabKey = 'keseluruhan' | 'penjahit';
 const EM_DASH = '—';
 const ALL = '__all__';
 
+/** Pilihan toggle bentuk data grafik bulanan; default "Per bulan". */
+const MODE_OPTIONS: { value: MonthlyMode; label: string }[] = [
+  { value: 'bulan', label: 'Per bulan' },
+  { value: 'akumulasi', label: 'Akumulasi' },
+];
+
 /**
  * Laporan Target Jahit — BACA-SAJA.
  *
@@ -76,6 +82,12 @@ export function TargetJahitReportPage() {
   const [rows, setRows] = useState<EnrichedTargetRow[]>([]);
   const [bulanFilter, setBulanFilter] = useState<string>(ALL);
   const [penjahitFilter, setPenjahitFilter] = useState<string>(ALL);
+
+  // Bentuk data kedua grafik bulanan. Disimpan TERPISAH per kartu (pcs vs cost)
+  // supaya mengubah satu grafik tidak diam-diam mengubah grafik lainnya; default
+  // keduanya "Per bulan".
+  const [modePcs, setModePcs] = useState<MonthlyMode>('bulan');
+  const [modeCost, setModeCost] = useState<MonthlyMode>('bulan');
 
   // Guard generasi: hasil request lama tidak boleh menimpa refresh terbaru.
   const generation = useRef(0);
@@ -183,6 +195,16 @@ export function TargetJahitReportPage() {
     [rowsBulan, canSeeCost],
   );
   const kpi = useMemo(() => summarizeReport(rowsBulan, canSeeCost), [rowsBulan, canSeeCost]);
+
+  /**
+   * Ada angka biaya sama sekali? Dipakai untuk MENYEMBUNYIKAN seluruh kartu
+   * biaya (judul + toggle) saat semuanya nol — kartu kosong yang tetap
+   * menampilkan toggle bentuk data hanya membingungkan, bukan menginformasikan.
+   */
+  const adaBiaya = useMemo(
+    () => months.some((m) => m.targetCost > 0 || m.realisasiCost > 0),
+    [months],
+  );
   const penjahitAgg = useMemo(
     () => buildPenjahitAggregates(rowsBulan, canSeeCost),
     [rowsBulan, canSeeCost],
@@ -355,27 +377,36 @@ export function TargetJahitReportPage() {
 
             {/* Keseluruhan = per bulan & akumulasi, bukan per orang. Sumbu Y
                 tidak memuat nama penjahit di sini; tiap batang/titik adalah satu
-                bulan yang sudah dijumlahkan lintas penjahit. */}
+                bulan yang sudah dijumlahkan lintas penjahit.
+
+                Dua kartu berdampingan; bila biaya tak terlihat (inventory) hanya
+                ada satu kartu, jadi kolomnya tidak dipaksa dua agar tidak
+                menyisakan setengah baris kosong. */}
             {months.length === 0 ? (
               <div className="bg-card border border-border rounded-lg p-8 text-center">
                 <p className="text-[13px] text-muted-foreground">Belum ada data bulan yang bisa digambarkan.</p>
               </div>
             ) : (
-              <div className="flex flex-col gap-4">
-                <ChartCard title="Target vs Realisasi per Bulan">
-                  <TargetRealisasiBulanan months={months} className="mt-2" />
-                </ChartCard>
-                <ChartCard title="Akumulasi Target vs Realisasi">
-                  <TargetRealisasiAkumulasi months={months} className="mt-2" />
-                </ChartCard>
-                {canSeeCost && (
-                  <ChartCard title="Target Cost vs Realisasi Cost per Bulan">
-                    <TrenBiayaPerBulan months={months} className="mt-2" />
-                  </ChartCard>
+              <div
+                className={cn(
+                  'grid grid-cols-1 gap-4',
+                  canSeeCost && adaBiaya && 'lg:grid-cols-2',
                 )}
-                {canSeeCost && (
-                  <ChartCard title="Akumulasi Target Cost vs Realisasi Cost">
-                    <AkumulasiBiayaPerBulan months={months} className="mt-2" />
+              >
+                <ChartCard
+                  title="Target vs Realisasi per Bulan"
+                  mode={modePcs}
+                  onModeChange={setModePcs}
+                >
+                  <TargetRealisasiChart months={months} mode={modePcs} className="mt-2" />
+                </ChartCard>
+                {canSeeCost && adaBiaya && (
+                  <ChartCard
+                    title="Target Cost vs Realisasi Cost per Bulan"
+                    mode={modeCost}
+                    onModeChange={setModeCost}
+                  >
+                    <CostRealisasiChart months={months} mode={modeCost} className="mt-2" />
                   </ChartCard>
                 )}
               </div>
@@ -499,22 +530,21 @@ export function TargetJahitReportPage() {
               ]}
             />
 
-            {/* Template grafik disamakan dengan tab Keseluruhan: bulanan +
-                akumulasi, dengan arti warna yang sama (merah = target,
-                biru = realisasi). */}
+            {/* Template grafik disamakan dengan tab Keseluruhan: satu grafik pcs
+                dengan toggle Per bulan/Akumulasi, arti warna sama (merah =
+                target, biru = realisasi). */}
             {penjahitMonths.length === 0 ? (
               <div className="bg-card border border-border rounded-lg p-8 text-center">
                 <p className="text-[13px] text-muted-foreground">Belum ada bulan untuk penjahit ini.</p>
               </div>
             ) : (
-              <div className="flex flex-col gap-4">
-                <ChartCard title={`Target vs Realisasi per Bulan — ${selectedPenjahit}`}>
-                  <TargetRealisasiBulanan months={penjahitMonths} className="mt-2" />
-                </ChartCard>
-                <ChartCard title="Akumulasi Target vs Realisasi">
-                  <TargetRealisasiAkumulasi months={penjahitMonths} className="mt-2" />
-                </ChartCard>
-              </div>
+              <ChartCard
+                title={`Target vs Realisasi per Bulan — ${selectedPenjahit}`}
+                mode={modePcs}
+                onModeChange={setModePcs}
+              >
+                <TargetRealisasiChart months={penjahitMonths} mode={modePcs} className="mt-2" />
+              </ChartCard>
             )}
 
             <h3 className="text-[12px] font-bold text-foreground mt-6 mb-2">
@@ -754,18 +784,57 @@ function StatusBadge({ status }: { status: string }) {
 /**
  * Bingkai seragam untuk setiap grafik.
  *
+ * Bila `mode`/`onModeChange` diberikan, header menampilkan segmented control
+ * "Per bulan | Akumulasi" di pojok kanan atas yang mengganti bentuk data grafik
+ * (batang ↔ garis) tanpa memindahkannya ke kartu lain.
+ *
  * CATATAN: sengaja TIDAK memakai `@/components/reui/frame`. File ReUI itu ditulis
  * untuk Tailwind 4 (44 kelas bergaya `px-(--frame-panel-header-px)`), sedangkan
  * proyek ini Tailwind 3 — kelas itu tidak menghasilkan CSS sama sekali sehingga
  * Frame akan tampil tanpa padding. Dilewati sampai frame.tsx diadaptasi ke
  * sintaks Tailwind 3 (preseden: `reui/alert.tsx` sudah diadaptasi begitu).
  */
-function ChartCard({ title, children }: { title: string; children: React.ReactNode }) {
+function ChartCard({
+  title,
+  children,
+  mode,
+  onModeChange,
+}: {
+  title: string;
+  children: React.ReactNode;
+  mode?: MonthlyMode;
+  onModeChange?: (mode: MonthlyMode) => void;
+}) {
   return (
     <div className="bg-card border border-border rounded-lg p-4">
-      <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-        {title}
-      </span>
+      <div className="flex items-start justify-between gap-3">
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          {title}
+        </span>
+        {mode !== undefined && onModeChange && (
+          <ToggleGroup
+            type="single"
+            size="sm"
+            variant="outline"
+            value={mode}
+            // Radix mengirim '' saat item aktif diklik ulang; diabaikan agar
+            // grafik tidak pernah kehilangan bentuk datanya.
+            onValueChange={(v) => v && onModeChange(v as MonthlyMode)}
+            aria-label={`Bentuk data grafik ${title}`}
+            className="shrink-0 -mt-1"
+          >
+            {MODE_OPTIONS.map((o) => (
+              <ToggleGroupItem
+                key={o.value}
+                value={o.value}
+                className="h-7 px-2.5 text-[11px] data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:hover:bg-primary data-[state=on]:hover:text-primary-foreground"
+              >
+                {o.label}
+              </ToggleGroupItem>
+            ))}
+          </ToggleGroup>
+        )}
+      </div>
       {children}
     </div>
   );
