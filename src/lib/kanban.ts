@@ -31,9 +31,9 @@ export interface KanbanGroup {
    *
    * Satu kode produksi bisa memuat beberapa variasi dengan foto berbeda, jadi
    * tidak ada satu foto yang mewakili semuanya. Variasi pertama dipilih karena
-   * itulah yang paling mewakili kode ini secara tampilan, dan `null` berarti
-   * tidak ada satu pun variasinya berfoto. Sengaja URL, bukan path: pemanggil
-   * hanya perlu merender, tidak perlu tahu bucket mana.
+   * itulah yang paling mewakili kode ini secara tampilan. Bila seluruh variasi
+   * tidak berfoto, gunakan foto produk induk; `null` bila keduanya tidak ada.
+   * Sengaja URL, bukan path: pemanggil hanya perlu merender.
    */
   photoUrl: string | null;
 }
@@ -91,7 +91,10 @@ export function buildKanbanGroups(workOrders: KanbanWorkOrder[]): KanbanGroup[] 
       });
     }
   }
-  return Array.from(map.values());
+  return Array.from(map.values()).map((group) => ({
+    ...group,
+    photoUrl: group.photoUrl ?? group.workOrders.find((wo) => wo.productPhotoUrl)?.productPhotoUrl ?? null,
+  }));
 }
 
 /**

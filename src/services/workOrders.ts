@@ -6,29 +6,45 @@ import type { WorkOrder } from '@/types/pipeline'
 const TABLE = 'work_orders'
 
 /**
- * Peta id variasi → path foto, untuk dipasangkan lewat `source_variation_id`.
+ * Peta foto variasi dan produk induk lewat relasi asal Work Order.
  *
- * Sengaja query terpisah, bukan embed PostgREST. Foto dibaca lewat join
- * balik begini supaya tidak perlu disalin ke work_orders — jadi tidak ada
- * salinan yang bisa basi saat foto variasinya diganti. Kegagalan di sini
- * dikembalikan sebagai peta kosong: foto hanya hiasan, daftar Work Order
- * harus tetap tampil.
+ * Foto tidak disalin ke work_orders agar tidak basi saat foto asal diganti.
+ * Lookup gagal tetap nonfatal, tetapi diberi diagnostik tersensor; peta kosong
+ * tidak boleh menyembunyikan kegagalan query sebagai record tanpa foto.
  */
-async function fetchVariationPhotos(): Promise<Map<string, string>> {
-  const photos = new Map<string, string>()
-  const { data, error } = await supabase
-    .from('production_order_variations')
-    .select('id, photo_path')
-  if (error) return photos
-  for (const row of (data ?? []) as Array<{ id: string; photo_path: string | null }>) {
-    if (row.photo_path) photos.set(row.id, row.photo_path)
+interface OrderPhotos {
+  variations: Map<string, string>
+  products: Map<string, string>
+}
+
+async function fetchOrderPhotos(): Promise<OrderPhotos> {
+  const [variations, products] = await Promise.all([
+    supabase.from('production_order_variations').select('id, photo_path'),
+    supabase.from('production_orders').select('id, product_photo_path'),
+  ])
+  for (const [table, result] of [
+    ['production_order_variations', variations],
+    ['production_orders', products],
+  ] as const) {
+    if (result.error) {
+      const code = /^[A-Z0-9]{1,20}$/.test(result.error.code) ? result.error.code : 'UNKNOWN'
+      console.warn('[workOrders.photos] Photo lookup failed', { table, code })
+    }
+  }
+  const photos: OrderPhotos = { variations: new Map(), products: new Map() }
+  for (const row of (variations.data ?? []) as Array<{ id: string; photo_path: string | null }>) {
+    if (row.photo_path) photos.variations.set(row.id, row.photo_path)
+  }
+  for (const row of (products.data ?? []) as Array<{ id: string; product_photo_path: string | null }>) {
+    if (row.product_photo_path) photos.products.set(row.id, row.product_photo_path)
   }
   return photos
 }
 
-function mapRow(row: Record<string, unknown>, photos?: Map<string, string>): WorkOrder {
+function mapRow(row: Record<string, unknown>, photos?: OrderPhotos): WorkOrder {
   const variationId = row.source_variation_id as string | undefined
-  const variationPhotoPath = (variationId ? photos?.get(variationId) : null) ?? null
+  const variationPhotoPath = (variationId ? photos?.variations.get(variationId) : null) ?? null
+  const productPhotoPath = photos?.products.get(row.source_order_id as string) ?? null
   return {
     id: row.id as string,
     workCode: row.work_code as string,
@@ -51,13 +67,15 @@ function mapRow(row: Record<string, unknown>, photos?: Map<string, string>): Wor
     pulledAt: row.pulled_at as string,
     variationPhotoPath,
     variationPhotoUrl: productPhotoUrl(variationPhotoPath),
+    productPhotoPath,
+    productPhotoUrl: productPhotoUrl(productPhotoPath),
   }
 }
 
 export async function fetchAll(): Promise<{ data: WorkOrder[] | null; error: Error | null }> {
   const [orders, photos] = await Promise.all([
     supabase.from(TABLE).select('*').order('created_at', { ascending: false }),
-    fetchVariationPhotos(),
+    fetchOrderPhotos(),
   ])
   if (orders.error) return { data: null, error: orders.error }
   const rows = orders.data as Record<string, unknown>[] | null
@@ -71,7 +89,7 @@ export async function fetchById(id: string): Promise<{ data: WorkOrder | null; e
       .select('*')
       .eq('id', id)
       .single(),
-    fetchVariationPhotos(),
+    fetchOrderPhotos(),
   ])
   // Peta foto ikut diambil di sini (bukan cuma di fetchAll) supaya kolom Foto
   // terisi juga saat satu Work Order dibuka sendiri — tanpa ini, foto hanya
@@ -86,7 +104,7 @@ export async function fetchByIds(ids: string[]): Promise<{ data: WorkOrder[] | n
   if (uniqueIds.length === 0) return { data: [], error: null };
   const [{ data, error }, photos] = await Promise.all([
     supabase.from(TABLE).select('*').in('id', uniqueIds),
-    fetchVariationPhotos(),
+    fetchOrderPhotos(),
   ]);
   if (error) return { data: null, error };
   return { data: (data as Record<string, unknown>[] | null)?.map((row) => mapRow(row, photos)) ?? [], error: null };
@@ -121,7 +139,7 @@ export async function create(input: Omit<WorkOrder, 'id'>): Promise<{ data: Work
       .insert(dbInput)
       .select()
       .single(),
-    fetchVariationPhotos(),
+    fetchOrderPhotos(),
   ])
   return { data: data ? mapRow(data as Record<string, unknown>, photos) : null, error }
 }
@@ -142,7 +160,7 @@ export async function pullFromProductionOrder(
 
   // Work order hasil Pull baru saja dibuat, jadi fotonya ikut diambil —
   // tanpa ini kolom Foto di Raw Data baru terisi setelah refresh halaman.
-  const photos = await fetchVariationPhotos()
+  const photos = await fetchOrderPhotos()
 
   return {
     data: (data as Record<string, unknown>[]).map((row) => mapRow(row, photos)),

@@ -243,6 +243,9 @@ export interface WorkOrder {
   variationPhotoPath?: string | null;
   /** URL publik turunan dari `variationPhotoPath`, diisi service saat memetakan hasil query. */
   variationPhotoUrl?: string | null;
+  /** Foto produk induk, sebagai cadangan tampilan bila tidak ada foto variasi. */
+  productPhotoPath?: string | null;
+  productPhotoUrl?: string | null;
 }
 
 export interface CuttingRecord {

@@ -640,10 +640,9 @@ export default function ProductionMonitoring({ poJump, onClearPoJump, onOpenSewi
     },
     {
       key: 'photo', label: 'Foto', width: '70px',
-      // Foto per variasi, diambil dari Order Entry lewat source_variation_id —
-      // karena satu baris = satu variasi.
+      // Utamakan foto variasi; foto produk induk menjadi cadangan.
       render: (row: Record<string, unknown>) => {
-        const url = row.variationPhotoUrl as string | null;
+        const url = (row.variationPhotoUrl ?? row.productPhotoUrl) as string | null;
         return url ? (
           <img src={url} alt={String(row.product)} className="h-8 w-8 rounded border border-gray-200 object-cover" />
         ) : (

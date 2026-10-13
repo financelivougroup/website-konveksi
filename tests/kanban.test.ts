@@ -192,6 +192,30 @@ test('decorated rows tidak memutasi work order aslinya', () => {
 
 // ===== Foto per kode produksi =====
 
+test('foto produk induk dipakai hanya bila seluruh variasi tidak berfoto', () => {
+  const groups = buildKanbanGroups([
+    wo({ id: 'wo-1', variationPhotoUrl: null, productPhotoUrl: 'https://x/induk.jpg' }),
+    wo({ id: 'wo-2', variationPhotoUrl: null, productPhotoUrl: 'https://x/induk.jpg' }),
+  ]);
+  assert.equal(groups[0].photoUrl, 'https://x/induk.jpg');
+});
+
+test('foto variasi berikutnya mengalahkan cadangan induk pada variasi pertama', () => {
+  const groups = buildKanbanGroups([
+    wo({ id: 'wo-1', variationPhotoUrl: null, productPhotoUrl: 'https://x/induk.jpg' }),
+    wo({ id: 'wo-2', variationPhotoUrl: 'https://x/variasi.jpg', productPhotoUrl: 'https://x/induk.jpg' }),
+  ]);
+  assert.equal(groups[0].photoUrl, 'https://x/variasi.jpg');
+});
+
+test('foto induk tidak diwariskan ke kode produksi lain', () => {
+  const groups = buildKanbanGroups([
+    wo({ id: 'wo-1', productNote: 'PO-A', productPhotoUrl: 'https://x/induk.jpg' }),
+    wo({ id: 'wo-2', productNote: 'PO-B' }),
+  ]);
+  assert.equal(groups.find((group) => group.productNote === 'PO-B')?.photoUrl, null);
+});
+
 test('kode memakai foto variasi pertama yang punya foto', () => {
   const groups = buildKanbanGroups([
     wo({ id: 'wo-1', variationPhotoUrl: null }),
