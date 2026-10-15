@@ -1258,10 +1258,15 @@ export default function ProductionMonitoring({ poJump, onClearPoJump, onOpenSewi
           <DialogContent className="flex h-[min(86vh,900px)] w-[min(1280px,96vw)] max-w-none flex-col gap-0 p-0 sm:max-w-none">
             {/* pr-12 memberi ruang bagi tombol tutup bawaan DialogContent. */}
             <DialogHeader className="shrink-0 border-b border-gray-100 px-6 py-4 pr-12">
-              <DialogTitle className="flex items-center gap-3 text-[13px]">
+              <DialogTitle className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2 text-left text-[13px]">
                 {selectedGroup && (
                   <>
-                    <span className="truncate font-mono font-bold text-slate-900">{selectedGroup.productNote}</span>
+                    <span className="break-all font-mono font-bold text-slate-900">{selectedGroup.productNote}</span>
+                    {selectedGroup.clientProductionCode && (
+                      <span className="min-w-0 max-w-full break-all font-mono font-bold text-slate-900 sm:border-l sm:border-border sm:pl-4">
+                        {selectedGroup.clientProductionCode}
+                      </span>
+                    )}
                     <StatusBadge status={selectedGroup.status} />
                   </>
                 )}

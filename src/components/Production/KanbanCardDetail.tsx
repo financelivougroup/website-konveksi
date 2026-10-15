@@ -285,16 +285,6 @@ export function KanbanCardDetail({
       {/* ===== Panel kiri: identitas + foto overlay + tabel variasi ===== */}
       <ResizablePanel defaultSize="40%" minSize="28%" maxSize="60%" className="min-w-0">
         <div className="h-full min-h-0 overflow-y-auto p-4 flex flex-col gap-4">
-          {/* Kode produksi CLIENT saja.
-              Judul kode produksi konveksi (productNote) TIDAK diulang di sini
-              karena sudah tampil sebagai judul dialog di atasnya — permintaan
-              user: "tulisan ... dihapus aja karena double dengan yang ada di
-              kotak merah". Badge status juga tidak di sini — sama alasannya,
-              dan ia pun sudah ada di judul dialog. */}
-          <span className="truncate font-mono text-[11px] text-slate-500" title={group.clientProductionCode ?? undefined}>
-            {group.clientProductionCode || EM_DASH}
-          </span>
-
           {/* Foto (kiri) + ruang informasi (kanan).
               Permintaan user: "size foto harus dibuat 4:5", "foto bisa di geser
               ke kiri, jangan center", "kananya ada space kosong bisa diisi

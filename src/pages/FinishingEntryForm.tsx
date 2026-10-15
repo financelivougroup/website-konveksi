@@ -1,75 +1,112 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
-import { EMPTY_ENTRY_SELECTION, changeEntryVariant, entryVariantOptions, filterEntryWorkOrders, selectEntryWorkOrder } from '@/lib/productionEntryOptions';
+import { EMPTY_ENTRY_SELECTION, isEntryQuantityValid, selectEntryWorkOrder, entryQuantitiesByWorkOrder, eligibleEntryWorkOrders } from '@/lib/productionEntryOptions';
 import { ArrowLeft, CheckCircle } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { WorkOrderCardPicker } from '@/components/Production/WorkOrderCardPicker';
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AppSelect } from '@/components/AppSelect';
 import { DatePickerField } from '@/components/DatePickerField';
 import { NumberField } from '@/components/NumberField';
 import { FileUploadField } from '@/components/FileUploadField';
 import { Button } from '@/components/ui/button';
 import { Field, FieldDescription, FieldLabel } from '@/components/ui/field';
-import { Input } from '@/components/ui/input';
 import { toOptions } from '@/components/selectOptions';
 import { useAuth } from '@/contexts/AuthContext';
 import * as finishingRecordSvc from '@/services/finishingRecords';
 import { syncWorkOrderStatus } from '@/services/autoInvoice';
+import * as upstreamRecordSvc from '@/services/kancingRecords';
 import * as workOrderSvc from '@/services/workOrders';
-import type { WorkOrder, FinishingRecord } from '@/types/pipeline';
+import type { WorkOrder, FinishingRecord, KancingRecord } from '@/types/pipeline';
 
 interface FinishingEntryFormProps {
   onBack?: () => void;
   workOrders?: WorkOrder[];
   existingFinishingRecords?: FinishingRecord[];
+  existingKancingRecords?: KancingRecord[];
 }
 
 const penjahitList = ['Budi Santoso', 'Ani Wulandari', 'Caca', 'Dedi Kurniawan', 'Eka Prasetya', 'Fitri Handayani'];
 
-export default function FinishingEntryForm({ onBack, workOrders: externalWorkOrders, existingFinishingRecords: externalFinishingRecords }: FinishingEntryFormProps) {
+export default function FinishingEntryForm({ onBack, workOrders: externalWorkOrders, existingFinishingRecords: externalFinishingRecords, existingKancingRecords: externalUpstreamRecords }: FinishingEntryFormProps) {
   const { profile } = useAuth();
   const currentDisplayName = profile.displayName;
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>(externalWorkOrders ?? []);
   const [existingFinishingRecords, setExistingFinishingRecords] = useState<FinishingRecord[]>(externalFinishingRecords ?? []);
+  const [upstreamRecords, setUpstreamRecords] = useState<KancingRecord[]>(externalUpstreamRecords ?? []);
   const [selection, setSelection] = useState(EMPTY_ENTRY_SELECTION);
-  const { woId, colour, size } = selection;
+  const { woId } = selection;
   const [pic, setPic] = useState('');
   const [qty, setQty] = useState('');
   const [tanggal, setTanggal] = useState(() => format(new Date(), 'yyyy-MM-dd'));
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [isLoading, setLoading] = useState(externalWorkOrders === undefined || externalFinishingRecords === undefined || externalUpstreamRecords === undefined);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+  const [loadedSources, setLoadedSources] = useState({ orders: externalWorkOrders, own: externalFinishingRecords, upstream: externalUpstreamRecords, reloadKey: 0 });
+  const loading = isLoading || loadedSources.orders !== externalWorkOrders || loadedSources.own !== externalFinishingRecords || loadedSources.upstream !== externalUpstreamRecords || loadedSources.reloadKey !== reloadKey;
 
   useEffect(() => {
-    if (externalWorkOrders && externalWorkOrders.length > 0) return;
-    workOrderSvc.fetchAll().then(({ data }) => {
-      if (data) setWorkOrders(data);
-    });
-    finishingRecordSvc.fetchAll().then(({ data }) => {
-      if (data) setExistingFinishingRecords(data);
-    });
-  }, [externalWorkOrders]);
+    let active = true;
+    Promise.all([
+      externalWorkOrders !== undefined ? { data: externalWorkOrders, error: null } : workOrderSvc.fetchAll(),
+      externalFinishingRecords !== undefined ? { data: externalFinishingRecords, error: null } : finishingRecordSvc.fetchAll(),
+      externalUpstreamRecords !== undefined ? { data: externalUpstreamRecords, error: null } : upstreamRecordSvc.fetchAll(),
+    ])
+      .then(([orders, records, upstream]) => {
+        if (!active) return;
+        if (orders.error || records.error || upstream.error || !orders.data || !records.data || !upstream.data) {
+          setLoadError('Data produksi belum dapat dimuat. Coba lagi.');
+          return;
+        }
+        setWorkOrders(orders.data);
+        setExistingFinishingRecords(records.data);
+        setUpstreamRecords(upstream.data);
+        setLoadError(null);
+      })
+      .catch(() => { if (active) setLoadError('Data produksi belum dapat dimuat. Coba lagi.'); })
+      .finally(() => {
+        if (!active) return;
+        setLoadedSources({ orders: externalWorkOrders, own: externalFinishingRecords, upstream: externalUpstreamRecords, reloadKey });
+        setLoading(false);
+      });
+    return () => { active = false; };
+  }, [externalWorkOrders, externalFinishingRecords, externalUpstreamRecords, reloadKey]);
 
-  // Entry finishing hanya untuk WO yang sudah dijahit (PROGRESS/FINISHED).
-  const availableWO = workOrders.filter(
-    (w) => w.productionStatus === 'PROGRESS' || w.productionStatus === 'FINISHED',
+  const upstreamTotals = useMemo(
+    () => entryQuantitiesByWorkOrder(upstreamRecords, (r) => r.qtyKancing),
+    [upstreamRecords],
   );
-  const filteredWO = filterEntryWorkOrders(availableWO, colour, size);
-  const selectedWO = filteredWO.find((w) => w.id === woId);
-  const handleVariantChange = (field: 'colour' | 'size', value: string) => {
-    const next = changeEntryVariant(availableWO, selection, field, value);
-    setSelection(next);
-    if (next.woId !== woId) { setPic(''); setQty(''); }
+  const ownTotals = useMemo(
+    () => entryQuantitiesByWorkOrder(existingFinishingRecords, (r) => r.qtyFinishing),
+    [existingFinishingRecords],
+  );
+  const availableWO = loading || loadError ? [] : eligibleEntryWorkOrders(workOrders, upstreamTotals, ownTotals);
+  const selectedWO = availableWO.find((w) => w.id === woId);
+  const handleWorkOrderSelect = (nextId: string) => {
+    if (isSubmitting || success || nextId === woId) return;
+    setSelection(selectEntryWorkOrder(availableWO, nextId));
+    setPic('');
+    setQty('');
+    setSubmitError(null);
   };
   const sudahFinishing = selectedWO
     ? existingFinishingRecords.filter((r) => r.workOrderId === selectedWO.id).reduce((sum, r) => sum + (Number(r.qtyFinishing) || 0), 0)
     : 0;
   const sisaFinishing = selectedWO ? selectedWO.quantity - sudahFinishing : 0;
-  const numericQty = Number(qty);
-  const isQtyValid = qty.trim() !== '' && Number.isFinite(numericQty) && Number.isInteger(numericQty) && numericQty > 0;
+  const isQtyValid = isEntryQuantityValid(qty);
   const isFormValid = Boolean(selectedWO && pic && isQtyValid && tanggal);
 
+  const showPic = Boolean(selectedWO && isQtyValid);
+  const showDetails = Boolean(showPic && pic);
+  const busy = isSubmitting || success;
+
   const handleSubmit = async () => {
-    if (!isFormValid || !selectedWO) return;
+    if (!isFormValid || !selectedWO || isSubmitting || success) return;
+    setSubmitError(null);
     setIsSubmitting(true);
 
     const { error } = await finishingRecordSvc.create({
@@ -85,6 +122,7 @@ export default function FinishingEntryForm({ onBack, workOrders: externalWorkOrd
     });
 
     if (error) {
+      setSubmitError('Entry belum tersimpan. Coba simpan lagi.');
       setIsSubmitting(false);
       return;
     }
@@ -105,112 +143,66 @@ export default function FinishingEntryForm({ onBack, workOrders: externalWorkOrd
     setTimeout(() => onBack?.(), 1500);
   };
 
-
   return (
-    <div className="flex-1 flex flex-col min-w-0 overflow-auto">
-      <div className="p-4 sm:p-6 max-w-3xl mx-auto w-full">
-        <div className="flex items-center justify-between mb-5">
-          <div>
-            <Button type="button" variant="link" onClick={() => onBack?.()} className="h-auto p-0 text-[11px] text-slate-500 hover:text-slate-700 gap-1 mb-1"><ArrowLeft className="w-3 h-3" /> Kembali ke Production Order</Button>
-            <h1 className="text-lg font-bold text-slate-900">Entry Finishing Baru</h1>
+    <div className="flex min-w-0 flex-1 flex-col overflow-auto">
+      <div className="mx-auto flex w-full max-w-4xl min-w-0 flex-col gap-6 p-4 sm:p-6">
+        <header className="flex min-w-0 flex-wrap items-start justify-between gap-3">
+          <div className="flex min-w-0 flex-col gap-2">
+            <Button type="button" variant="link" onClick={() => onBack?.()} className="h-auto justify-start p-0 text-xs text-muted-foreground"><ArrowLeft /> Kembali ke Production Monitoring</Button>
+            <h1 className="text-lg font-semibold text-foreground">Entry Finishing Baru</h1>
           </div>
-          <div className="text-[10px] text-slate-400 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5">👤 {currentDisplayName}</div>
-        </div>
+          <span className="max-w-full break-words text-xs text-muted-foreground">{currentDisplayName}</span>
+        </header>
 
-        {success && (
-          <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2 text-[13px] text-green-700"><CheckCircle className="w-4 h-4 text-green-500" />Entry berhasil disimpan! Mengalihkan...</div>
-        )}
+        {success && <Alert><CheckCircle /><AlertDescription>Entry berhasil disimpan! Mengalihkan...</AlertDescription></Alert>}
+        {submitError && <Alert variant="destructive"><AlertDescription>{submitError}</AlertDescription></Alert>}
 
-        <div className="border border-gray-200 rounded-xl overflow-hidden shadow-sm bg-white">
-          <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-5">
-            <div className="min-w-0 space-y-4">
-              <Field className="gap-1.5">
-                <FieldLabel htmlFor="finishing-wo-trigger" className="text-[10px] font-semibold text-slate-600 uppercase tracking-wider">Kode Produksi Konveksi <span className="text-red-500">*</span></FieldLabel>
-                <AppSelect
-                  bare
-                  id="finishing-wo"
-                  required
-                  triggerClassName="h-9 text-[12px]"
-                  value={woId}
-                  onValueChange={(next) => { setSelection(selectEntryWorkOrder(availableWO, next)); setPic(''); setQty(''); }}
-                  allowUnlistedValue={false}
-                  placeholder="— Pilih Work Order —"
-                  emptyMessage="Work orders tidak ditemukan"
-                  options={filteredWO.map((wo) => ({
-                    value: wo.id,
-                    label: `${wo.workCode} (Sisa: ${wo.quantity - existingFinishingRecords.filter(r => r.workOrderId === wo.id).reduce((sum, r) => sum + (Number(r.qtyFinishing) || 0), 0)} pcs)`,
-                  }))}
-                />
-              </Field>
-              <Field className="gap-1.5">
-                <FieldLabel htmlFor="finishing-client-code" className="text-[10px] font-semibold text-slate-600 uppercase tracking-wider">Kode Produksi Client</FieldLabel>
-                <Input id="finishing-client-code" value={selectedWO?.clientProductionCode ?? ''} readOnly className="h-9 bg-slate-50 text-[12px]" />
-              </Field>
-              <Field className="gap-1.5">
-                <FieldLabel htmlFor="finishing-colour-trigger">Colour</FieldLabel>
-                <AppSelect bare id="finishing-colour" value={colour} onValueChange={(value) => handleVariantChange('colour', value)} options={entryVariantOptions(availableWO, 'warna')} placeholder="Semua colour" allowUnlistedValue={false} triggerClassName="h-9 text-[12px]" />
-              </Field>
-              <Field className="gap-1.5">
-                <FieldLabel htmlFor="finishing-size-trigger">Size</FieldLabel>
-                <AppSelect bare id="finishing-size" value={size} onValueChange={(value) => handleVariantChange('size', value)} options={entryVariantOptions(filterEntryWorkOrders(availableWO, colour, ''), 'size')} placeholder="Semua size" allowUnlistedValue={false} triggerClassName="h-9 text-[12px]" />
-              </Field>
+        <WorkOrderCardPicker
+          id="finishing-orders" orders={availableWO} selectedId={woId} onSelect={handleWorkOrderSelect}
+          disabled={busy} loading={loading} error={loadError}
+          onRetry={() => { setLoadError(null); setLoading(true); setReloadKey((key) => key + 1); }}
+        />
+
+        <Card hidden={!selectedWO}>
+          <CardHeader><CardTitle>Catat hasil produksi</CardTitle></CardHeader>
+          <CardContent>
+            <fieldset disabled={busy} className="flex min-w-0 flex-col gap-5">
               {selectedWO && (
-                <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg">
-                  <div className="text-[11px] font-semibold text-slate-700 mb-2">📄 Order Info</div>
-                  <div className="grid grid-cols-[100px_1fr] gap-x-3 gap-y-1 text-[11px]">
-                    <span className="text-slate-500">Product:</span><span className="font-medium">{selectedWO.product}</span>
-                    <span className="text-slate-500">Brand:</span><span>{selectedWO.brand} / {selectedWO.warna} / {selectedWO.size}</span>
-                    <span className="text-slate-500">Qty Order:</span>
-                    {/* Qty 0 = belum diterima dari POS client (input qty manual
-                        sudah dihapus dari Order Entry), bukan order kosong. */}
-                    <span className={cn('font-semibold', selectedWO.quantity <= 0 && 'text-amber-600')}>
-                      {selectedWO.quantity > 0 ? `${selectedWO.quantity} pcs` : 'Belum dari POS'}
-                    </span>
-                    <span className="text-slate-500">Terfinishing:</span><span className={cn(sudahFinishing > 0 ? 'text-emerald-600 font-medium' : 'text-slate-500')}>{sudahFinishing} pcs</span>
-                    <span className="text-slate-500 font-medium">Sisa Finishing:</span>
-                    <span className={cn('font-semibold', selectedWO.quantity <= 0 ? 'text-slate-400' : sisaFinishing > 0 ? 'text-amber-600' : 'text-green-600')}>
-                      {selectedWO.quantity > 0 ? `${sisaFinishing} pcs` : '—'}
-                    </span>
-                  </div>
-                </div>
+                <dl className="grid grid-cols-1 gap-3 rounded-lg bg-muted p-4 text-sm sm:grid-cols-3">
+                  <div><dt className="text-xs text-muted-foreground">Qty Order</dt><dd className="font-medium tabular-nums">{selectedWO.quantity > 0 ? `${selectedWO.quantity} pcs` : 'Belum dari POS'}</dd></div>
+                  <div><dt className="text-xs text-muted-foreground">Terfinishing</dt><dd className="font-medium tabular-nums">{sudahFinishing} pcs</dd></div>
+                  <div><dt className="text-xs text-muted-foreground">Sisa Finishing (vs Qty Order)</dt><dd className="font-medium tabular-nums">{selectedWO.quantity > 0 ? `${sisaFinishing} pcs` : '—'}</dd></div>
+                </dl>
               )}
-              <Field className="gap-1.5">
-                <FieldLabel htmlFor="finishing-pic-trigger" className="text-[10px] font-semibold text-slate-600 uppercase tracking-wider">Finisher <span className="text-red-500">*</span></FieldLabel>
-                <AppSelect
-                  bare
-                  id="finishing-pic"
-                  required
-                  triggerClassName="h-9 text-[12px]"
-                  value={pic}
-                  onValueChange={setPic}
-                  placeholder="— Pilih Finisher —"
-                  options={toOptions(penjahitList)}
-                />
-              </Field>
-            </div>
-            <div className="min-w-0 space-y-4">
-              <Field className="gap-1.5" data-invalid={qty !== '' && !isQtyValid}>
-                <FieldLabel htmlFor="finishing-qty" className="text-[10px] font-semibold text-slate-600 uppercase tracking-wider">Jumlah Finishing (pcs) <span className="text-red-500">*</span></FieldLabel>
+              <Field data-invalid={qty !== '' && !isQtyValid}>
+                <FieldLabel htmlFor="finishing-qty">1. Jumlah Finishing (pcs) *</FieldLabel>
                 <NumberField id="finishing-qty" value={qty} onChange={setQty} min={1} placeholder="Contoh: 30" />
-                {qty !== '' && !isQtyValid && <FieldDescription className="text-[10px] text-destructive">Jumlah harus berupa bilangan bulat positif.</FieldDescription>}
+                {qty !== '' && !isQtyValid && <FieldDescription className="text-destructive">Jumlah harus berupa bilangan bulat positif.</FieldDescription>}
               </Field>
-              <Field className="gap-1.5">
-                <FieldLabel htmlFor="finishing-image-upload" className="text-[10px] font-semibold text-slate-600 uppercase tracking-wider">Upload Bukti Barang (foto)</FieldLabel>
-                <FileUploadField id="finishing-image-upload" onChange={setImageFile} disabled={isSubmitting || success} />
-              </Field>
-              <Field className="gap-1.5">
-                <FieldLabel htmlFor="finishing-tanggal" className="text-[10px] font-semibold text-slate-600 uppercase tracking-wider">Tanggal Laporan</FieldLabel>
-                <DatePickerField id="finishing-tanggal" value={tanggal} onChange={setTanggal} maxDate={new Date()} />
-              </Field>
-            </div>
-          </div>
-          <div className="px-5 py-3 bg-slate-50 border-t border-gray-200 flex flex-wrap items-center justify-end gap-3">
-            <div className="flex gap-2">
-              <Button type="button" variant="outline" size="sm" onClick={() => onBack?.()} className="h-8 text-[11px]">Batal</Button>
-              <Button type="button" size="sm" onClick={handleSubmit} disabled={!isFormValid || isSubmitting || success} className="h-8 bg-emerald-500 text-[11px] text-white hover:bg-emerald-600">{isSubmitting ? 'Menyimpan...' : 'Simpan Entry'}</Button>
-            </div>
-          </div>
-        </div>
+              <div hidden={!showPic}>
+                <Field>
+                  <FieldLabel htmlFor="finishing-pic-trigger">2. Finisher *</FieldLabel>
+                  <AppSelect key={woId} bare id="finishing-pic" required value={pic} onValueChange={setPic} disabled={busy || !showPic}
+                    placeholder="Pilih Finisher" options={toOptions(penjahitList)} />
+                </Field>
+              </div>
+              <div hidden={!showDetails} className={showDetails ? 'flex min-w-0 flex-col gap-5' : 'hidden'}>
+                <Field>
+                  <FieldLabel htmlFor="finishing-image-upload">3. Attachment (opsional)</FieldLabel>
+                  <FileUploadField id="finishing-image-upload" onChange={setImageFile} disabled={busy || !showDetails} />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="finishing-tanggal">Tanggal Laporan</FieldLabel>
+                  <DatePickerField id="finishing-tanggal" value={tanggal} onChange={setTanggal} maxDate={new Date()} />
+                </Field>
+              </div>
+            </fieldset>
+          </CardContent>
+          <CardFooter className="justify-end gap-2">
+            <Button type="button" variant="outline" onClick={() => onBack?.()} disabled={isSubmitting}>Batal</Button>
+            <Button className={!showDetails ? 'hidden' : undefined} type="button" onClick={handleSubmit} disabled={!isFormValid || busy}>{isSubmitting ? 'Menyimpan...' : 'Simpan Entry'}</Button>
+          </CardFooter>
+        </Card>
       </div>
     </div>
   );

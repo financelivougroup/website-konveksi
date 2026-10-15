@@ -63,7 +63,7 @@ export function FileUploadField({ id, onChange, disabled = false }: FileUploadFi
             <p className="text-[11px] text-slate-500">{formatBytes(selected.file.size)} · Dipilih</p>
             {previewError && <p role="status" className="text-[11px] text-amber-700">Pratinjau tidak tersedia. Coba foto lain.</p>}
           </div>
-          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0" aria-label="Perbesar bukti barang" disabled={!preview || previewError} onClick={() => setPreviewOpen(true)}><ZoomIn className="h-4 w-4" /></Button>
+          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0" aria-label="Perbesar bukti barang" disabled={disabled || !preview || previewError} onClick={() => setPreviewOpen(true)}><ZoomIn className="h-4 w-4" /></Button>
           <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-red-600" aria-label="Hapus foto bukti" disabled={disabled} onClick={() => { actions.removeFile(selected.id); onChange(null); setPreviewOpen(false); }}><X className="h-4 w-4" /></Button>
         </div>
       )}
@@ -74,7 +74,7 @@ export function FileUploadField({ id, onChange, disabled = false }: FileUploadFi
           <AlertDescription className="text-[11px]">Gunakan JPG, PNG, atau WEBP berukuran maksimal 5 MB, lalu pilih ulang.</AlertDescription>
         </Alert>
       )}
-      <Dialog open={previewOpen && !!preview} onOpenChange={setPreviewOpen}>
+      <Dialog open={!disabled && previewOpen && !!preview} onOpenChange={setPreviewOpen}>
         <DialogContent className="max-w-xl">
           <DialogHeader><DialogTitle>Pratinjau bukti barang</DialogTitle><DialogDescription className="break-all">{selected?.file.name}</DialogDescription></DialogHeader>
           {preview && <img src={preview} alt="Pratinjau bukti barang" className="max-h-[65vh] w-full rounded-md object-contain" />}
