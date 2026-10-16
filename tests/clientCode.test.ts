@@ -59,12 +59,25 @@ test('menerima kode client berupa huruf dan angka', () => {
   assert.equal(isValidClientCode('  LVU  '), true, 'spasi di pinggir diabaikan');
 });
 
-test('menolak kode client yang mengandung karakter di luar huruf dan angka', () => {
-  assert.equal(isValidClientCode('LV-U'), false, 'tanda hubung tidak sah');
-  assert.equal(isValidClientCode('LVU!'), false);
-  assert.equal(isValidClientCode('LV U'), false, 'spasi di tengah tidak sah');
-  assert.equal(isValidClientCode(''), false, 'kode wajib diisi');
-  assert.equal(isValidClientCode('   '), false);
+test('menerima kode client lengkap dengan angka dan tanda hubung', () => {
+  for (const code of ['001-LVU', '002-CSC', ' 001-lvu ', 'LV-U', '001', 'A1-B2-C3']) {
+    assert.equal(isValidClientCode(code), true, code);
+  }
+});
+
+test('menolak kode kosong, pemisah tidak lengkap, dan karakter di luar format', () => {
+  for (const code of ['', '   ', '-LVU', 'LVU-', '001--LVU', '001/LVU', '001_LVU', 'LVU!', 'LV U']) {
+    assert.equal(isValidClientCode(code), false, code);
+  }
+});
+
+test('resolusi brand mempertahankan kode client lengkap tanpa membuang prefix angka', () => {
+  const numberedClients = [
+    { namaClient: 'Livou', kodeClient: '001-LVU' },
+    { namaClient: 'Cassca', kodeClient: '002-CSC' },
+  ];
+  assert.deepEqual(findClientByBrand(' livou ', numberedClients), numberedClients[0]);
+  assert.deepEqual(findClientByBrand('CASSCA', numberedClients), numberedClients[1]);
 });
 
 test('menghitung Work Order tanpa invoice dan snapshot invoice per client', () => {

@@ -78,9 +78,11 @@ test('builds a product photo path scoped to the order id', () => {
   );
 });
 
-test('recognises a system-generated production code', () => {
+test('recognises year-month production codes and retains older month-year codes', () => {
+  assert.equal(isAutoProductionCode('PO/001-LVU/2026/09/002'), true);
+  assert.equal(isAutoProductionCode('po/001-lvu/2026/09/001'), true);
+  assert.equal(isAutoProductionCode('  PO/002-CSC/2026/10/012  '), true);
   assert.equal(isAutoProductionCode('PO/001-LVU/09/2026/001'), true);
-  assert.equal(isAutoProductionCode('po/001-lvu/09/2026/001'), true);
   assert.equal(isAutoProductionCode('  PO/002-CSC/10/2026/012  '), true);
 });
 

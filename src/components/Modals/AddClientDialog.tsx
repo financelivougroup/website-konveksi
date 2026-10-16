@@ -185,13 +185,13 @@ export function AddClientDialog({
               id="add-client-kode"
               value={form.kodeClient}
               onChange={(event) => setField('kodeClient', event.target.value)}
-              placeholder="e.g. LVU"
+              placeholder="e.g. 001-LVU"
               maxLength={10}
               className="h-9 text-[13px] uppercase"
             />
             <p className="text-[11px] text-slate-400">
-              Huruf/angka saja, otomatis huruf besar. Dipakai pada kode invoice
-              (INV/MP/LVU/…).
+              Huruf, angka, dan tanda hubung antarbagian; otomatis huruf besar.
+              Contoh: 001-LVU atau 002-CSC (INV/MP/001-LVU/…).
             </p>
           </div>
 

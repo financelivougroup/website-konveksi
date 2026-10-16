@@ -128,7 +128,7 @@ export function orderEntryValuesFromDetail(detail: OrderEntryDetail) {
   };
 }
 
-/** Awalan tetap kode produksi yang dibuat sistem: `PO/001-LVU/09/2026/001`. */
+/** Awalan tetap kode produksi yang dibuat sistem: `PO/001-LVU/2026/09/001`. */
 export const PRODUCTION_CODE_PREFIX = 'PO';
 
 /**

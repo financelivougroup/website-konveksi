@@ -20,14 +20,14 @@ function normalize(value: string): string {
 }
 
 /**
- * Kode client yang sah: huruf dan angka kapital saja, minimal satu karakter.
+ * Kode client yang sah: segmen huruf/angka, boleh dipisah tanda hubung.
  *
  * Satu-satunya sumber aturan ini — dipakai popup tambah client di Order Entry
  * maupun halaman Register Client, supaya keduanya tidak pernah berbeda
  * pendapat tentang kode yang boleh disimpan.
  */
 export function isValidClientCode(code: string): boolean {
-  return /^[A-Z0-9]+$/.test(code.trim().toUpperCase());
+  return /^[A-Z0-9]+(?:-[A-Z0-9]+)*$/.test(code.trim().toUpperCase());
 }
 
 /**

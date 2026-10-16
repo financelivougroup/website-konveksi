@@ -206,11 +206,52 @@ Website Konveksi/
 
 ## Latest Progress
 
-### 2026-10-15 — Commit/push perubahan entry produksi dan header Kanban — **DIMINTA USER; belum deploy**
+### 2026-10-16 — Persiapan commit/push kode client dan format kode produksi — **DIMINTA USER; deployment oleh user**
 
-- User meminta commit dan push redesign tiga form entry, eligibility per WO/variasi dan pemindahan kode client di header Kanban. Target branch `feat/register-client`; tidak menggabungkan ke `main` atau deploy pada permintaan ini.
+- Scope commit: validasi/form kode client bertanda hubung, dua forward migration generator tanpa prefix ganda dan urutan YYYY/MM, regresi serta smoke test terkait, dan catatan sesi ini. Perubahan Laporan/donut (termasuk dokumentasinya) dan Worker tetap lokal, tidak disertakan.
+- Target push `origin/feat/register-client`, mengikuti branch aktif; tidak merge/push `main` atau menjalankan deployment Openship. Hasil commit/push dan SHA remote dilaporkan setelah verifikasi Git; entri ini mencatat persiapan, bukan klaim push telah berhasil.
+- Jika deployment memakai database berbeda dari koneksi MCP yang sudah dimigrasi, dua migration baru harus diterapkan di backend tujuan sebelum frontend dirilis; deploy frontend saja tidak memperbarui fungsi database.
+
+### 2026-10-16 — Revisi kode produksi: tahun sebelum bulan — **SELESAI; migrasi MCP diterapkan, belum commit/push/deploy**
+
+- Atas permintaan user, **kode produksi baru dan preview** berubah dari `PO/<client>/MM/YYYY/NNN` menjadi `PO/<client>/YYYY/MM/NNN`, contoh `PO/001-LVU/2026/09/002`. Forward migration `supabase/migrations/2026-10-16-production-code-year-month.sql` mengganti hanya dua generator berdasarkan definisi live Supabase MCP; patch prefix client sebelumnya tetap, sequence global bulanan/locking, grants, SECURITY DEFINER/search_path, dan sifat STABLE preview tidak berubah.
+- MCP read-only setelah apply mengonfirmasi kedua fungsi tahun-dulu; preview Livou `PO/001-LVU/2026/10/004`, Cassca `PO/002-CSC/2026/10/004`, unknown null. Matrix contoh September 2026 dan Januari 2027 sesuai. Snapshot master client, kode order/WO/invoice tetap sama; sequence September=7 dan Oktober=3 tetap, tidak reset atau mengonsumsi nomor. Tidak mengubah kode tersimpan atau memanggil generator tulis.
+- Tidak menemukan parser runtime aplikasi yang bergantung posisi bulan/tahun; pengenalan auto-code tetap prefix `PO/`. Komentar contoh `src/lib/orderEntry.ts` diperbarui; regresi `tests/orderEntry.test.ts` mencakup format tahun-bulan baru dan kompatibilitas bulan-tahun lama. Migration historis/fixture kode lama tidak ditulis ulang.
+- **Verifikasi:** 712 Node tests lulus, 0 gagal; ESLint file TS tersentuh dan `git diff --check` lulus. Build/typecheck penuh tidak diulang pada revisi ini (perubahan runtime hanya SQL; sebelumnya lulus pada tugas kode client). Belum uji create order nyata/concurrency atau browser deployed. Migrasi hanya terkonfirmasi pada database koneksi MCP saat ini, bukan otomatis semua backend Openship. Perubahan Laporan/donut/Worker dan fitur client sebelumnya dipertahankan.
+
+### 2026-10-16 — Kode client angka/huruf/tanda hubung + generator tanpa prefix dobel — **SELESAI lokal dan migrasi MCP; belum commit/push/deploy**
+
+- User ingin mengedit `LVU` → `001-LVU`, `CSC` → `002-CSC`, dan mengonfirmasi kode produksi baru tidak boleh menjadi `001-001-LVU`. Validator shared `isValidClientCode` kini menerima segmen alfanumerik dipisah `-`, termasuk lowercase/trim tepi; menolak spasi internal, slash, underscore, prefix/suffix `-`, dan `--`. Dialog shadcn tambah/edit existing memakai validator yang sama; placeholder/helper diperbarui, normalisasi uppercase saat save dan batas input 10 karakter tetap.
+- Supabase MCP memverifikasi `kode_client` text tanpa constraint format, unique index case-insensitive, definisi RPC, grants dan caller sebelum perubahan. Forward migration `supabase/migrations/2026-10-16-client-code-hyphen-prefix.sql` berhasil diterapkan lewat MCP: `next_production_code` dan `production_code_preview` memakai kode bernomor langsung (`^[0-9]+-`), legacy `LVU/CSC` tetap memakai ordinal lama. Sequence bulanan atomik, signature, STABLE preview, SECURITY DEFINER/search_path dan grants dipertahankan; tidak mengubah `order_entry_save`, RLS, atau tabel.
+- **Tidak mengedit data master:** LVU/CSC tetap tersimpan sampai user mengedit sendiri lewat aplikasi. Hash sebelum/sesudah via MCP sama untuk kode master client, order, WO, invoice dan sequence. Preview legacy tetap `PO/001-LVU/10/2026/004` / `PO/002-CSC/10/2026/004`; preview unknown null; matrix ekspresi SQL read-only **8 kasus sesuai** termasuk prefix tetap ketika ordinal berubah. Tidak memanggil generator tulis atau membuat order nyata; belum uji concurrency/fixture database terisolasi.
+- Invoice baru mengikuti kode master lengkap tanpa perubahan helper, mis. `INV/MP/001-LVU/...`; invoice/kode produksi historis tidak ditulis ulang. Fixture POS pada picker masih memakai LVU/CSC, sehingga prioritas urut fixture bisa berbeda setelah rename; seleksi tetap tersedia. Tidak menebak identitas client dengan membuang prefix.
+- **Verifikasi:** tes baru terbukti gagal pada `001-LVU` sebelum patch, lalu Node suite **712 lulus, 0 gagal**; `scripts/smoke-client-code.mjs` **4 lulus** pada dialog asli dengan hooks/UI/service boundary terisolasi (create/edit normalized payload, status/kontak terjaga, invalid tidak write, duplicate error); ESLint seluruh file fitur/harness, `npx tsc -b --noEmit`, `npm run build`, dan `git diff --check` berhasil. Build memberi warning existing Browserslist lama, import invoiceCode campuran statis/dinamis dan chunk besar.
+- **Batas:** smoke bukan browser/Radix/sesi ber-login; belum verifikasi visual atau save pada aplikasi deployed. Migrasi diterapkan hanya pada koneksi MCP saat ini, bukan bukti instance Openship/Affiliate termigrasi. Backend tujuan harus mendapat migrasi sebelum frontend dirilis. Tidak menjalankan server, commit/push/deploy, atau menyentuh perubahan Laporan/donut/Worker yang sudah ada.
+
+### 2026-10-15 — Evaluasi kapasitas server Openship dari screenshot terminal — **SELESAI; belum mengubah server**
+
+- Screenshot user menunjukkan 2 CPU tersedia; RAM total 3.6 GiB, used 3.0 GiB, available 552 MiB; swap total 1.9 GiB, used 1.4 GiB. Swap terpakai menunjukkan halaman telah dipindah ke swap, bukan bukti aktivitas swapping/thrashing saat ini.
+- Root `/dev/vda2`: 69G total, 56G used, 11G available, 85% used. Output container menunjukkan panel/API, PostgreSQL, Redis dan sejumlah layanan Supabase sudah berjalan; Auth/Realtime menampilkan 0B/0B sehingga perlu pemeriksaan status sebelum menyimpulkan kesehatannya.
+- Rekomendasi: jangan menambah full stack Supabase Konveksi pada kapasitas sekarang. Evaluasi upgrade RAM (8 GB sebagai kandidat awal, 16 GB memberi headroom lebih) dan disk atau backend terpisah; tidak menjamin kapasitas tanpa pengukuran beban puncak. Tidak melakukan deployment, cleanup, schema/data/env write.
+
+### 2026-10-15 — Konsultasi Supabase deployment untuk Konveksi dan Affiliate — **ANALISIS AWAL; belum ada perubahan deployment**
+
+- User menyatakan server/panel Openship sudah menjalankan Supabase untuk aplikasi Affiliate dan menanyakan penggunaan bersama versus instance Konveksi terpisah.
+- Supabase MCP read-only mengonfirmasi koneksi MCP saat ini memiliki tabel Konveksi; tidak memverifikasi resource server Openship atau schema/konfigurasi instance Affiliate. Jangan menganggap MCP ini menunjuk instance Affiliate.
+- Dokumentasi resmi self-host Docker menyebut minimum full stack 4 GB RAM / 2 core / SSD 40 GB, rekomendasi 8 GB+ / 4 core+ / SSD 80 GB+. Kapasitas dua instance belum dapat dipastikan tanpa spesifikasi dan penggunaan aktual server.
+- Rekomendasi awal: instance Konveksi terpisah untuk isolasi data/Auth dan operasional jika resource memadai; penggunaan satu stack perlu desain isolasi, bukan sekadar mengganti URL/key. Belum mengubah schema, data, env, atau deployment.
+
+### 2026-10-15 — Pemeriksaan pembaruan Claude Code — **SELESAI**
+
+- Menjalankan `claude --version` dan `claude update` pada instalasi native Windows (`C:\Users\ASUS\.local\bin\claude.exe`).
+- Updater melaporkan **Claude Code sudah versi terbaru pada channel yang digunakan: 2.1.300**; tidak ada pembaruan yang perlu dipasang.
+- Tidak mengubah kode aplikasi atau database.
+
+### 2026-10-15 — Commit/push dan integrasi main perubahan entry produksi/header Kanban — **SELESAI; deployment belum dijalankan Claude**
+
+- User meminta commit dan push redesign tiga form entry, eligibility per WO/variasi dan pemindahan kode client di header Kanban. Target awal branch `feat/register-client`; user kemudian meminta penggabungan ke `main`. Setelah fetch dan verifikasi ancestry, remote `main` berhasil di-fast-forward dari `f6ad8ff` ke `d4e3d28`; `git ls-remote` mengonfirmasi remote `main` dan `feat/register-client` sama (`d4e3d282833fc5d02e004eb2dbd1764983e49e3e`). Tidak checkout/reset working tree atau menjalankan deployment.
 - Scope mencakup komponen picker, tiga halaman form, helper/test, preview attachment gate, header Kanban, fixture/smoke scripts dan dokumentasi terkait. Perubahan Laporan Target Jahit/donut dan Worker yang sudah ada dipertahankan lokal, tidak disertakan.
-- Verifikasi implementasi terakhir: 709 Node tests dan 6 smoke render form lulus; TypeScript/lint/build berhasil. Browser eligibility belum dijalankan ulang karena server dihentikan akibat RAM rendah. Hasil commit/push diverifikasi lewat output git dan HEAD remote setelah eksekusi, bukan diasumsikan pada catatan pra-commit ini.
+- Verifikasi implementasi terakhir: 709 Node tests dan 6 smoke render form lulus; TypeScript/lint/build berhasil. Browser eligibility belum dijalankan ulang karena server dihentikan akibat RAM rendah. Commit `d4e3d28` berhasil dibuat dan dipush ke `origin/feat/register-client`; `git ls-remote` mengonfirmasi HEAD remote sama dengan HEAD lokal (`d4e3d282833fc5d02e004eb2dbd1764983e49e3e`). Catatan hasil ini ditambahkan lokal setelah commit; dokumentasi Laporan yang tidak terkait tetap unstaged.
 
 ### 2026-10-14 — Pilihan entry mengikuti sisa tiap tahap per WO/variasi — **SELESAI lokal, belum commit/push/deploy**
 
