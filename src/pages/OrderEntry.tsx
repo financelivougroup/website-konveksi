@@ -39,7 +39,9 @@ import { PoFilterBanner } from '@/components/Table/PoFilterBanner';
 import { cn } from '@/lib/utils';
 import * as productionOrderSvc from '@/services/productionOrders';
 import * as workOrderSvc from '@/services/workOrders';
-import type { CancelSkipped, DeleteOrderSkipped } from '@/services/productionOrders';
+import type { CancelSkipped } from '@/services/productionOrders';
+import { PermanentDeleteDialog } from '@/components/Modals/PermanentDeleteDialog';
+import { canPermanentlyDelete } from '@/lib/permissions';
 import type { OrderEntryDetail, OrderEntryOverview, ProductionOrderLifecycle } from '@/types/pipeline';
 import type { PoJump } from '@/types';
 
@@ -49,16 +51,6 @@ const STATUS_OPTIONS: Array<{ value: 'all' | ProductionOrderLifecycle; label: st
   { value: 'PULLED', label: 'Pulled' },
   { value: 'CANCELLED', label: 'Cancelled' },
 ];
-
-/**
- * Gerbang sisi klien untuk hapus permanen order.
- *
- * Selama masa testing masih `true`. **Setel ke `false` (atau hapus tombolnya)
- * sebelum deployment** — hapus permanen tidak bisa dikembalikan, dan data
- * produksi nyata tidak punya undo. RPC `delete_production_orders` punya flag
- * sendiri (`c_allow_hard_delete`); keduanya harus dinyalakan agar berjalan.
- */
-const ALLOW_HARD_DELETE = true;
 
 function rupiah(value: number): string {
   return value > 0 ? `Rp ${value.toLocaleString('id-ID')}` : '—';
@@ -100,9 +92,9 @@ export default function OrderEntry({ poJump, onClearPoJump }: { poJump?: PoJump 
   const [bulkPulling, setBulkPulling] = useState(false);
   const [forceTargets, setForceTargets] = useState<CancelSkipped[]>([]);
   /** Order yang akan dihapus permanen, diisi saat dialog konfirmasi dibuka. */
-  const [deleteTargets, setDeleteTargets] = useState<DeleteOrderSkipped[]>([]);
-  const [confirmForceCancel, setConfirmForceCancel] = useState(false);
-  const [forceCancelling, setForceCancelling] = useState(false);
+  const [deleteTargets, setDeleteTargets] = useState<string[]>([]);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const mayDelete = canPermanentlyDelete(profile.role);
   /** Daftar order yang dilewati pembatalan massal, ditampilkan di bawah pesan. */
   const [skippedReport, setSkippedReport] = useState<string[]>([]);
 
@@ -377,41 +369,10 @@ export default function OrderEntry({ poJump, onClearPoJump }: { poJump?: PoJump 
     await fetchOrders();
   }
 
-  /**
-   * Hapus permanen order terpilih beserta seluruh turunannya.
-   *
-   * Konfirmasi terpisah dari pembatalan karena tindakan ini tidak bisa
-   * dikembalikan: baris database benar-benar dibuang, bukan ditandai.
-   */
-  async function handleHardDelete() {
-    setForceCancelling(true);
-    const ids = deleteTargets.map((item) => item.id);
-    const { data, error } = await productionOrderSvc.deleteOrdersPermanently(
-      ids,
-      currentDisplayName,
-      ALLOW_HARD_DELETE,
-    );
-
-    if (error) {
-      setMessage(`Gagal menghapus order: ${orderEntryErrorMessage(error)}`);
-    } else {
-      const deleted = data?.deleted ?? 0;
-      const skipped = data?.skipped ?? [];
-      setMessage(
-        skipped.length === 0
-          ? `${deleted} order dihapus permanen.`
-          : `${deleted} order dihapus, ${skipped.length} dilewati.`,
-      );
-      // Alasan yang dilewati hampir selalu soal invoice, jadi ditampilkan apa
-      // adanya supaya user tahu langkah berikutnya.
-      setSkippedReport(skipped.map((item) => `${item.productionCode || item.id} — ${item.reason}`));
-      setForceTargets(skipped);
-    }
-
-    setForceCancelling(false);
-    setConfirmForceCancel(false);
-    clearSelection();
-    await fetchOrders();
+  function openPermanentDelete(ids: string[]) {
+    if (!mayDelete || cancelling || bulkCancelling || bulkPulling || confirmDelete) return;
+    setDeleteTargets([...ids]);
+    setConfirmDelete(true);
   }
 
   return (
@@ -443,10 +404,7 @@ export default function OrderEntry({ poJump, onClearPoJump }: { poJump?: PoJump 
                   ))}
                 </ul>
               )}
-              {/* Pembatalan biasa menolak order yang sudah di-Pull. Daripada
-                  membiarkan user buntu, tawarkan jalur paksa — dengan
-                  konfirmasi terpisah, karena ini melewati aturan. */}
-              {forceTargets.length > 0 && (
+              {mayDelete && forceTargets.length > 0 && (
                 <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-slate-200 pt-2">
                   <span className="text-[11px] text-blue-700">
                     Order di atas tidak bisa dibatalkan biasa karena sudah masuk proses.
@@ -455,10 +413,10 @@ export default function OrderEntry({ poJump, onClearPoJump }: { poJump?: PoJump 
                     type="button"
                     variant="outline"
                     className="h-7 px-2.5 text-[11px] text-red-600 hover:bg-red-50 hover:text-red-700"
-                    onClick={() => setConfirmForceCancel(true)}
-                    disabled={forceCancelling}
+                    onClick={() => openPermanentDelete(forceTargets.map(item => item.id))}
+                    disabled={cancelling || bulkCancelling || bulkPulling || confirmDelete}
                   >
-                    <Ban className="h-3 w-3" /> Batalkan paksa ({forceTargets.length})
+                    <Trash2 className="h-3 w-3" /> Hapus permanen ({forceTargets.length})
                   </Button>
                 </div>
               )}
@@ -531,22 +489,13 @@ export default function OrderEntry({ poJump, onClearPoJump }: { poJump?: PoJump 
               >
                 <Ban className="h-3.5 w-3.5" /> Batalkan order
               </Button>
-              {ALLOW_HARD_DELETE && (
+              {mayDelete && (
                 <Button
                   type="button"
                   variant="outline"
                   className="h-7 px-2.5 text-[12px] border-red-300 bg-red-50 text-red-700 hover:bg-red-100"
-                  onClick={() => {
-                    setDeleteTargets(
-                      [...selectedIds].map((id) => ({
-                        id,
-                        productionCode: orders.find((order) => order.id === id)?.productionCode ?? null,
-                        reason: '',
-                      })),
-                    );
-                    setConfirmForceCancel(true);
-                  }}
-                  disabled={forceCancelling}
+                  onClick={() => openPermanentDelete([...selectedIds])}
+                  disabled={cancelling || bulkCancelling || bulkPulling || confirmDelete}
                 >
                   <Trash2 className="h-3.5 w-3.5" /> Hapus ({selectionCount})
                 </Button>
@@ -682,43 +631,19 @@ export default function OrderEntry({ poJump, onClearPoJump }: { poJump?: PoJump 
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={confirmForceCancel} onOpenChange={(open) => !open && !forceCancelling && setConfirmForceCancel(false)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Hapus permanen {deleteTargets.length} order?</AlertDialogTitle>
-            <AlertDialogDescription asChild>
-              <div className="space-y-2 text-[13px]">
-                <ul className="list-inside list-disc font-mono text-[12px]">
-                  {deleteTargets.slice(0, 5).map((item) => (
-                    <li key={item.id}>{item.productionCode || item.id}</li>
-                  ))}
-                </ul>
-                {deleteTargets.length > 5 && <p>Dan {deleteTargets.length - 5} order lainnya.</p>}
-                <p>
-                  Order, variasi, harga, <strong>work order</strong>, dan log produksinya akan
-                  dihapus dari database. Tindakan ini <strong>tidak bisa dikembalikan</strong> —
-                  tidak ada undo.
-                </p>
-                <p>
-                  Order yang work order-nya sudah ditagihkan akan <strong>dilewati</strong>, karena
-                  invoice-nya harus dihapus dulu di halaman Invoicing. Data tagihan tidak ikut
-                  terhapus dari sini.
-                </p>
-              </div>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={forceCancelling}>Kembali</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={(event) => { event.preventDefault(); void handleHardDelete(); }}
-              disabled={forceCancelling}
-              className="bg-red-600 hover:bg-red-700"
-            >
-              {forceCancelling && <Loader2 className="animate-spin" />} Hapus permanen
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {mayDelete && <PermanentDeleteDialog
+        open={confirmDelete}
+        onOpenChange={(open) => { setConfirmDelete(open); if (!open) setDeleteTargets([]); }}
+        module="production_orders"
+        ids={deleteTargets}
+        onDeleted={(result) => {
+          setMessage(`${result.counts.production_orders ?? result.deletedIds.length} order dihapus permanen.${result.cleanupPending ? ' Lampiran masih menunggu pembersihan.' : ''}`);
+          setForceTargets([]);
+          setSkippedReport([]);
+          clearSelection();
+          void fetchOrders();
+        }}
+      />}
     </main>
   );
 }

@@ -2,7 +2,6 @@ import { supabase } from '@/lib/supabase';
 import {
   productPhotoUrl,
   removeProductPhotoByPath,
-  removeProductPhotoByPaths,
   uploadVariationPhoto,
 } from '@/services/productPhotos';
 import type {
@@ -139,85 +138,6 @@ export async function cancelMany(
       cancelled: result.cancelled ?? 0,
       skipped: result.skipped ?? [],
     },
-    error: null,
-  };
-}
-
-/** Satu baris hasil hapus permanen order. */
-export interface DeleteOrderSkipped {
-  id: string;
-  productionCode?: string | null;
-  reason: string;
-}
-
-export interface DeleteOrdersResult {
-  deleted: number;
-  skipped: DeleteOrderSkipped[];
-}
-
-/**
- * Hapus permanen order beserta turunannya.
- *
- * Seluruh penghapusan tabel dilakukan di RPC `delete_production_orders` supaya
- * urutannya terjaga satu transaksi — khususnya pemeriksaan invoice yang harus
- * terjadi SEBELUM apa pun dihapus. Menghapusnya dari klien satu per satu akan
- * mengulang pola kerusakan pada tombol hapus Work Order, di mana log produksi
- * terlanjur hilang sebelum induknya ditolak.
- *
- * RPC tidak menyentuh Storage, jadi objek foto dikumpulkan dan dihapus dari
- * sini. **Diambil sebelum RPC dijalankan**, karena setelah order terhapus
- * path-nya tidak bisa dipulihkan lagi.
- *
- * @param allowHardDelete gerbang sisi klien yang mencerminkan
- *   `c_allow_hard_delete` di RPC. Keduanya harus dinyalakan; RPC tetap menolak
- *   bila flag-nya sudah dimatikan untuk deployment.
- */
-export async function deleteOrdersPermanently(
-  ids: string[],
-  actor: string,
-  allowHardDelete: boolean,
-): Promise<{ data: DeleteOrdersResult | null; error: Error | null }> {
-  if (ids.length === 0) return { data: { deleted: 0, skipped: [] }, error: null };
-  if (!allowHardDelete) {
-    return {
-      data: null,
-      error: new Error('Hapus permanen order sedang dinonaktifkan. Aktifkan di titik kendali aplikasi.'),
-    };
-  }
-
-  // 1. Kumpulkan path foto selagi detailnya masih ada.
-  const photoPaths: string[] = [];
-  for (const id of ids) {
-    const { data: detail, error } = await fetchById(id);
-    if (error) return { data: null, error };
-    if (!detail) continue;
-    if (detail.productPhotoPath) photoPaths.push(detail.productPhotoPath);
-    for (const variation of detail.variations) {
-      if (variation.photoPath) photoPaths.push(variation.photoPath);
-    }
-  }
-
-  // 2. Hapus seluruh baris database dalam satu transaksi di server.
-  const { data, error } = await supabase.rpc('delete_production_orders', {
-    p_production_order_ids: ids,
-    p_actor: actor,
-  });
-  if (error) return { data: null, error };
-
-  const result = (data ?? {}) as { deleted?: number; skipped?: DeleteOrderSkipped[] };
-
-  // 3. Objek foto best-effort: baris database sudah hilang di titik ini, jadi
-  //    kegagalan di sini hanya menyisakan sampah di Storage — tidak boleh
-  //    dilaporkan sebagai kegagalan penghapusan.
-  if (photoPaths.length > 0) {
-    const { error: cleanupError } = await removeProductPhotoByPaths(photoPaths);
-    if (cleanupError) {
-      console.warn('[productionOrders] objek foto gagal dibersihkan:', cleanupError.message);
-    }
-  }
-
-  return {
-    data: { deleted: result.deleted ?? 0, skipped: result.skipped ?? [] },
     error: null,
   };
 }

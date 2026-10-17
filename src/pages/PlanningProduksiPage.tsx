@@ -12,7 +12,6 @@ import {
   list as listPlanning,
   create as createPlanning,
   update as updatePlanning,
-  remove as removePlanning,
   type PlanningProduksiRow,
 } from '@/services/planningProduksi';
 import { fetchAll as fetchAllPenjahit, activePenjahitNames, type RegisterPenjahitRow } from '@/services/registerPenjahit';
@@ -28,6 +27,10 @@ import {
 } from '@/lib/complainCascade';
 import { fetchProductionCodeData } from '@/lib/complainHelper';
 import { Button } from '@/components/ui/button';
+import { PermanentDeleteDialog } from '@/components/Modals/PermanentDeleteDialog';
+import { useAuth } from '@/contexts/AuthContext';
+import { canPermanentlyDelete } from '@/lib/permissions';
+import type { PermanentDeleteResult } from '@/types/permanentDeletion';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
@@ -77,6 +80,10 @@ const EMPTY_FORM: PlanningForm = {
 };
 
 export function PlanningProduksiPage() {
+  const { profile } = useAuth();
+  const canDelete = canPermanentlyDelete(profile.role);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteIds, setDeleteIds] = useState<readonly string[]>([]);
   const [items, setItems] = useState<PlanningProduksiRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -439,18 +446,20 @@ export function PlanningProduksiPage() {
     a.click();
     URL.revokeObjectURL(url);
   };
-  const handleBulkDelete = async () => {
-    if (selectedRows.size === 0) return;
-    if (!confirm(`Hapus ${selectedRows.size} planning produksi terpilih?`)) return;
-    let deleted = 0;
-    for (const id of selectedRows) {
-      const { error } = await removePlanning(Number(id));
-      if (!error) deleted++;
+  const handleBulkDelete = () => {
+    if (!canDelete || selectedRows.size === 0) return;
+    setDeleteIds(items.filter((item) => selectedRows.has(item.id)).map((item) => String(item.id)));
+    setDeleteDialogOpen(true);
+  };
+  const handleDeleted = async (result: PermanentDeleteResult) => {
+    if (editTarget && result.deletedIds.includes(String(editTarget.id))) {
+      setEditTarget(null);
+      setModalOpen(false);
     }
-    setItems(prev => prev.filter(r => !selectedRows.has(r.id)));
     setSelectedRows(new Set());
-    setMessage(`✅ ${deleted} planning berhasil dihapus!`);
-    setTimeout(() => setMessage(null), 3000);
+    setDeleteDialogOpen(false);
+    await refresh();
+    setMessage(`${result.deletedIds.length} planning dihapus permanen.${result.cleanupPending > 0 || result.cleanupError ? ' Pembersihan media masih tertunda; periksa status pembersihan.' : ''}`);
   };
 
   const codeChoiceOptions = useMemo(
@@ -536,6 +545,10 @@ export function PlanningProduksiPage() {
 
   return (
     <main className="flex-1 flex flex-col min-w-0 overflow-auto">
+      {canDelete && (
+        <PermanentDeleteDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}
+          module="planning_produksi" ids={deleteIds} onDeleted={handleDeleted} />
+      )}
       <div className="px-6 pt-3 pb-0">
         <div className="flex items-center justify-between mb-3">
           <div>
@@ -589,9 +602,11 @@ export function PlanningProduksiPage() {
                   <SelectItem value="rejected">Rejected</SelectItem>
                 </SelectContent>
               </Select>
-              <Button onClick={handleBulkDelete} size="sm" className="h-8 px-2.5 bg-red-500 hover:bg-red-600">
-                <Trash2 className="w-3 h-3 mr-1.5" /> Delete ({selectedRows.size})
-              </Button>
+              {canDelete && (
+                <Button onClick={handleBulkDelete} size="sm" variant="destructive">
+                  <Trash2 className="w-3 h-3 mr-1.5" /> Delete ({selectedRows.size})
+                </Button>
+              )}
             </>
           )}
           <div className="flex items-center ml-auto">

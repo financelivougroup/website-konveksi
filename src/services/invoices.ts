@@ -1,6 +1,5 @@
 import { supabase } from '@/lib/supabase';
-import { fetchPaymentsByInvoiceId } from '@/services/invoicePayments';
-import { fetchFilesByPaymentIds, removePaymentProofObjects } from '@/services/invoicePaymentFiles';
+import { preview, execute } from '@/services/permanentDeletion';
 import type { InvoiceRow, BillingType } from '@/types/pipeline';
 
 const TABLE = 'invoices';
@@ -142,21 +141,12 @@ export async function fetchInvoiceByProductionOrderId(
 }
 
 export async function fetchMaxSequenceNumber(): Promise<{ sequence: number; error: Error | null }> {
-  const { data, error } = await supabase
-    .from(TABLE)
-    .select('invoice_code')
-    .order('created_at', { ascending: false })
-    .limit(200);
+  const { data, error } = await supabase.rpc('permanent_delete_invoice_sequence');
   if (error) return { sequence: 0, error };
-  const codes = (data as Array<{ invoice_code: string }> | null) ?? [];
-  let maxSeq = 0;
-  for (const r of codes) {
-    const parts = r.invoice_code.split('/');
-    const tail = parts[parts.length - 1];
-    const n = parseInt(tail, 10);
-    if (!Number.isNaN(n) && n > maxSeq) maxSeq = n;
+  if (!Number.isSafeInteger(data) || data < 0) {
+    return { sequence: 0, error: new Error('Nomor urut invoice tidak valid.') };
   }
-  return { sequence: maxSeq, error: null };
+  return { sequence: data, error: null };
 }
 
 export async function createInvoiceAuto(input: Omit<InvoiceRow, 'id' | 'createdAt' | 'updatedAt'>): Promise<{ data: InvoiceRow | null; error: Error | null }> {
@@ -210,16 +200,8 @@ export async function updateInvoice(id: string, updates: Partial<InvoiceRow>): P
 }
 
 export async function removeInvoice(id: string): Promise<{ error: Error | null }> {
-  const { data, error } = await supabase
-    .from(TABLE)
-    .delete()
-    .eq('id', id)
-    .select('id')
-    .maybeSingle();
-  if (error) return { error };
-  // Tanpa pemeriksaan ini, penghapusan yang tidak mengenai baris apa pun akan
-  // dilaporkan sukses — idiom yang sama dipakai `removePayment`.
-  return { error: data ? null : new Error('Invoice tidak ditemukan.') };
+  const result = await deleteInvoice(id);
+  return { error: result.error };
 }
 
 /**
@@ -264,53 +246,12 @@ export interface DeleteInvoiceResult {
   cleanupError: Error | null;
 }
 
-/**
- * Hapus satu invoice beserta seluruh jejaknya.
- *
- * Urutannya penting dan sengaja: path bukti bayar dibaca dan objeknya dihapus
- * **sebelum** baris invoice dihapus. Cascade menghapus baris
- * `invoice_payment_files`, jadi setelah invoice hilang path-nya tidak bisa
- * dipulihkan lagi dan file di Storage jadi yatim permanen.
- *
- * Kalau Storage gagal, seluruh operasi dibatalkan: lebih baik invoice utuh
- * daripada hilang separuh jalan dengan bukti bayar yang sudah lenyap.
- */
+/** Atomic server deletion; media cleanup runs only after commit. */
 export async function deleteInvoice(invoiceId: string): Promise<DeleteInvoiceResult> {
-  const invoice = await fetchInvoiceById(invoiceId);
-  if (invoice.error) return { error: invoice.error, cleanupError: null };
-  if (!invoice.data) return { error: new Error('Invoice tidak ditemukan.'), cleanupError: null };
-
-  // 1. Kumpulkan path bukti bayar selagi metadatanya masih ada.
-  const payments = await fetchPaymentsByInvoiceId(invoiceId);
-  if (payments.error) return { error: payments.error, cleanupError: null };
-  const files = await fetchFilesByPaymentIds((payments.data ?? []).map((payment) => payment.id));
-  if (files.error) return { error: files.error, cleanupError: null };
-  const filePaths = (files.data ?? []).map((file) => file.filePath);
-
-  // 2. Objek Storage dulu; gagal di sini berarti batalkan tanpa menyentuh database.
-  if (filePaths.length > 0) {
-    const { error: storageError } = await removePaymentProofObjects(filePaths);
-    if (storageError) {
-      return {
-        error: new Error(`Bukti bayar gagal dihapus dari Storage — invoice dibatalkan: ${storageError.message}`),
-        cleanupError: null,
-      };
-    }
-  }
-
-  // 3. Baris invoice. Cascade membawa invoice_payments + invoice_payment_files.
-  const removed = await removeInvoice(invoiceId);
-  if (removed.error) return { error: removed.error, cleanupError: null };
-
-  // 4. Invoice sudah hilang, jadi kegagalan di sini tidak bisa di-rollback —
-  //    dilaporkan sebagai sisa yang belum dirapikan, bukan disembunyikan.
-  //    Seluruh grup dikembalikan, bukan hanya WO wakil — lihat alasannya di
-  //    `resetWorkOrderInvoiceStatus`.
-  const status = await resetWorkOrderInvoiceStatus(
-    invoice.data.workOrderId,
-    invoice.data.productionOrderId,
-  );
-  return { error: null, cleanupError: status.error };
+  const impact = await preview('invoices', [invoiceId]);
+  if (impact.error) return { error: impact.error, cleanupError: null };
+  const result = await execute('invoices', [invoiceId], impact.data.fingerprint);
+  return { error: result.error, cleanupError: result.data?.cleanupError ?? null };
 }
 
 /**

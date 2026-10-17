@@ -60,7 +60,10 @@ export async function deleteObject(
   path: string,
 ): Promise<void> {
   const key = r2Key(logicalBucket, path);
-  const res = await client(env).fetch(objectUrl(env, key), { method: 'DELETE' });
+  // Keep the exact validated key (including spaces/unicode); URL parsing must
+  // never turn filename characters into URL syntax or trim trailing whitespace.
+  const encodedKey = key.split('/').map(encodeURIComponent).join('/');
+  const res = await client(env).fetch(objectUrl(env, encodedKey), { method: 'DELETE', redirect: 'error' });
   // 404 dianggap sukses: objeknya memang sudah tidak ada.
   if (!res.ok && res.status !== 404) {
     throw new Error(`R2 menolak penghapusan (HTTP ${res.status}).`);

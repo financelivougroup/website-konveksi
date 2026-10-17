@@ -10,7 +10,7 @@ import { FilterButton, SortButton, ExportButton } from '@/components/Table/Table
 import { ColumnSettingsButton } from '@/components/Table/ColumnSettings';
 import { useColumnSettings } from '@/lib/columnSettings';
 import { applyFilters, applySorts, type FieldOption, type FilterRule, type SortRule } from '@/lib/tableQuery';
-import { fetchAll as fetchAllTarget, remove as removeTarget, type TargetJahitRow } from '@/services/targetJahit';
+import { fetchAll as fetchAllTarget, type TargetJahitRow } from '@/services/targetJahit';
 import { fetchAll as fetchAllRegister, type RegisterPenjahitRow } from '@/services/registerPenjahit';
 import { computeDebt, buildPriceMap, type DebtSummary } from '@/services/staffDebt';
 import * as daftarLiburSvc from '@/services/daftarLibur';
@@ -28,6 +28,9 @@ import { filterDebtRowsByLatestAccum } from '@/lib/staffDebtEligibility';
 import { sumRealisasiCostByStaff } from '@/lib/staffDebtAmounts';
 import type { SewingRecord, WorkOrder } from '@/types/pipeline';
 import { useAuth } from '@/contexts/AuthContext';
+import { PermanentDeleteDialog } from '@/components/Modals/PermanentDeleteDialog';
+import { canPermanentlyDelete } from '@/lib/permissions';
+import type { PermanentDeleteResult } from '@/types/permanentDeletion';
 
 // Map live snake_case target_jahit columns to camelCase render keys.
 const TARGET_COLUMN_ALIAS: Record<string, string> = {
@@ -172,6 +175,10 @@ function renderCell(col: ColDef, row: Record<string, unknown>) {
 export function TargetJahitPage() {
   const { profile } = useAuth();
   const canSeeDebt = profile.role === 'owner' || profile.role === 'finance';
+  const canDelete = canPermanentlyDelete(profile.role);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteIds, setDeleteIds] = useState<readonly string[]>([]);
+  const [deleteModule, setDeleteModule] = useState<'target_jahit' | 'target_jahit_detail'>('target_jahit');
 
   const [tab, setTab] = useState<TabKey>('target');
 
@@ -674,18 +681,18 @@ export function TargetJahitPage() {
     a.click();
     URL.revokeObjectURL(url);
   };
-  const handleBulkDelete = async () => {
-    if (selectedRows.size === 0) return;
-    if (!confirm(`Hapus ${selectedRows.size} target jahit terpilih?`)) return;
-    let deleted = 0;
-    for (const id of selectedRows) {
-      const { error } = await removeTarget(Number(id));
-      if (!error) deleted++;
-    }
-    setItems(prev => prev.filter(r => !selectedRows.has(Number(r.id))));
+  const handleBulkDelete = () => {
+    if (!canDelete || selectedRows.size === 0 || deleteDialogOpen) return;
+    setDeleteModule('target_jahit');
+    setDeleteIds(items.filter((item) => selectedRows.has(Number(item.id))).map((item) => String(item.id)));
+    setDeleteDialogOpen(true);
+  };
+  const handleDeleted = async (result: PermanentDeleteResult) => {
+    if (deleteModule === 'target_jahit' && overlayId !== null && result.deletedIds.includes(String(overlayId))) setOverlayId(null);
     setSelectedRows(new Set());
-    setMessage(`✅ ${deleted} target berhasil dihapus!`);
-    setTimeout(() => setMessage(null), 3000);
+    setDeleteDialogOpen(false);
+    await refresh();
+    setMessage(`${result.deletedIds.length} ${deleteModule === 'target_jahit_detail' ? 'rincian target' : 'target'} dihapus permanen.${result.cleanupPending > 0 || result.cleanupError ? ' Pembersihan media masih tertunda; periksa status pembersihan.' : ''}`);
   };
 
   if (loading && tab !== 'belum-jahit') {
@@ -703,6 +710,10 @@ export function TargetJahitPage() {
 
   return (
     <main className="flex-1 flex flex-col min-w-0 overflow-auto">
+      {canDelete && (
+        <PermanentDeleteDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}
+          module={deleteModule} ids={deleteIds} onDeleted={handleDeleted} />
+      )}
       <div className="px-6 pt-3 pb-0">
         <div className="flex items-center justify-between mb-3">
           <div>
@@ -798,10 +809,10 @@ export function TargetJahitPage() {
               <ColumnSettingsButton fields={roleColumns.map((c) => ({ key: c.key, label: c.label }))} hidden={hiddenCols} onToggle={toggleCol} frozen={frozenCols} onToggleFreeze={toggleFreezeCol} onToggleFreezeAll={toggleFreezeAllCols} headerFrozen={headerFrozen} onToggleHeaderFrozen={setHeaderFrozen} />
               <ExportButton onClick={handleExport} />
               <button onClick={handleImport} className={cn('h-8 px-2.5 text-[11px] rounded-lg flex items-center gap-1.5 font-medium transition-colors', selectedRows.size > 0 ? 'bg-primary text-white hover:bg-primary/90' : 'border border-gray-200 text-slate-400')}>📥 Import ({selectedRows.size})</button>
-              {selectedRows.size > 0 && (
-                <button onClick={handleBulkDelete} className="h-8 px-2.5 text-[11px] rounded-lg flex items-center gap-1.5 font-medium bg-red-500 text-white hover:bg-red-600 transition-colors">
+              {canDelete && selectedRows.size > 0 && (
+                <Button onClick={handleBulkDelete} variant="destructive" size="sm">
                   <Trash2 className="w-3 h-3" /> Delete ({selectedRows.size})
-                </button>
+                </Button>
               )}
               <span className="text-[11px] text-slate-400 ml-auto">{normalized.length} target jahit</span>
             </div>
@@ -1159,6 +1170,19 @@ export function TargetJahitPage() {
                         ] : []),
                       ]}
                       data={detailGridRows as unknown as Record<string, unknown>[]}
+                      rowActions={canDelete ? (row) => (
+                        <Button variant="destructive" size="sm" disabled={deleteDialogOpen}
+                          onClick={() => {
+                            if (deleteDialogOpen) return;
+                            setDeleteModule('target_jahit_detail');
+                            setDeleteIds([String(row.id)]);
+                            // Open only the confirmation dialog, not two modal layers.
+                            setOverlayId(null);
+                            setDeleteDialogOpen(true);
+                          }}>
+                          Hapus rincian
+                        </Button>
+                      ) : undefined}
                       footer={canSeeDebt && myDetails.length > 0 ? (
                         <tr className="border-t-2 border-[#D1D5DB] bg-[#F9FAFB]">
                           <td className={cn(T_TD, 'text-[12px] font-semibold text-[#4B5563]')} colSpan={10}>

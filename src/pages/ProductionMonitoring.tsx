@@ -14,16 +14,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+import { PermanentDeleteDialog } from '@/components/Modals/PermanentDeleteDialog';
+import { Button } from '@/components/ui/button';
+import type { PermanentDeletionModule } from '@/types/permanentDeletion';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -86,7 +79,7 @@ import {
   type LaporanRow,
   type LaporanFilters,
 } from '@/lib/laporanCompute';
-import { canEditProductionLog, PRODUCTION_LOG_EDIT_HINT } from '@/lib/permissions';
+import { canEditProductionLog, canPermanentlyDelete, PRODUCTION_LOG_EDIT_HINT } from '@/lib/permissions';
 import { T_WRAP, T_SUB_LABEL, T_ROW_BTN, softBadgeClass } from '@/lib/tableStyles';
 import { DataTable } from '@/components/Table/DataTable';
 import { FilterButton, SortButton } from '@/components/Table/TableTools';
@@ -404,23 +397,21 @@ export default function ProductionMonitoring({ poJump, onClearPoJump, onOpenSewi
 
   // ===== CUTTING =====
   const cuttingQueueWO = decoratedWO.filter(w => w.derivedStatus === 'NEW');
-  const cuttingDoneWO = decoratedWO.filter(w => w.derivedStatus !== 'NEW');
 
   // Riwayat cutting menampilkan kolom cutting record, jadi record-nya
   // digabungkan ke baris WO di sini — sel tidak perlu lagi mencari sendiri ke
   // array cuttingRecords lewat `getCuttingForWO`.
   const cuttingHistoryRows = useMemo(
-    () => cuttingDoneWO.map((wo) => {
-      const cr = getCuttingForWO(wo.id);
-      return {
-        ...wo,
-        totalCutting: cr?.totalCutting,
-        sisaCutting: cr?.sisaCutting,
-        inputBy: cr?.inputBy,
-        inputAt: cr?.inputAt,
-      };
-    }),
-    [cuttingDoneWO, getCuttingForWO],
+    () => decoratedWO.flatMap((wo) => cuttingRecords.filter(record => record.workOrderId === wo.id).map(cr => ({
+      ...wo,
+      id: cr.id,
+      cuttingRecordId: cr.id,
+      totalCutting: cr.totalCutting,
+      sisaCutting: cr.sisaCutting,
+      inputBy: cr.inputBy,
+      inputAt: cr.inputAt,
+    }))),
+    [decoratedWO, cuttingRecords],
   );
 
   // Kolom tabel Antrian Cutting. Kolom Cutting + Action memuat input dan tombol
@@ -875,8 +866,23 @@ export default function ProductionMonitoring({ poJump, onClearPoJump, onOpenSewi
   // supabase/migrations/2026-09-24-production-log-role-restriction.sql.
   const canEditLog = canEditProductionLog(profile.role);
   const [editTarget, setEditTarget] = useState<LaporanRow | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<LaporanRow | null>(null);
-  const [deleting, setDeleting] = useState(false);
+  const mayDelete = canPermanentlyDelete(profile.role);
+  const [deleteSelection, setDeleteSelection] = useState<{ module: PermanentDeletionModule; ids: string[] } | null>(null);
+
+  const refreshAfterDelete = useCallback(async () => {
+    const [wo, cr, sr, fr, kr] = await Promise.all([
+      workOrderSvc.fetchAll(), cuttingRecordSvc.fetchAll(), sewingRecordSvc.fetchAll(),
+      finishingRecordSvc.fetchAll(), kancingRecordSvc.fetchAll(),
+    ]);
+    const error = wo.error ?? cr.error ?? sr.error ?? fr.error ?? kr.error;
+    if (wo.data) setWorkOrders(wo.data);
+    if (cr.data) setCuttingRecords(cr.data);
+    if (sr.data) setSewingRecords(sr.data);
+    if (fr.data) setFinishingRecords(fr.data);
+    if (kr.data) setKancingRecords(kr.data);
+    if (error) showToast(`Data dihapus, tetapi gagal memuat ulang: ${error.message}`);
+    setSelectedRows(new Set());
+  }, []);
 
   // Jenis log yang sedang ditampilkan — dipakai dialog ubah & hapus agar tahu
   // service mana yang dipanggil.
@@ -928,30 +934,6 @@ export default function ProductionMonitoring({ poJump, onClearPoJump, onOpenSewi
     setEditTarget(null);
     showToast('✅ Catatan berhasil diubah!');
   }, [activeLogKind, refreshLogRecords]);
-
-  const handleLogDelete = useCallback(async () => {
-    if (!deleteTarget || !activeLogKind) return;
-    setDeleting(true);
-
-    const { error } =
-      activeLogKind === 'jahit' ? await sewingRecordSvc.remove(deleteTarget.id)
-        : activeLogKind === 'kancing' ? await kancingRecordSvc.remove(deleteTarget.id)
-          : await finishingRecordSvc.remove(deleteTarget.id);
-
-    if (error) {
-      setDeleting(false);
-      // Sejak policy RLS dibatasi, penolakan datang sebagai error dari service
-      // (0 baris terpengaruh) — jadi pesannya jujur, tidak menyebut "berhasil".
-      console.error('[ProductionMonitoring] gagal hapus catatan log:', error);
-      showToast(`⚠️ ${error.message}`);
-      return;
-    }
-
-    await refreshLogRecords(activeLogKind);
-    setDeleting(false);
-    setDeleteTarget(null);
-    showToast('🗑️ Catatan berhasil dihapus!');
-  }, [deleteTarget, activeLogKind, refreshLogRecords]);
 
   // Akar halaman: tab log dua-panel butuh tinggi PASTI (bukan tinggi konten),
   // jadi `overflow-auto` hanya dipasang pada tab satu-panel. Scroll-nya pindah
@@ -1015,55 +997,14 @@ export default function ProductionMonitoring({ poJump, onClearPoJump, onOpenSewi
               <SortButton fields={RAW_FIELDS} value={rawSorts} onChange={setRawSorts} />
               <ColumnSettingsButton fields={RAW_COLUMNS} hidden={hiddenCols} onToggle={toggleCol} frozen={frozenCols} onToggleFreeze={toggleFreezeCol} onToggleFreezeAll={toggleFreezeAllCols} headerFrozen={headerFrozen} onToggleHeaderFrozen={setHeaderFrozen} />
               <button onClick={handleImport} className={cn('h-8 px-2.5 text-[11px] rounded-lg flex items-center gap-1.5 font-medium transition-colors', selectedRows.size > 0 ? 'bg-primary text-white hover:bg-primary/90' : 'border border-gray-200 text-slate-400')}>📥 Import ({selectedRows.size})</button>
-              {selectedRows.size > 0 && (
-                <button
-                  onClick={async () => {
-                    if (!confirm(`Hapus ${selectedRows.size} Work Order terpilih? Semua cutting & sewing records terkait juga akan dihapus.`)) return;
-                    let deleted = 0;
-                    // Kumpulkan alasan gagal, jangan hanya menghitung yang berhasil:
-                    // pesan "0 berhasil" tanpa sebab tidak bisa ditindaklanjuti.
-                    const failures: string[] = [];
-                    for (const woId of selectedRows) {
-                      // Work order dihapus DULU, dan log anaknya hanya disentuh
-                      // setelah induknya benar-benar terhapus. Urutan sebaliknya
-                      // berbahaya: kalau penghapusan induk ditolak (mis. karena
-                      // ada invoice), log cutting/sewing sudah terlanjur hilang
-                      // tanpa bisa dikembalikan.
-                      const { error } = await workOrderSvc.remove(String(woId));
-                      if (error) {
-                        failures.push(`${woId}: work order — ${error.message}`);
-                        continue;
-                      }
-                      deleted++;
-                      // Sisa log yang tidak ikut terhapus oleh cascade.
-                      const cr = cuttingRecords.find(c => c.workOrderId === woId);
-                      if (cr) {
-                        const { error: cutErr } = await cuttingRecordSvc.remove(cr.id);
-                        if (cutErr) failures.push(`${woId}: cutting — ${cutErr.message}`);
-                      }
-                      const srs = sewingRecords.filter(s => s.workOrderId === woId);
-                      for (const sr of srs) {
-                        const { error: sewErr } = await sewingRecordSvc.remove(sr.id);
-                        if (sewErr) failures.push(`${woId}: sewing — ${sewErr.message}`);
-                      }
-                    }
-                    // Hanya buang baris yang benar-benar terhapus. Sebelumnya
-                    // seluruh baris terpilih dibuang walau gagal, sehingga tabel
-                    // tampak berhasil padahal datanya masih ada di database.
-                    setWorkOrders(prev => prev.filter(w => !(selectedRows.has(w.id) && !failures.some(f => f.startsWith(`${w.id}: work order`)))));
-                    setSelectedRows(new Set());
-                    if (failures.length === 0) {
-                      showToast(`✅ ${deleted} WO berhasil dihapus!`);
-                    } else {
-                      console.error('[ProductionMonitoring] gagal hapus WO:', failures);
-                      const first = failures[0].replace(/^[^:]+: /, '');
-                      showToast(`⚠️ ${deleted} terhapus, ${failures.length} gagal — ${first}`);
-                    }
-                  }}
-                  className="h-8 px-2.5 text-[11px] rounded-lg flex items-center gap-1.5 font-medium bg-red-500 text-white hover:bg-red-600 transition-colors"
+              {mayDelete && selectedRows.size > 0 && (
+                <Button
+                  variant="destructive"
+                  className="h-8 px-2.5 text-xs"
+                  onClick={() => setDeleteSelection({ module: 'work_orders', ids: [...selectedRows].map(String) })}
                 >
-                  <Trash2 className="w-3 h-3" /> Delete ({selectedRows.size})
-                </button>
+                  <Trash2 className="h-3 w-3" /> Hapus permanen ({selectedRows.size})
+                </Button>
               )}
               <span className="text-[11px] text-slate-400 ml-auto">{rawRows.length} work orders</span>
             </div>
@@ -1103,12 +1044,24 @@ export default function ProductionMonitoring({ poJump, onClearPoJump, onOpenSewi
                 />
               </div>
             </div>
-            <div><h3 className="text-[13px] font-semibold text-slate-700 mb-2">🟢 Riwayat Cutting ({cuttingDoneWO.length} WO)</h3>
+            <div><h3 className="text-[13px] font-semibold text-slate-700 mb-2">🟢 Riwayat Cutting ({cuttingHistoryRows.length} catatan)</h3>
               <div className={T_WRAP}>
                 <DataTable
                   variant="plain"
                   columns={cuttingHistoryColumns}
                   data={cuttingHistoryRows as unknown as Record<string, unknown>[]}
+                  rowActions={mayDelete ? (row) => (
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      disabled={!row.cuttingRecordId || deleteSelection !== null}
+                      onClick={() => {
+                        if (row.cuttingRecordId) setDeleteSelection({ module: 'cutting_records', ids: [String(row.cuttingRecordId)] });
+                      }}
+                    >
+                      Hapus catatan
+                    </Button>
+                  ) : undefined}
                   emptyMessage={
                     <div className="py-8 text-center text-gray-400 text-[13px]">Belum ada riwayat cutting</div>
                   }
@@ -1215,7 +1168,12 @@ export default function ProductionMonitoring({ poJump, onClearPoJump, onOpenSewi
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
-                          onClick={() => setDeleteTarget(row)}
+                          onClick={() => {
+                            if (mayDelete) setDeleteSelection({
+                              module: activeLogKind === 'jahit' ? 'sewing_records' : activeLogKind === 'kancing' ? 'kancing_records' : 'finishing_records',
+                              ids: [row.id],
+                            });
+                          }}
                           className="text-[12px] gap-2 text-rose-600 focus:text-rose-700"
                         >
                           <Trash2 className="w-3.5 h-3.5" /> Hapus
@@ -1302,42 +1260,17 @@ export default function ProductionMonitoring({ poJump, onClearPoJump, onOpenSewi
           onSaved={handleLogSaved}
         />
 
-        <AlertDialog
-          open={deleteTarget !== null}
-          onOpenChange={(open) => { if (!open && !deleting) setDeleteTarget(null); }}
-        >
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle className="text-[14px]">Hapus catatan ini?</AlertDialogTitle>
-              <AlertDialogDescription asChild>
-                <div className="space-y-2 text-[13px]">
-                  <p className="font-mono text-[12px]">
-                    {deleteTarget?.produk || '—'} · {deleteTarget?.warna || '—'} · {deleteTarget?.size || '—'}
-                  </p>
-                  <p>
-                    {deleteTarget ? `${deleteTarget.qty.toLocaleString('id-ID')} pcs` : ''}
-                    {deleteTarget?.tanggal ? ` · ${formatDate(deleteTarget.tanggal)}` : ''}
-                  </p>
-                  <p>
-                    Angka "sudah terjahit / terpasang / terfinishing" pada work
-                    order ikut berkurang, dan catatan ini tidak bisa
-                    dikembalikan setelah dihapus.
-                  </p>
-                </div>
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel disabled={deleting}>Kembali</AlertDialogCancel>
-              <AlertDialogAction
-                onClick={(event) => { event.preventDefault(); void handleLogDelete(); }}
-                disabled={deleting}
-                className="bg-red-600 hover:bg-red-700"
-              >
-                Hapus
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+        {mayDelete && deleteSelection && <PermanentDeleteDialog
+          open
+          onOpenChange={(open) => { if (!open) setDeleteSelection(null); }}
+          module={deleteSelection.module}
+          ids={deleteSelection.ids}
+          onDeleted={(result) => {
+            setSelectedGroup(null);
+            showToast(`Data berhasil dihapus permanen.${result.cleanupPending ? ' Lampiran menunggu pembersihan.' : ''}`);
+            void refreshAfterDelete();
+          }}
+        />}
 
       </div>
     </div>

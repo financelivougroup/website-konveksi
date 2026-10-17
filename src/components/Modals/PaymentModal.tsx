@@ -34,12 +34,15 @@ import {
   fetchFilesByPaymentIds,
   removePaymentFile,
   removePaymentProofObject,
-  removePaymentProofObjects,
   uploadPaymentProof,
 } from '@/services/invoicePaymentFiles';
 import { updateInvoice, updateWorkOrderInvoiceStatus } from '@/services/invoices';
 import { computeFinanceValidation, computeOutstanding } from '@/lib/invoiceCompute';
 import type { InvoicePaymentFileRow, InvoiceRow } from '@/types/pipeline';
+import { useAuth } from '@/contexts/AuthContext';
+import { canPermanentlyDelete } from '@/lib/permissions';
+import { PermanentDeleteDialog } from '@/components/Modals/PermanentDeleteDialog';
+import type { PermanentDeleteResult } from '@/types/permanentDeletion';
 
 interface PaymentModalProps {
   open: boolean;
@@ -102,8 +105,9 @@ export function PaymentModal({ open, invoice, onClose, onSaved, onError, onSucce
   const [submitting, setSubmitting] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [confirmCash, setConfirmCash] = useState(false);
-  const [loadedPaymentIds, setLoadedPaymentIds] = useState<string[]>([]);
-  const [proofsByPayment, setProofsByPayment] = useState<Record<string, InvoicePaymentFileRow[]>>({});
+  const [deleteTarget, setDeleteTarget] = useState<{ paymentId: string; invoice: InvoiceRow } | null>(null);
+  const { profile } = useAuth();
+  const canDelete = canPermanentlyDelete(profile.role);
   const loadRequestRef = useRef(0);
 
   const reload = useCallback(async (target: InvoiceRow) => {
@@ -130,8 +134,6 @@ export function PaymentModal({ open, invoice, onClose, onSaved, onError, onSucce
     for (const f of files ?? []) {
       (byPayment[f.paymentId] ??= []).push(f);
     }
-    setProofsByPayment(byPayment);
-    setLoadedPaymentIds(list.map((p) => p.id));
 
     const cashOnly = list.filter((p) => p.paymentType === 'cash');
     const terminOnly = list.filter((p) => p.paymentType === 'termin');
@@ -168,15 +170,13 @@ export function PaymentModal({ open, invoice, onClose, onSaved, onError, onSucce
       loadRequestRef.current += 1;
       setRows([newDraftRow()]);
       setStashedRows([]);
-      setLoadedPaymentIds([]);
-      setProofsByPayment({});
+      setDeleteTarget(null);
       return;
     }
     setPaymentType('cash');
     setRows([newDraftRow()]);
     setStashedRows([]);
-    setLoadedPaymentIds([]);
-    setProofsByPayment({});
+    setDeleteTarget(null);
     setLoadError(null);
     void reload(invoice);
   }, [open, invoice, reload]);
@@ -212,7 +212,7 @@ export function PaymentModal({ open, invoice, onClose, onSaved, onError, onSucce
 
   const outstanding = computeOutstanding(invoice.totalAmount, paymentTotal);
   const isOverpayment = paymentTotal > invoice.totalAmount;
-  const canSave = !loading && !submitting && !loadError && validation.blockers.length === 0;
+  const canSave = !loading && !submitting && !deleteTarget && !loadError && validation.blockers.length === 0;
 
   function updateRow(localId: string, patch: Partial<DraftRow>) {
     setRows((prev) => prev.map((r) => (r.localId === localId ? { ...r, ...patch } : r)));
@@ -222,13 +222,36 @@ export function PaymentModal({ open, invoice, onClose, onSaved, onError, onSucce
     setRows((prev) => [...prev, newDraftRow()]);
   }
 
-  function removeRow(localId: string) {
-    setRows((prev) => (prev.length <= 1 ? prev : prev.filter((r) => r.localId !== localId)));
+  function removeRow(row: DraftRow) {
+    if (submitting || loading || deleteTarget) return;
+    if (row.paymentId) {
+      if (!canDelete || !invoice) return;
+      setDeleteTarget({ paymentId: row.paymentId, invoice });
+      return;
+    }
+    setRows((prev) => (prev.length <= 1 ? prev : prev.filter((candidate) => candidate.localId !== row.localId)));
+  }
+
+  async function handleDeletedPayment(result: PermanentDeleteResult) {
+    const target = deleteTarget;
+    setDeleteTarget(null);
+    if (!target) return;
+    // Canonical DB state wins over unsaved local amounts/proofs after a deletion.
+    await reload(target.invoice);
+    onSuccess(result.cleanupPending > 0 || result.cleanupError
+      ? 'Pembayaran berhasil dihapus. Pembersihan lampiran masih tertunda.'
+      : 'Pembayaran berhasil dihapus permanen.');
+    // Existing parent closes this modal and refetches invoice totals/status from DB.
+    onSaved();
   }
 
   function requestTypeChange(next: PaymentType) {
     if (next === paymentType) return;
     if (next === 'cash') {
+      if (rows.slice(1).some(row => row.paymentId)) {
+        onError('Hapus termin tersimpan melalui konfirmasi hapus permanen terlebih dahulu sebelum beralih ke cash.');
+        return;
+      }
       if (rows.length > 1) {
         setConfirmCash(true);
         return;
@@ -252,6 +275,7 @@ export function PaymentModal({ open, invoice, onClose, onSaved, onError, onSucce
   }
 
   async function handleSave() {
+    if (submitting || loading || deleteTarget) return;
     if (!invoice) {
       onError('Invoice tidak ditemukan.');
       return;
@@ -268,7 +292,6 @@ export function PaymentModal({ open, invoice, onClose, onSaved, onError, onSucce
 
     const createdPaymentIds: string[] = [];
     const createdArtifacts: { fileId: string; filePath: string }[] = [];
-    const plannedIds: string[] = [];
 
     async function abortSave(message: string, rollback: boolean) {
       if (rollback) {
@@ -290,7 +313,6 @@ export function PaymentModal({ open, invoice, onClose, onSaved, onError, onSucce
       for (let i = 0; i < snapshot.length; i++) {
         const r = snapshot[i];
         if (r.paymentId) {
-          plannedIds.push(r.paymentId);
           continue;
         }
         const { data: created, error } = await createPayment({
@@ -306,7 +328,6 @@ export function PaymentModal({ open, invoice, onClose, onSaved, onError, onSucce
         }
         r.paymentId = created.id;
         createdPaymentIds.push(created.id);
-        plannedIds.push(created.id);
       }
 
       // ===== Fase 2: upload bukti baru. Upload gagal menghapus row baru, bukan row lama. =====
@@ -335,10 +356,6 @@ export function PaymentModal({ open, invoice, onClose, onSaved, onError, onSucce
             return;
           }
           createdArtifacts.push({ fileId: createdFile.id, filePath: createdFile.filePath });
-          setProofsByPayment((previous) => ({
-            ...previous,
-            [paymentId]: [...(previous[paymentId] ?? []), createdFile],
-          }));
           setRows((previous) => previous.map((candidate) => (
             candidate.localId === r.localId
               ? {
@@ -369,6 +386,7 @@ export function PaymentModal({ open, invoice, onClose, onSaved, onError, onSucce
       }
 
       // ===== Fase 4: operasi destruktif terakhir. =====
+      let cleanupPending = false;
       for (const r of snapshot) {
         for (const fileId of r.removedProofIds) {
           const { error, cleanupError } = await removePaymentFile(fileId);
@@ -376,34 +394,14 @@ export function PaymentModal({ open, invoice, onClose, onSaved, onError, onSucce
             await abortSave(`Payment tersimpan, tapi gagal hapus bukti: ${error.message}`, false);
             return;
           }
-          if (cleanupError) {
-            await abortSave(
-              `Bukti belum dihapus karena file Storage gagal dibersihkan: ${cleanupError.message}`,
-              false,
-            );
-            return;
-          }
+          // Metadata is already committed; pending media cleanup must not abort
+          // payment/status reconciliation or imply the proof record still exists.
+          if (cleanupError) cleanupPending = true;
         }
       }
 
-      const removedIds = loadedPaymentIds.filter((id) => !plannedIds.includes(id));
-      const orphanPaths: string[] = [];
-      for (const id of removedIds) {
-        const paths = (proofsByPayment[id] ?? []).map((f) => f.filePath);
-        const { error } = await removePayment(id, invoiceId);
-        if (error) {
-          await abortSave(`Payment tersimpan, tapi gagal hapus payment lama: ${error.message}`, false);
-          return;
-        }
-        orphanPaths.push(...paths);
-      }
-      if (orphanPaths.length > 0) {
-        const { error } = await removePaymentProofObjects(orphanPaths);
-        if (error) {
-          await abortSave(`Payment lama dihapus, tapi file Storage gagal dibersihkan: ${error.message}`, false);
-          return;
-        }
-      }
+      // Saved-payment deletion is exclusively the preview/confirm RPC flow above.
+      // Saving or switching payment type must never implicitly remove persisted rows.
 
       // ===== Fase 5: refetch canonical lalu sinkronkan status. =====
       const { data: freshPayments, error: refetchError } = await fetchPaymentsByInvoiceId(invoiceId);
@@ -445,7 +443,7 @@ export function PaymentModal({ open, invoice, onClose, onSaved, onError, onSucce
       }
 
       setRows((previous) => previous.map((candidate) => ({ ...candidate, newProofs: [] })));
-      onSuccess(`Pembayaran tersimpan. Total dibayar ${formatCurrency(totalPaid)}.`);
+      onSuccess(`Pembayaran tersimpan. Total dibayar ${formatCurrency(totalPaid)}.${cleanupPending ? ' Bukti sudah dihapus; file masih menunggu pembersihan.' : ''}`);
       onSaved();
     } catch (error) {
       await abortSave(
@@ -463,7 +461,7 @@ export function PaymentModal({ open, invoice, onClose, onSaved, onError, onSucce
       <Dialog
         open={open}
         onOpenChange={(next) => {
-          if (!next && !submitting) onClose();
+          if (!next && !submitting && !deleteTarget) onClose();
         }}
       >
         <DialogContent className="sm:max-w-[680px] max-h-[90vh] overflow-y-auto">
@@ -494,7 +492,7 @@ export function PaymentModal({ open, invoice, onClose, onSaved, onError, onSucce
                   value={paymentType}
                   onValueChange={(v) => requestTypeChange(v as PaymentType)}
                   className="flex items-center gap-6"
-                  disabled={submitting}
+                  disabled={submitting || deleteTarget !== null}
                 >
                   <div className="flex items-center gap-2">
                     <RadioGroupItem value="cash" id="pay-type-cash" />
@@ -517,16 +515,16 @@ export function PaymentModal({ open, invoice, onClose, onSaved, onError, onSucce
                         <span className="text-[12px] font-semibold text-slate-700">
                           {paymentType === 'cash' ? 'Cash' : `Termin ${idx + 1}`}
                         </span>
-                        {paymentType === 'termin' && rows.length > 1 && (
+                        {(row.paymentId ? canDelete : paymentType === 'termin' && rows.length > 1) && (
                           <Button
                             type="button"
                             variant="ghost"
                             size="sm"
                             className="h-6 px-2 text-[11px] text-red-600 hover:bg-red-50"
-                            onClick={() => removeRow(row.localId)}
-                            disabled={submitting}
+                            onClick={() => removeRow(row)}
+                            disabled={submitting || deleteTarget !== null}
                           >
-                            <Trash2 className="w-3 h-3 mr-1" /> Hapus termin
+                            <Trash2 className="w-3 h-3 mr-1" /> {row.paymentId ? 'Hapus permanen' : 'Hapus termin'}
                           </Button>
                         )}
                       </div>
@@ -540,7 +538,7 @@ export function PaymentModal({ open, invoice, onClose, onSaved, onError, onSucce
                             value={row.paymentDate}
                             onChange={(e) => updateRow(row.localId, { paymentDate: e.target.value })}
                             className="h-8 text-[12px]"
-                            disabled={submitting}
+                            disabled={submitting || deleteTarget !== null}
                           />
                         </div>
                         <div>
@@ -552,7 +550,7 @@ export function PaymentModal({ open, invoice, onClose, onSaved, onError, onSucce
                             value={row.amount}
                             onChange={(e) => updateRow(row.localId, { amount: e.target.value })}
                             className="h-8 text-[12px] text-right"
-                            disabled={submitting}
+                            disabled={submitting || deleteTarget !== null}
                           />
                         </div>
                       </div>
@@ -574,7 +572,7 @@ export function PaymentModal({ open, invoice, onClose, onSaved, onError, onSucce
                             }
                           }}
                           className="h-8 text-[11px] py-1"
-                          disabled={submitting}
+                          disabled={submitting || deleteTarget !== null}
                         />
 
                         {(kept.length > 0 || row.newProofs.length > 0) && (
@@ -600,7 +598,7 @@ export function PaymentModal({ open, invoice, onClose, onSaved, onError, onSucce
                                     })
                                   }
                                   className="h-auto p-0 text-[11px] text-red-500 shrink-0"
-                                  disabled={submitting}
+                                  disabled={submitting || deleteTarget !== null}
                                 >
                                   Hapus
                                 </Button>
@@ -614,7 +612,7 @@ export function PaymentModal({ open, invoice, onClose, onSaved, onError, onSucce
                                   size="sm"
                                   onClick={() => updateRow(row.localId, { removedProofIds: [] })}
                                   className="h-auto p-0 gap-1 text-[11px] text-slate-500"
-                                  disabled={submitting}
+                                  disabled={submitting || deleteTarget !== null}
                                 >
                                   <Undo2 className="w-3 h-3" /> Batalkan {row.removedProofIds.length} penghapusan bukti
                                 </Button>
@@ -634,7 +632,7 @@ export function PaymentModal({ open, invoice, onClose, onSaved, onError, onSucce
                                     })
                                   }
                                   className="h-auto p-0 text-[11px] text-red-500 shrink-0"
-                                  disabled={submitting}
+                                  disabled={submitting || deleteTarget !== null}
                                 >
                                   Batal
                                 </Button>
@@ -659,7 +657,7 @@ export function PaymentModal({ open, invoice, onClose, onSaved, onError, onSucce
                   size="sm"
                   className="h-8"
                   onClick={addTerminRow}
-                  disabled={submitting}
+                  disabled={submitting || deleteTarget !== null}
                 >
                   <Plus className="w-3.5 h-3.5 mr-1" /> Tambah Termin
                 </Button>
@@ -684,7 +682,7 @@ export function PaymentModal({ open, invoice, onClose, onSaved, onError, onSucce
           )}
 
           <DialogFooter>
-            <Button variant="outline" onClick={onClose} disabled={submitting}>
+            <Button variant="outline" onClick={onClose} disabled={submitting || deleteTarget !== null}>
               Cancel
             </Button>
             <Button onClick={() => void handleSave()} disabled={!canSave}>
@@ -694,13 +692,24 @@ export function PaymentModal({ open, invoice, onClose, onSaved, onError, onSucce
         </DialogContent>
       </Dialog>
 
+      {canDelete && open && deleteTarget && (
+        <PermanentDeleteDialog
+          open
+          onOpenChange={next => { if (!next) setDeleteTarget(null); }}
+          module="invoice_payments"
+          ids={[deleteTarget.paymentId]}
+          title="Hapus permanen pembayaran tersimpan?"
+          onDeleted={result => { void handleDeletedPayment(result); }}
+        />
+      )}
+
       <AlertDialog open={confirmCash} onOpenChange={setConfirmCash}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Ubah ke pembayaran cash?</AlertDialogTitle>
             <AlertDialogDescription>
-              Hanya termin pertama yang dipertahankan. {rows.length - 1} termin lainnya akan dihapus permanen
-              setelah Anda menyimpan.
+              Hanya baris pertama yang ditampilkan dalam mode cash. {rows.length - 1} draft termin lainnya
+              disimpan sementara dan akan kembali jika Anda beralih ke termin sebelum menyimpan.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

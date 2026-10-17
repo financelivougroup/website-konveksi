@@ -26,16 +26,6 @@ import { FilterButton, SortButton, ExportButton } from '@/components/Table/Table
 import { ColumnSettingsButton } from '@/components/Table/ColumnSettings';
 import { DataTable } from '@/components/Table/DataTable';
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
-import {
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
@@ -45,7 +35,10 @@ import { useColumnSettings } from '@/lib/columnSettings';
 import { useAuth } from '@/contexts/AuthContext';
 import { applyFilters, applySorts, type FieldOption, type FilterRule, type SortRule } from '@/lib/tableQuery';
 import { T_WRAP, T_ROW_BTN, T_SOFT_BADGE } from '@/lib/tableStyles';
-import { canEditSalary, SALARY_EDIT_HINT } from '@/lib/permissions';
+import { canEditSalary, canPermanentlyDelete, SALARY_EDIT_HINT } from '@/lib/permissions';
+import { PermanentDeleteDialog } from '@/components/Modals/PermanentDeleteDialog';
+import { Button } from '@/components/ui/button';
+import type { PermanentDeleteResult } from '@/types/permanentDeletion';
 import { formatDate } from '@/data/pipelineData';
 import { formatCurrency } from '@/lib/utils';
 import { formatRupiahRingkas } from '@/lib/targetJahitReport';
@@ -222,8 +215,9 @@ export function ExpensePage() {
   const [viewTarget, setViewTarget] = useState<ExpenseEntry | null>(null);
   /** Baris yang notanya sedang diunggah/diganti lewat aksi "Attach Receipt". */
   const [receiptTarget, setReceiptTarget] = useState<ExpenseEntry | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<ExpenseEntry | null>(null);
-  const [deleting, setDeleting] = useState(false);
+  const canDelete = canPermanentlyDelete(profile.role);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteIds, setDeleteIds] = useState<readonly string[]>([]);
   /** Baris terpilih untuk aksi massal. id-nya number, mengikuti pola
    *  RegisterClientPage/TargetJahitPage. */
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
@@ -432,46 +426,25 @@ export function ExpensePage() {
   const expenseColumnKeys = useMemo(() => expenseColumns.map((c) => c.key), [expenseColumns]);
   const { hidden: hiddenCols, toggle: toggleCol, frozen: frozenCols, toggleFreeze: toggleFreezeCol, toggleFreezeAll: toggleFreezeAllCols, headerFrozen, setHeaderFrozen } = useColumnSettings('expense', expenseColumnKeys);
 
-  const [bulkDeleting, setBulkDeleting] = useState(false);
-
-  /**
-   * Hapus massal. Dipanggil satu per satu, bukan satu operasi massal, karena
-   * `remove()` memang bekerja per baris dan harus menghapus lampiran Storage
-   * lebih dulu.
-   *
-   * Karena itu batch bisa **berhasil sebagian**, dan itu dilaporkan jujur:
-   * berapa yang terhapus dan berapa yang gagal **beserta alasannya**. Hanya
-   * melaporkan angka akan menyembunyikan baris mana yang masih ada.
-   */
-  const handleBulkDelete = useCallback(async () => {
-    setBulkDeleting(true);
-    setMessage(null);
-    setErrorMessage(null);
-
-    const targets = entries.filter((entry) => selectedRows.has(entry.id));
-    let deleted = 0;
-    const failures: string[] = [];
-
-    for (const entry of targets) {
-      const { error } = await expenseSvc.remove(entry);
-      if (error) {
-        failures.push(`${entry.namaBarang || entry.categoryPath}: ${error.message}`);
-        continue;
-      }
-      deleted += 1;
-    }
-
-    setBulkDeleting(false);
+  const openPermanentDelete = (ids: readonly string[]) => {
+    if (!canDelete || ids.length === 0) return;
+    setDeleteIds([...ids]);
+    setDeleteDialogOpen(true);
+  };
+  const handleBulkDelete = () => openPermanentDelete(
+    entries.filter((entry) => selectedRows.has(entry.id)).map((entry) => String(entry.id)),
+  );
+  const handleDeleted = async (result: PermanentDeleteResult) => {
+    const deleted = new Set(result.deletedIds);
+    if (editTarget && deleted.has(String(editTarget.id))) { setEditTarget(null); setDialogOpen(false); }
+    if (viewTarget && deleted.has(String(viewTarget.id))) setViewTarget(null);
+    if (receiptTarget && deleted.has(String(receiptTarget.id))) setReceiptTarget(null);
     setSelectedRows(new Set());
+    setDeleteDialogOpen(false);
+    setErrorMessage(null);
     await refresh();
-
-    if (failures.length === 0) {
-      setMessage(`${deleted} catatan biaya dihapus.`);
-    } else {
-      const summary = deleted > 0 ? `${deleted} terhapus, ${failures.length} gagal` : 'Tidak ada yang terhapus';
-      setErrorMessage(`${summary} — ${failures[0]}`);
-    }
-  }, [entries, selectedRows, refresh]);
+    setMessage(`${result.deletedIds.length} catatan biaya dihapus permanen.${result.cleanupPending > 0 || result.cleanupError ? ' Pembersihan media masih tertunda; periksa status pembersihan.' : ''}`);
+  };
 
   const filterFields: FieldOption[] = [
     { key: 'entryDate', label: 'Tanggal' },
@@ -517,24 +490,6 @@ export function ExpensePage() {
   const handleMonth = useCallback((value: string) => applyFilter(() => setMonth(value)), [applyFilter]);
   const handleType = useCallback((value: string) => applyFilter(() => setType(value)), [applyFilter]);
   const handleMainCategory = useCallback((value: string) => applyFilter(() => setMainCategory(value)), [applyFilter]);
-
-  const handleDelete = useCallback(async () => {
-    if (!deleteTarget) return;
-    setDeleting(true);
-    setMessage(null);
-    setErrorMessage(null);
-
-    const { error } = await expenseSvc.remove(deleteTarget);
-    setDeleting(false);
-    setDeleteTarget(null);
-
-    if (error) {
-      setErrorMessage(`Gagal menghapus: ${error.message}`);
-      return;
-    }
-    setMessage(`Catatan ${formatCurrency(deleteTarget.totalPayment)} dihapus.`);
-    await refresh();
-  }, [deleteTarget, refresh]);
 
   /**
    * Duplicate: menyalin baris jadi catatan BARU bertanggal hari ini, lalu
@@ -644,19 +599,14 @@ export function ExpensePage() {
 
         {/* Bilah aksi massal — muncul hanya saat ada baris terpilih, memakai
             bentuk yang sudah dipakai tiga halaman lain. */}
-        {canManage && selectedRows.size > 0 && (
+        {canDelete && selectedRows.size > 0 && (
           <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2">
             <span className="text-[12px] font-medium text-red-800">
               {selectedRows.size} catatan dipilih
             </span>
-            <button
-              type="button"
-              onClick={() => void handleBulkDelete()}
-              disabled={bulkDeleting}
-              className="h-8 px-2.5 text-[11px] rounded-lg flex items-center gap-1.5 font-medium bg-red-500 text-white hover:bg-red-600 transition-colors disabled:opacity-60 disabled:cursor-wait"
-            >
+            <Button type="button" onClick={handleBulkDelete} variant="destructive" size="sm">
               <Trash2 className="w-3 h-3" /> Delete ({selectedRows.size})
-            </button>
+            </Button>
             <button
               type="button"
               onClick={clearSelection}
@@ -720,9 +670,8 @@ export function ExpensePage() {
             onToggleRow={handleToggleRow}
             rowActions={canManage ? (row) => {
               const entry = row as unknown as ExpenseEntry;
-              // Baris GAJI hanya boleh ditulis finance — owner melihat saja.
-              // Tanpa gerbang ini, tombol Edit/Delete muncul untuk owner lalu
-              // gagal senyap karena RLS menolaknya.
+              // Edit, lampiran, dan duplikasi GAJI tetap khusus finance.
+              // Hapus permanen memakai izin owner/finance tersendiri.
               const canWrite = entry.staffId === null || canEditSalary(profile.role);
               return (
                 <DropdownMenu>
@@ -764,14 +713,14 @@ export function ExpensePage() {
                       <Copy className="w-3.5 h-3.5" /> Duplicate
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      onClick={() => setDeleteTarget(entry)}
-                      disabled={!canWrite}
-                      title={canWrite ? undefined : SALARY_EDIT_HINT}
-                      className="text-[12px] gap-2 text-rose-600 focus:text-rose-700"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" /> Delete
-                    </DropdownMenuItem>
+                    {canDelete && (
+                      <DropdownMenuItem
+                        onClick={() => openPermanentDelete([String(entry.id)])}
+                        className="text-[12px] gap-2 text-rose-600 focus:text-rose-700"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" /> Delete
+                      </DropdownMenuItem>
+                    )}
                   </DropdownMenuContent>
                 </DropdownMenu>
               );
@@ -828,34 +777,10 @@ export function ExpensePage() {
         }}
       />
 
-      <AlertDialog open={deleteTarget !== null} onOpenChange={(open) => { if (!open && !deleting) setDeleteTarget(null); }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle className="text-[14px]">Hapus catatan biaya?</AlertDialogTitle>
-            <AlertDialogDescription asChild>
-              <div className="space-y-2 text-[13px]">
-                <p className="font-mono text-[12px]">
-                  {deleteTarget?.categoryPath} — {deleteTarget ? formatCurrency(deleteTarget.totalPayment) : ''}
-                </p>
-                {deleteTarget?.proofUrl && (
-                  <p>Foto nota yang terlampir ikut terhapus <strong>permanen</strong>.</p>
-                )}
-                <p>Catatan ini tidak bisa dikembalikan setelah dihapus.</p>
-              </div>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Kembali</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={(event) => { event.preventDefault(); void handleDelete(); }}
-              disabled={deleting}
-              className="bg-red-600 hover:bg-red-700"
-            >
-              Hapus
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {canDelete && (
+        <PermanentDeleteDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}
+          module="expense_entries" ids={deleteIds} onDeleted={handleDeleted} />
+      )}
 
       {/* View — memakai dialog yang sama dengan mode baca, bukan dialog kedua,
           supaya keduanya tidak bisa berbeda soal cara menampilkan isi. */}

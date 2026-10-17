@@ -1,30 +1,20 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Plus, RefreshCw, Search, Trash2, TriangleAlert } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { Plus, RefreshCw, Search, Trash2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { PermanentDeleteDialog } from '@/components/Modals/PermanentDeleteDialog';
+import { canPermanentlyDelete } from '@/lib/permissions';
+import type { PermanentDeleteResult } from '@/types/permanentDeletion';
 import { AddVendorDialog } from '@/components/Modals/AddVendorDialog';
 import { FilterButton, SortButton, ExportButton } from '@/components/Table/TableTools';
 import { ColumnSettingsButton } from '@/components/Table/ColumnSettings';
 import { DataTable } from '@/components/Table/DataTable';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
 import { useColumnSettings } from '@/lib/columnSettings';
 import { applyFilters, applySorts, type FieldOption, type FilterRule, type SortRule } from '@/lib/tableQuery';
 import { T_WRAP, softBadgeClass } from '@/lib/tableStyles';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   fetchAll,
-  fetchUsageMany,
-  remove,
   type VendorRow,
-  type VendorUsageDetail,
 } from '@/services/vendors';
 
 // Badge status soft (lihat `softBadgeClass` di '@/lib/tableStyles'). Nilai
@@ -71,12 +61,9 @@ export function VendorTab() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<VendorRow | null>(null);
 
-  // Penghapusan massal lewat checkbox: periksa pemakaian dulu, baru konfirmasi.
+  const canDelete = canPermanentlyDelete(profile.role);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [deleteTargets, setDeleteTargets] = useState<VendorRow[]>([]);
-  const [deleteUsage, setDeleteUsage] = useState<VendorUsageDetail[]>([]);
-  const [checkingUsage, setCheckingUsage] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+  const [deleteIds, setDeleteIds] = useState<readonly string[]>([]);
 
   // Pemuatan awal memakai `.then()`, bukan `await` — `await` membuat setState
   // berjalan sinkron di dalam badan effect, yang ditolak
@@ -187,76 +174,22 @@ export function VendorTab() {
     return next;
   });
 
-  /**
-   * Periksa dulu mana yang boleh dihapus, baru tanya.
-   *
-   * Vendor tidak bisa dihapus selama masih dipakai catatan biaya
-   * (`expense_entries.vendor_id` adalah FK `ON DELETE RESTRICT`). Memeriksanya
-   * lebih dulu membuat user tahu alasannya sebelum menekan Hapus, bukan
-   * setelah ditolak database.
-   */
-  const prepareBulkDelete = async () => {
-    if (selectedRows.size === 0 || checkingUsage) return;
-
-    const targets = vendors.filter((vendor) => selectedRows.has(vendor.id));
-    if (targets.length === 0) return;
-
-    setCheckingUsage(true);
-    setMessage(null);
-    setErrorMessage(null);
-    const { data: usage, error } = await fetchUsageMany(targets.map((vendor) => vendor.id));
-    setCheckingUsage(false);
-
-    if (error || !usage) {
-      setErrorMessage(`Pemakaian vendor gagal diperiksa: ${error?.message ?? 'Unknown error'}. Penghapusan dibatalkan.`);
-      return;
-    }
-
-    setDeleteTargets(targets);
-    setDeleteUsage(usage);
+  const prepareBulkDelete = () => {
+    if (!canDelete || selectedRows.size === 0) return;
+    setDeleteIds(vendors.filter((vendor) => selectedRows.has(vendor.id)).map((vendor) => String(vendor.id)));
     setDeleteDialogOpen(true);
   };
 
-  const confirmBulkDelete = async () => {
-    if (deleteTargets.length === 0 || deleting) return;
-
-    const blocked = new Set(deleteUsage.filter((u) => u.entryCount > 0).map((u) => u.id));
-    const deletable = deleteTargets.filter((vendor) => !blocked.has(vendor.id));
-
-    setDeleting(true);
-    const deletedIds = new Set<number>();
-    const failedNames: string[] = [];
-
-    for (const vendor of deletable) {
-      const { error } = await remove(vendor.id);
-      if (error) failedNames.push(vendor.nama);
-      else deletedIds.add(vendor.id);
+  const handleDeleted = async (result: PermanentDeleteResult) => {
+    if (editTarget && result.deletedIds.includes(String(editTarget.id))) {
+      setEditTarget(null);
+      setDialogOpen(false);
     }
-
-    setVendors(prev => prev.filter((vendor) => !deletedIds.has(vendor.id)));
-    setSelectedRows(prev => {
-      const next = new Set(prev);
-      for (const id of deletedIds) next.delete(id);
-      return next;
-    });
-    setDeleting(false);
+    setSelectedRows(new Set());
     setDeleteDialogOpen(false);
-    setDeleteTargets([]);
-    setDeleteUsage([]);
-
-    const skipped = blocked.size;
-    if (failedNames.length > 0) {
-      setErrorMessage(`${deletedIds.size} vendor dihapus; gagal menghapus: ${failedNames.join(', ')}.`);
-    } else if (deletedIds.size === 0) {
-      setMessage(null);
-      setErrorMessage('Tidak ada vendor yang bisa dihapus — semuanya masih dipakai catatan biaya. Nonaktifkan saja supaya riwayat lama tetap utuh.');
-    } else {
-      setMessage(
-        skipped > 0
-          ? `${deletedIds.size} vendor dihapus. ${skipped} dilewati karena sudah dipakai catatan biaya.`
-          : `${deletedIds.size} vendor dihapus.`,
-      );
-    }
+    setErrorMessage(null);
+    await refresh();
+    setMessage(`${result.deletedIds.length} vendor dihapus permanen.${result.cleanupPending > 0 || result.cleanupError ? ' Pembersihan media masih tertunda; periksa status pembersihan.' : ''}`);
   };
 
   if (loading && vendors.length === 0) {
@@ -267,8 +200,6 @@ export function VendorTab() {
     );
   }
 
-  const blockedCount = deleteUsage.filter((u) => u.entryCount > 0).length;
-  const deletableCount = deleteTargets.length - blockedCount;
 
   return (
     <>
@@ -307,14 +238,10 @@ export function VendorTab() {
           <SortButton fields={filterFields} value={sorts} onChange={setSorts} />
           <ColumnSettingsButton fields={filterFields} hidden={hiddenCols} onToggle={toggleCol} frozen={frozenCols} onToggleFreeze={toggleFreezeCol} onToggleFreezeAll={toggleFreezeAllCols} headerFrozen={headerFrozen} onToggleHeaderFrozen={setHeaderFrozen} />
           <ExportButton onClick={handleExport} />
-          {canManage && selectedRows.size > 0 && (
-            <button
-              onClick={() => void prepareBulkDelete()}
-              disabled={checkingUsage}
-              className="h-8 px-2.5 text-[11px] rounded-lg flex items-center gap-1.5 font-medium bg-red-500 text-white hover:bg-red-600 disabled:opacity-60 disabled:cursor-wait transition-colors"
-            >
-              <Trash2 className="w-3 h-3" /> {checkingUsage ? 'Memeriksa...' : `Delete (${selectedRows.size})`}
-            </button>
+          {canDelete && selectedRows.size > 0 && (
+            <Button onClick={prepareBulkDelete} variant="destructive" size="sm">
+              <Trash2 className="w-3 h-3" /> Delete ({selectedRows.size})
+            </Button>
           )}
           <span className="text-[11px] text-slate-400 ml-auto">
             {visibleRows.length} dari {vendors.length} vendor
@@ -354,92 +281,10 @@ export function VendorTab() {
         </div>
       </div>
 
-      <AlertDialog
-        open={deleteDialogOpen}
-        onOpenChange={(open) => {
-          if (deleting) return;
-          setDeleteDialogOpen(open);
-          if (!open) {
-            setDeleteTargets([]);
-            setDeleteUsage([]);
-          }
-        }}
-      >
-        <AlertDialogContent className="sm:max-w-xl">
-          <AlertDialogHeader>
-            <div className="flex items-center gap-3">
-              <div className={cn(
-                'flex h-10 w-10 shrink-0 items-center justify-center rounded-full',
-                blockedCount > 0 ? 'bg-amber-100 text-amber-600' : 'bg-red-100 text-red-600',
-              )}>
-                <TriangleAlert className="h-5 w-5" />
-              </div>
-              <div>
-                <AlertDialogTitle>
-                  Hapus {deletableCount} dari {deleteTargets.length} vendor terpilih?
-                </AlertDialogTitle>
-                <AlertDialogDescription className="mt-1">
-                  Periksa pemakaian berikut sebelum melanjutkan.
-                </AlertDialogDescription>
-              </div>
-            </div>
-          </AlertDialogHeader>
-
-          <div className="max-h-60 overflow-y-auto rounded-lg border border-slate-200">
-            <table className="w-full text-[12px]">
-              <thead className="sticky top-0 bg-slate-50 text-black">
-                <tr>
-                  <th className="px-3 py-2 text-left font-bold">Vendor</th>
-                  <th className="px-3 py-2 text-right font-bold">Catatan Biaya</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {deleteUsage.map((usage) => {
-                  const isBlocked = usage.entryCount > 0;
-                  return (
-                    <tr key={usage.id} className={isBlocked ? 'bg-amber-50/60' : undefined}>
-                      <td className="px-3 py-2 text-slate-700">
-                        {usage.nama}
-                        {isBlocked && (
-                          <span className="ml-2 text-[11px] font-medium text-amber-700">dilewati</span>
-                        )}
-                      </td>
-                      <td className={cn('px-3 py-2 text-right tabular-nums', isBlocked ? 'font-semibold text-amber-700' : 'text-slate-500')}>
-                        {usage.entryCount}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-
-          {blockedCount > 0 ? (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12px] leading-relaxed text-amber-800">
-              <strong>{blockedCount} vendor tidak bisa dihapus</strong> karena sudah dipakai catatan biaya lama.
-              Baris itu dilewati; nonaktifkan saja supaya riwayatnya tetap utuh.
-            </div>
-          ) : (
-            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-[12px] leading-relaxed text-slate-600">
-              Tidak ada catatan biaya yang memakai vendor ini — semuanya bisa dihapus.
-            </div>
-          )}
-
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Batal</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={(event) => {
-                event.preventDefault();
-                void confirmBulkDelete();
-              }}
-              disabled={deleting || deletableCount === 0}
-              className="bg-red-600 text-white hover:bg-red-700 focus-visible:ring-red-600"
-            >
-              {deleting ? 'Menghapus...' : `Hapus ${deletableCount} vendor`}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {canDelete && (
+        <PermanentDeleteDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}
+          module="vendors" ids={deleteIds} onDeleted={handleDeleted} />
+      )}
 
       <AddVendorDialog
         key={editTarget?.id ?? 'new'}

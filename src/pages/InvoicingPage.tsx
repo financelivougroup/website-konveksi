@@ -1,22 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Download, Loader2, RefreshCw, Search, Sparkles, Trash2, Wallet } from 'lucide-react'
+import { Download, RefreshCw, Search, Sparkles, Trash2, Wallet } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { deleteInvoice, fetchAllInvoices } from '@/services/invoices'
+import { fetchAllInvoices } from '@/services/invoices'
 import { fetchPaymentsByInvoiceIds } from '@/services/invoicePayments'
 import { fetchByIds as fetchWorkOrdersByIds } from '@/services/workOrders'
 import { backfillMissingInvoices } from '@/services/autoInvoice'
 import { computeFinanceValidation, computeOutstanding } from '@/lib/invoiceCompute'
 import { useAuth } from '@/contexts/AuthContext'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
+import { PermanentDeleteDialog } from '@/components/Modals/PermanentDeleteDialog'
+import { canPermanentlyDelete } from '@/lib/permissions'
+import type { PermanentDeleteResult } from '@/types/permanentDeletion'
 import { FilterButton, SortButton, ExportButton } from '@/components/Table/TableTools'
 import { ColumnSettingsButton } from '@/components/Table/ColumnSettings'
 import { DataTable } from '@/components/Table/DataTable'
@@ -80,7 +73,7 @@ export function InvoicingPage({ poJump, onClearPoJump }: { poJump?: PoJump | nul
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
   const [backfilling, setBackfilling] = useState(false)
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
-  const [deleting, setDeleting] = useState(false)
+  const [deleteIds, setDeleteIds] = useState<readonly string[]>([])
   const invoiceImageRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const refreshRequestRef = useRef(0)
   const [searchQuery, setSearchQuery] = useState('')
@@ -99,7 +92,7 @@ export function InvoicingPage({ poJump, onClearPoJump }: { poJump?: PoJump | nul
 
   // Hanya owner dan finance yang boleh membatalkan tagihan; role lain tidak
   // melihat tombolnya sama sekali.
-  const canDeleteInvoice = profile.role === 'owner' || profile.role === 'finance'
+  const canDeleteInvoice = canPermanentlyDelete(profile.role)
 
   const filterFields: FieldOption[] = [
     { key: 'monthYear', label: 'Bulan' },
@@ -313,53 +306,20 @@ export function InvoicingPage({ poJump, onClearPoJump }: { poJump?: PoJump | nul
 
   const clearSelection = useCallback(() => setSelectedRows(new Set()), [])
 
-  /** Ringkasan akibat yang akan ditanggung, dihitung dari data yang sudah dimuat. */
-  const deleteImpact = useMemo(() => {
-    const targets = invoices.filter((invoice) => selectedRows.has(invoice.id))
-    const paymentCount = targets.reduce(
-      (total, invoice) => total + (paymentsByInvoice[invoice.id]?.payments.length ?? 0),
-      0,
-    )
-    return { targets, paymentCount }
-  }, [invoices, selectedRows, paymentsByInvoice])
-
-  const handleBulkDelete = useCallback(async () => {
-    setDeleting(true)
-    let deleted = 0
-    const failures: string[] = []
-
-    for (const invoice of deleteImpact.targets) {
-      const { error, cleanupError } = await deleteInvoice(invoice.id)
-      if (error) {
-        failures.push(`${invoice.invoiceCode}: ${error.message}`)
-        continue
-      }
-      if (cleanupError) {
-        // Invoice sudah hilang di titik ini, jadi ini bukan kegagalan hapus —
-        // tetapi status WO-nya belum kembali dan itu harus terlihat.
-        failures.push(`${invoice.invoiceCode}: invoice terhapus, status WO gagal dikembalikan — ${cleanupError.message}`)
-      }
-      deleted++
-      // Peta gambar tidak pernah dibersihkan sendiri; entri invoice yang sudah
-      // hilang akan menahan node lama tanpa guna.
-      delete invoiceImageRefs.current[invoice.id]
-    }
-
-    setDeleting(false)
-    setConfirmDeleteOpen(false)
+  const openPermanentDelete = () => {
+    if (!canDeleteInvoice || selectedRows.size === 0) return
+    setDeleteIds(invoices.filter((invoice) => selectedRows.has(invoice.id)).map((invoice) => invoice.id))
+    setConfirmDeleteOpen(true)
+  }
+  const handleDeleted = async (result: PermanentDeleteResult) => {
+    const deleted = new Set(result.deletedIds)
+    for (const id of deleted) delete invoiceImageRefs.current[id]
+    setPaymentTarget((current) => current && deleted.has(current.id) ? null : current)
     setSelectedRows(new Set())
-    // Modal pembayaran tidak boleh terus menunjuk invoice yang sudah tidak ada.
-    setPaymentTarget((current) => (current && selectedRows.has(current.id) ? null : current))
+    setConfirmDeleteOpen(false)
     await refresh()
-
-    if (failures.length === 0) {
-      showFeedback('success', `${deleted} invoice berhasil dihapus. Work order-nya kembali berstatus Waiting Invoice.`)
-    } else {
-      console.error('[InvoicingPage] gagal hapus invoice:', failures)
-      const summary = deleted > 0 ? `${deleted} terhapus, ${failures.length} bermasalah` : 'Tidak ada yang terhapus'
-      showFeedback('error', `${summary} — ${failures[0]}`)
-    }
-  }, [deleteImpact.targets, refresh, selectedRows, showFeedback])
+    showFeedback('success', `${result.deletedIds.length} invoice dihapus permanen.${result.cleanupPending > 0 || result.cleanupError ? ' Pembersihan media masih tertunda; periksa status pembersihan.' : ''}`)
+  }
 
   async function handleDownload(invoice: InvoiceRow) {
     if (!paymentsByInvoice[invoice.id] || paymentLoadError) {
@@ -498,7 +458,7 @@ export function InvoicingPage({ poJump, onClearPoJump }: { poJump?: PoJump | nul
             <span className="text-[12px] font-medium text-red-800">{selectedRows.size} invoice dipilih</span>
             <button
               type="button"
-              onClick={() => setConfirmDeleteOpen(true)}
+              onClick={openPermanentDelete}
               className="h-8 px-2.5 text-[11px] rounded-lg flex items-center gap-1.5 font-medium bg-red-500 text-white hover:bg-red-600 transition-colors"
             >
               <Trash2 className="w-3 h-3" /> Delete ({selectedRows.size})
@@ -592,52 +552,10 @@ export function InvoicingPage({ poJump, onClearPoJump }: { poJump?: PoJump | nul
         onSuccess={message => showFeedback('success', message)}
       />
 
-      <AlertDialog
-        open={confirmDeleteOpen}
-        onOpenChange={(open) => { if (!open && !deleting) setConfirmDeleteOpen(false) }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              Hapus {deleteImpact.targets.length} invoice?
-            </AlertDialogTitle>
-            <AlertDialogDescription asChild>
-              <div className="space-y-2 text-[13px]">
-                <ul className="list-inside list-disc font-mono text-[12px]">
-                  {deleteImpact.targets.slice(0, 5).map((invoice) => (
-                    <li key={invoice.id}>{invoice.invoiceCode} — {invoice.clientName}</li>
-                  ))}
-                </ul>
-                {deleteImpact.targets.length > 5 && (
-                  <p>Dan {deleteImpact.targets.length - 5} invoice lainnya.</p>
-                )}
-                <p>
-                  <strong>{deleteImpact.paymentCount} data pembayaran</strong> beserta file bukti bayarnya
-                  ikut terhapus <strong>permanen</strong> dan tidak dapat dikembalikan.
-                </p>
-                <p>
-                  Work order terkait kembali berstatus <strong>Waiting Invoice</strong> dan bisa ditagih ulang.
-                  Karena itu, tombol <strong>Generate Missing Invoices</strong> dapat membuat invoice baru
-                  dengan kode berbeda.
-                </p>
-              </div>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Kembali</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={(event) => {
-                event.preventDefault()
-                void handleBulkDelete()
-              }}
-              disabled={deleting}
-              className="bg-red-600 hover:bg-red-700"
-            >
-              {deleting && <Loader2 className="animate-spin" />} Hapus invoice
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {canDeleteInvoice && (
+        <PermanentDeleteDialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}
+          module="invoices" ids={deleteIds} onDeleted={handleDeleted} />
+      )}
     </main>
   )
 }

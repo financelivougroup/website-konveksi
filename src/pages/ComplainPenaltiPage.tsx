@@ -35,7 +35,6 @@ import {
   list as listComplain,
   create as createComplain,
   update as updateComplain,
-  remove as removeComplain,
   type ComplainPenaltiRow,
 } from '@/services/complainPenalti';
 import {
@@ -44,7 +43,6 @@ import {
   uploadComplainProof,
   createComplainFileRecord,
   removeComplainFile,
-  removeComplainFilesByPaths,
   type ComplainFileRow,
 } from '@/services/complainFiles';
 import { fetchAll as fetchStaff } from '@/services/registerPenjahit';
@@ -66,6 +64,9 @@ import {
 import { buildComplainSummary } from '@/lib/complainSummary';
 import { formatMonthYearFromYm } from '@/lib/monthYear';
 import { useAuth } from '@/contexts/AuthContext';
+import { PermanentDeleteDialog } from '@/components/Modals/PermanentDeleteDialog';
+import { canPermanentlyDelete } from '@/lib/permissions';
+import type { PermanentDeleteResult } from '@/types/permanentDeletion';
 
 const MAX_PHOTOS = 3;
 
@@ -289,6 +290,9 @@ function SearchSelect({
 
 export function ComplainPenaltiPage() {
   const { profile } = useAuth();
+  const canDelete = canPermanentlyDelete(profile.role);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteIds, setDeleteIds] = useState<readonly string[]>([]);
 
   /**
    * Tab aktif. `'complain'` = tabel yang sudah ada, `'summary'` = ringkasan
@@ -941,23 +945,20 @@ export function ComplainPenaltiPage() {
     URL.revokeObjectURL(url);
   };
 
-  const handleBulkDelete = async () => {
-    if (selectedRows.size === 0) return;
-    if (!confirm(`Hapus ${selectedRows.size} complain terpilih? File bukti terkait juga akan terhapus.`)) return;
-    let deleted = 0;
-    for (const id of selectedRows) {
-      const item = items.find((it) => String(it.id) === id);
-      if (!item) continue;
-      const { data: files } = await fetchFilesByComplainId(item.id);
-      const { error } = await removeComplain(item.id);
-      if (!error) {
-        deleted++;
-        await removeComplainFilesByPaths((files ?? []).map((f) => f.filePath)).catch(() => {});
-      }
+  const handleBulkDelete = () => {
+    if (!canDelete || selectedRows.size === 0) return;
+    setDeleteIds(items.filter((item) => selectedRows.has(String(item.id))).map((item) => String(item.id)));
+    setDeleteDialogOpen(true);
+  };
+  const handleDeleted = async (result: PermanentDeleteResult) => {
+    if (editTarget && result.deletedIds.includes(String(editTarget.id))) {
+      setEditTarget(null);
+      setModalOpen(false);
     }
-    setItems(prev => prev.filter(it => !selectedRows.has(String(it.id))));
     setSelectedRows(new Set());
-    flash(`✅ ${deleted} complain berhasil dihapus!`);
+    setDeleteDialogOpen(false);
+    await refresh();
+    flash(`${result.deletedIds.length} complain dihapus permanen.${result.cleanupPending > 0 || result.cleanupError ? ' Pembersihan media masih tertunda; periksa status pembersihan.' : ''}`, 7000);
   };
 
   // ===== Tab Summary =====
@@ -1031,6 +1032,10 @@ export function ComplainPenaltiPage() {
 
   return (
     <div className="flex-1 flex flex-col min-w-0 overflow-auto">
+      {canDelete && (
+        <PermanentDeleteDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}
+          module="complain_penalti" ids={deleteIds} onDeleted={handleDeleted} />
+      )}
       {/* Header — pola ProductionMonitoring */}
       <div className="px-6 pt-3 pb-0">
         <div className="flex items-center justify-between mb-3">
@@ -1096,10 +1101,10 @@ export function ComplainPenaltiPage() {
               <ColumnSettingsButton fields={columnFields} hidden={hiddenCols} onToggle={toggleCol} frozen={frozenCols} onToggleFreeze={toggleFreezeCol} onToggleFreezeAll={toggleFreezeAllCols} headerFrozen={headerFrozen} onToggleHeaderFrozen={setHeaderFrozen} />
               <ExportButton onClick={handleExport} />
               <button onClick={handleImport} className={cn('h-8 px-2.5 text-[11px] rounded-lg flex items-center gap-1.5 font-medium transition-colors', selectedRows.size > 0 ? 'bg-primary text-white hover:bg-primary/90' : 'border border-gray-200 text-slate-400')}>📥 Import ({selectedRows.size})</button>
-              {selectedRows.size > 0 && (
-                <button onClick={handleBulkDelete} className="h-8 px-2.5 text-[11px] rounded-lg flex items-center gap-1.5 font-medium bg-red-500 text-white hover:bg-red-600 transition-colors">
+              {canDelete && selectedRows.size > 0 && (
+                <Button onClick={handleBulkDelete} variant="destructive" size="sm">
                   <Trash2 className="w-3 h-3" /> Delete ({selectedRows.size})
-                </button>
+                </Button>
               )}
               <span className="text-[11px] text-slate-400 ml-auto">{rows.length} complain</span>
             </div>

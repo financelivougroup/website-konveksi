@@ -1,6 +1,10 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Loader2, Plus, RefreshCw, Search, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { PermanentDeleteDialog } from '@/components/Modals/PermanentDeleteDialog';
+import { useAuth } from '@/contexts/AuthContext';
+import { canPermanentlyDelete } from '@/lib/permissions';
+import type { PermanentDeleteResult } from '@/types/permanentDeletion';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -31,7 +35,6 @@ import {
   fetchAll as fetchAllKaryawan,
   create as createKaryawan,
   update as updateKaryawan,
-  remove as removeKaryawan,
   POSISI_OPTIONS,
   STATUS_OPTIONS,
   type RegisterPenjahitRow,
@@ -78,6 +81,10 @@ const EMPTY_CELL = <span className="text-gray-300">—</span>;
  * pengaturan kolom yang sudah dibuat user kembali ke awal.
  */
 export function KaryawanTab() {
+  const { profile } = useAuth();
+  const canDelete = canPermanentlyDelete(profile.role);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteIds, setDeleteIds] = useState<readonly string[]>([]);
   const [items, setItems] = useState<RegisterPenjahitRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -237,18 +244,20 @@ export function KaryawanTab() {
     a.click();
     URL.revokeObjectURL(url);
   };
-  const handleBulkDelete = async () => {
-    if (selectedRows.size === 0) return;
-    if (!confirm(`Hapus ${selectedRows.size} karyawan terpilih?\n\nRiwayat planning/jahit/finishing/kancing mereka tetap tersimpan di database.`)) return;
-    let deleted = 0;
-    for (const id of selectedRows) {
-      const { error } = await removeKaryawan(Number(id));
-      if (!error) deleted++;
+  const handleBulkDelete = () => {
+    if (!canDelete || selectedRows.size === 0) return;
+    setDeleteIds(items.filter((item) => selectedRows.has(item.id)).map((item) => String(item.id)));
+    setDeleteDialogOpen(true);
+  };
+  const handleDeleted = async (result: PermanentDeleteResult) => {
+    if (editTarget && result.deletedIds.includes(String(editTarget.id))) {
+      setEditTarget(null);
+      setModalOpen(false);
     }
-    setItems(prev => prev.filter(r => !selectedRows.has(r.id)));
     setSelectedRows(new Set());
-    setMessage(`✅ ${deleted} karyawan berhasil dihapus!`);
-    setTimeout(() => setMessage(null), 3000);
+    setDeleteDialogOpen(false);
+    await refresh();
+    setMessage(`${result.deletedIds.length} karyawan dihapus permanen.${result.cleanupPending > 0 || result.cleanupError ? ' Pembersihan media masih tertunda; periksa status pembersihan.' : ''}`);
   };
 
   if (loading) {
@@ -286,10 +295,10 @@ export function KaryawanTab() {
           <ColumnSettingsButton fields={KARYAWAN_FIELDS} hidden={hiddenCols} onToggle={toggleCol} frozen={frozenCols} onToggleFreeze={toggleFreezeCol} onToggleFreezeAll={toggleFreezeAllCols} headerFrozen={headerFrozen} onToggleHeaderFrozen={setHeaderFrozen} />
           <ExportButton onClick={handleExport} />
           <button onClick={handleImport} className={cn('h-8 px-2.5 text-[11px] rounded-lg flex items-center gap-1.5 font-medium transition-colors', selectedRows.size > 0 ? 'bg-primary text-white hover:bg-primary/90' : 'border border-gray-200 text-slate-400')}>📥 Import ({selectedRows.size})</button>
-          {selectedRows.size > 0 && (
-            <button onClick={handleBulkDelete} className="h-8 px-2.5 text-[11px] rounded-lg flex items-center gap-1.5 font-medium bg-red-500 text-white hover:bg-red-600 transition-colors">
+          {canDelete && selectedRows.size > 0 && (
+            <Button onClick={handleBulkDelete} variant="destructive" size="sm">
               <Trash2 className="w-3 h-3" /> Delete ({selectedRows.size})
-            </button>
+            </Button>
           )}
           <span className="text-[11px] text-slate-400 ml-auto">{rows.length} karyawan</span>
         </div>
@@ -313,6 +322,11 @@ export function KaryawanTab() {
           />
         </div>
       </div>
+
+      {canDelete && (
+        <PermanentDeleteDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}
+          module="register_penjahit" ids={deleteIds} onDeleted={handleDeleted} />
+      )}
 
       {/* Popup tambah/edit karyawan. `key` me-remount tiap dialog dibuka,
           jadi formnya selalu terisi dari awal (kosong atau dari baris yang

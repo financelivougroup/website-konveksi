@@ -109,6 +109,7 @@ interface DataTableProps<TId extends string | number = number> {
   rowHeight?: RowHeight;
   condColors?: CondColorRule[];
   editable?: boolean;
+  canDelete?: boolean;
   sorts?: SortRule[];
   onToggleRow?: (id: TId) => void;
   /** Retained for API compatibility; selection flows through `onToggleRow`. */
@@ -577,7 +578,7 @@ function SortableBodyCell({ cell }: { cell: GridCell }) {
 
 export function DataTable<TId extends string | number = number>({
   columns, data,
-  selectedRows, rowHeight = 'medium', condColors = [], editable = false, sorts = [],
+  selectedRows, rowHeight = 'medium', condColors = [], editable = false, canDelete = false, sorts = [],
   onToggleRow, onViewDetail, onEditDetail, onDeleteRow,
   onResizeColumn, onReorderColumn, onRenameColumn, onUpdateNote,
   onSortColumn, onGroupColumn, onSetSource,
@@ -755,13 +756,15 @@ export function DataTable<TId extends string | number = number>({
                 >
                   <Pencil className="w-3.5 h-3.5" />
                 </button>
-                <button
-                  onClick={(e) => { e.stopPropagation(); onDeleteRow?.(id); }}
-                  className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:bg-red-50 hover:text-red-500 transition-colors"
-                  title="Delete"
+                {canDelete && onDeleteRow && <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={(e) => { e.stopPropagation(); onDeleteRow(id); }}
+                  className="h-7 w-7 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                  title="Hapus permanen"
                 >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>}
               </>
             )}
           </div>
@@ -786,7 +789,7 @@ export function DataTable<TId extends string | number = number>({
     // when its data changes — so they belong here or the cell would act on a
     // stale row lookup.
   }, [
-    columns, onViewDetail, onEditDetail, onDeleteRow, editable,
+    columns, onViewDetail, onEditDetail, onDeleteRow, editable, canDelete,
     isPlain, hasSelection, rowActions, actionsLabel,
   ]);
 

@@ -1,6 +1,7 @@
 import { X, RefreshCw } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 import { AppSelect } from '@/components/AppSelect';
+import { Button } from '@/components/ui/button';
 import { toOptions } from '@/components/selectOptions';
 import { penjahitList, bulanList, viewConfig } from '@/data/mockData';
 import type { ModuleId, ColumnDef } from '@/types';
@@ -16,10 +17,11 @@ interface DetailPanelProps {
   onClose: () => void;
   onSave: (data: Record<string, unknown>) => void;
   onDelete: (id: number) => void;
+  canDelete?: boolean;
   onRefresh: () => void;
 }
 
-export function DetailPanel({ open, moduleId, row, isAddingNew, onClose, onSave, onDelete, onRefresh }: DetailPanelProps) {
+export function DetailPanel({ open, moduleId, row, isAddingNew, onClose, onSave, onDelete, canDelete = false, onRefresh }: DetailPanelProps) {
   const config = getModuleConfig(moduleId);
   const editable = config.editable;
   const title = isAddingNew
@@ -27,7 +29,7 @@ export function DetailPanel({ open, moduleId, row, isAddingNew, onClose, onSave,
     : `${cleanTitle(config.title)} \u2014 ${row?.workCode || row?.bulanTahun || row?.nama || row?.tanggal || `#${row?.id}` || 'Detail'}`;
 
   const handleSave = () => {
-    const formData = collectFormData(moduleId);
+    const formData = collectFormData();
     if (row && !isAddingNew) {
       onSave({ ...row, ...formData });
     } else {
@@ -71,13 +73,14 @@ export function DetailPanel({ open, moduleId, row, isAddingNew, onClose, onSave,
         <div className="flex gap-2 px-5 py-3 border-t border-gray-100 flex-shrink-0">
           {editable ? (
             <>
-              {(!isAddingNew && row) && (
-                <button
-                  onClick={() => row?.id && onDelete(row.id as number)}
-                  className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2 text-[13px] font-medium text-white bg-rose-400 hover:bg-rose-500 rounded-lg transition-colors"
+              {canDelete && !isAddingNew && row && (
+                <Button
+                  variant="destructive"
+                  onClick={() => row.id && onDelete(row.id as number)}
+                  className="flex-1"
                 >
-                  Delete
-                </button>
+                  Hapus permanen
+                </Button>
               )}
               <button
                 onClick={onClose}
@@ -391,7 +394,7 @@ function getModuleConfig(moduleId: ModuleId) {
   return viewConfig[moduleId] || { title: moduleId, editable: true, sync: false };
 }
 
-function collectFormData(_moduleId: ModuleId): Record<string, unknown> {
+function collectFormData(): Record<string, unknown> {
   const data: Record<string, unknown> = {};
   const inputs = document.querySelectorAll('[id^="form-"]');
   inputs.forEach((el) => {

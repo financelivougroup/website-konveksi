@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { removeAttachment } from '@/services/permanentDeletion';
 import { publicUrlFor, removeFromR2, uploadToR2 } from '@/services/r2Storage';
 import type { InvoicePaymentFileRow } from '@/types/pipeline';
 
@@ -89,27 +90,5 @@ export async function removePaymentProofObjects(filePaths: string[]): Promise<{ 
 }
 
 export async function removePaymentFile(id: string): Promise<{ error: Error | null; cleanupError: Error | null }> {
-  const { data, error: fetchError } = await supabase
-    .from(TABLE)
-    .select('file_path')
-    .eq('id', id)
-    .maybeSingle();
-  if (fetchError) return { error: fetchError, cleanupError: null };
-  const filePath = (data as { file_path: string } | null)?.file_path;
-  if (!filePath) return { error: new Error('Bukti pembayaran tidak ditemukan.'), cleanupError: null };
-
-  // Hapus object terlebih dahulu. Jika Storage gagal, metadata tetap menyimpan
-  // filePath sehingga cleanup masih dapat dicoba ulang dari UI.
-  const { error: cleanupError } = await removePaymentProofObject(filePath);
-  if (cleanupError) return { error: null, cleanupError };
-
-  const { data: deleted, error: deleteError } = await supabase
-    .from(TABLE)
-    .delete()
-    .eq('id', id)
-    .select('id')
-    .maybeSingle();
-  if (deleteError) return { error: deleteError, cleanupError: null };
-  if (!deleted) return { error: new Error('Bukti pembayaran tidak ditemukan.'), cleanupError: null };
-  return { error: null, cleanupError: null };
+  return removeAttachment('invoice_payment_files', id);
 }

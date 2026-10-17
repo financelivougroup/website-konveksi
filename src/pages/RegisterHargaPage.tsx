@@ -22,7 +22,11 @@ import {
   type FilterRule,
   type SortRule,
 } from '@/lib/tableQuery';
-import { fetchAll, removeMany, type RegisterHargaAliased } from '@/services/registerHarga';
+import { fetchAll, type RegisterHargaAliased } from '@/services/registerHarga';
+import { PermanentDeleteDialog } from '@/components/Modals/PermanentDeleteDialog';
+import { useAuth } from '@/contexts/AuthContext';
+import { canPermanentlyDelete } from '@/lib/permissions';
+import type { PermanentDeleteResult } from '@/types/permanentDeletion';
 import { ORDER_PRICE_COMPONENTS } from '@/types/pipeline';
 import type { ModuleId, PoJump } from '@/types';
 
@@ -176,7 +180,11 @@ export function RegisterHargaPage({
   const [filters, setFilters] = useState<FilterRule[]>([]);
   const [sorts, setSorts] = useState<SortRule[]>([]);
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
-  const [deleting, setDeleting] = useState(false);
+  const { profile } = useAuth();
+  const canDelete = canPermanentlyDelete(profile.role);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteIds, setDeleteIds] = useState<readonly string[]>([]);
+  const [message, setMessage] = useState<string | null>(null);
   const {
     hidden: hiddenCols, toggle: toggleCol,
     frozen: frozenCols, toggleFreeze: toggleFreezeCol, toggleFreezeAll: toggleFreezeAllCols,
@@ -306,31 +314,16 @@ export function RegisterHargaPage({
     },
   ], [onOpenPo]);
 
-  /**
-   * Hapus baris terpilih, permanen.
-   *
-   * Memakai `confirm()` bawaan mengikuti pola `handleBulkDelete` di
-   * PlanningProduksiPage: ini penghapusan permanen tanpa undo, jadi perlu satu
-   * konfirmasi sebelum jalan.
-   */
-  const handleBulkDelete = async () => {
-    if (selectedRows.size === 0 || deleting) return;
-    if (!confirm(`Hapus ${selectedRows.size} baris register harga terpilih? Tindakan ini permanen.`)) return;
-
-    setDeleting(true);
-    const { deletedIds, error } = await removeMany([...selectedRows]);
-    setDeleting(false);
-
-    if (error) {
-      alert(`Gagal menghapus: ${error.message}`);
-      return;
-    }
-
-    // Buang hanya id yang benar-benar terhapus. Bila ada yang tidak terhapus,
-    // barisnya tetap tercentang supaya user bisa mencoba lagi.
-    const deletedSet = new Set(deletedIds);
-    setItems((prev) => prev.filter((r) => !deletedSet.has(r.id)));
-    setSelectedRows((prev) => new Set([...prev].filter((id) => !deletedSet.has(id))));
+  const handleBulkDelete = () => {
+    if (!canDelete || selectedRows.size === 0) return;
+    setDeleteIds(items.filter((item) => selectedRows.has(item.id)).map((item) => String(item.id)));
+    setDeleteDialogOpen(true);
+  };
+  const handleDeleted = async (result: PermanentDeleteResult) => {
+    setSelectedRows(new Set());
+    setDeleteDialogOpen(false);
+    await refresh();
+    setMessage(`${result.deletedIds.length} harga dihapus permanen.${result.cleanupPending > 0 || result.cleanupError ? ' Pembersihan media masih tertunda; periksa status pembersihan.' : ''}`);
   };
 
   /**
@@ -388,6 +381,11 @@ export function RegisterHargaPage({
 
   return (
     <main className="flex-1 flex flex-col min-w-0 overflow-auto">
+      {canDelete && (
+        <PermanentDeleteDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}
+          module="register_harga" ids={deleteIds} onDeleted={handleDeleted} />
+      )}
+      {message && <p role="status" className="mx-6 mt-3 text-sm text-muted-foreground">{message}</p>}
       <div className="px-6 pt-3 pb-0">
         <div className="flex items-center justify-between mb-3">
           <div>
@@ -420,15 +418,9 @@ export function RegisterHargaPage({
           <SortButton fields={HARGA_FIELDS} value={sorts} onChange={setSorts} />
           <ColumnSettingsButton fields={HARGA_FIELDS} hidden={hiddenCols} onToggle={toggleCol} frozen={frozenCols} onToggleFreeze={toggleFreezeCol} onToggleFreezeAll={toggleFreezeAllCols} headerFrozen={headerFrozen} onToggleHeaderFrozen={setHeaderFrozen} />
           <ExportButton onClick={handleExport} count={selectedRows.size} />
-          {selectedRows.size > 0 && (
-            <Button
-              onClick={() => void handleBulkDelete()}
-              disabled={deleting}
-              size="sm"
-              className="h-8 px-2.5 bg-red-500 hover:bg-red-600"
-            >
-              <Trash2 className="w-3 h-3 mr-1.5" />
-              {deleting ? 'Menghapus…' : `Hapus (${selectedRows.size})`}
+          {canDelete && selectedRows.size > 0 && (
+            <Button onClick={handleBulkDelete} size="sm" variant="destructive">
+              <Trash2 className="w-3 h-3 mr-1.5" /> Hapus ({selectedRows.size})
             </Button>
           )}
           <span className="text-[11px] text-slate-400 ml-auto">{rows.length} baris</span>

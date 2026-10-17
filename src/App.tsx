@@ -36,6 +36,11 @@ import { ConditionalColorModal } from '@/components/Modals/ConditionalColorModal
 import { DateRangeModal } from '@/components/Modals/DateRangeModal';
 import { AddViewModal } from '@/components/Modals/AddViewModal';
 import { useToast } from '@/hooks/useToast';
+import { useAuth } from '@/contexts/AuthContext';
+import { canPermanentlyDelete } from '@/lib/permissions';
+import { PermanentDeleteDialog, PermanentDeleteCleanupStatus } from '@/components/Modals/PermanentDeleteDialog';
+import { Button } from '@/components/ui/button';
+import type { PermanentDeleteResult, PermanentDeletionModule } from '@/types/permanentDeletion';
 import { viewConfig } from '@/data/mockData';
 import * as targetJahitSvc from '@/services/targetJahit';
 import * as registerPenjahitSvc from '@/services/registerPenjahit';
@@ -65,6 +70,14 @@ function makeDefaultSettings(moduleId: ModuleId): ViewTabSettings {
 }
 
 export default function App() {
+  return <AuthGate><AuthenticatedApp /></AuthGate>;
+}
+
+function AuthenticatedApp() {
+  const { profile } = useAuth();
+  const canDelete = canPermanentlyDelete(profile.role);
+  const [deleteRequest, setDeleteRequest] = useState<{ module: PermanentDeletionModule; ids: readonly string[] } | null>(null);
+  const [cleanupRefreshKey, setCleanupRefreshKey] = useState(0);
   const [viewMode, setViewMode] = useState<'app' | 'landing'>('app');
   const [currentView, setCurrentView] = useState<ModuleId>('production-monitoring');
   const [currentViewTab, setCurrentViewTab] = useState(0);
@@ -222,7 +235,7 @@ export default function App() {
         }
         setTableData(rows);
       };
-      fetchFresh();
+      return fetchFresh();
     }
   }, [effectiveModule, isPipelineView]);
 
@@ -416,39 +429,33 @@ export default function App() {
     }
   }, [data]);
 
-  const handleDeleteRow = useCallback(async (id: number) => {
-    if (!confirm('Yakin ingin menghapus data ini?')) return;
-    let error: Error | null = null;
-    switch (effectiveModule) {
-      case 'selesai-jahit': case 'register-jahit': {
-        const { error: e } = await supabase.from('work_orders').delete().eq('id', String(id));
-        error = e;
-        break;
-      }
-      case 'target-jahit': {
-        const { error: e } = await targetJahitSvc.remove(id);
-        error = e;
-        break;
-      }
-      case 'daftar-libur': {
-        const { error: e } = await daftarLiburSvc.remove(id);
-        error = e;
-        break;
-      }
-      case 'register-penjahit': {
-        const { error: e } = await registerPenjahitSvc.remove(id);
-        error = e;
-        break;
-      }
-    }
-    if (error) {
-      showToast(`Error: ${error.message}`, 'error');
-    } else {
-      showToast('Data berhasil dihapus!', 'success');
+  const deletionModule: PermanentDeletionModule | null = ({
+    'selesai-jahit': 'work_orders',
+    'register-jahit': 'work_orders',
+    'target-jahit': 'target_jahit',
+    'daftar-libur': 'daftar_libur',
+    'register-penjahit': 'register_penjahit',
+    'master-product': 'master_products',
+    'raw-monitoring': 'raw_product_monitoring',
+    'master-import': 'master_imports',
+  } as Partial<Record<ModuleId, PermanentDeletionModule>>)[effectiveModule] ?? null;
+
+  const openPermanentDelete = (ids: readonly string[]) => {
+    if (!canDelete || !deletionModule || ids.length === 0) return;
+    setDeleteRequest({ module: deletionModule, ids: [...ids] });
+  };
+  const handleDeleteRow = (id: number) => openPermanentDelete([String(id)]);
+  const handleDeleted = async (result: PermanentDeleteResult) => {
+    if (panelRow && result.deletedIds.includes(String(panelRow.id))) {
       setPanelOpen(false);
-      refetchTableData();
+      setPanelRow(null);
     }
-  }, [effectiveModule, showToast, refetchTableData]);
+    setSelectedRows(new Set());
+    setDeleteRequest(null);
+    setCleanupRefreshKey((key) => key + 1);
+    await refetchTableData();
+    showToast(`${result.deletedIds.length} data dihapus permanen.${result.cleanupPending > 0 || result.cleanupError ? ' Pembersihan media masih tertunda; periksa status pembersihan.' : ''}`, 'success');
+  };
 
   const handleAddNew = useCallback(() => {
     if (!config.editable) {
@@ -556,7 +563,6 @@ export default function App() {
     <>
       {viewMode === 'landing' && <Landing onEnterApp={() => setViewMode('app')} />}
       {viewMode === 'app' && (
-        <AuthGate>
           <SidebarProvider>
             <AppSidebar
               currentView={currentView}
@@ -662,7 +668,15 @@ export default function App() {
                       onSubTabChange={handleSubTabChangeString}
                     />
                     <SearchBar query={searchQuery} onQueryChange={(q) => { setSearchQuery(q); setCurrentPage(1); }} recordCount={processedData.length} />
+                    {canDelete && deletionModule && selectedRows.size > 0 && (
+                      <div className="px-6 py-2">
+                        <Button variant="destructive" size="sm" onClick={() => openPermanentDelete([...selectedRows].map(String))}>
+                          Hapus permanen ({selectedRows.size})
+                        </Button>
+                      </div>
+                    )}
                     <DataTable
+                      canDelete={canDelete && deletionModule !== null}
                       columns={displayColumns}
                       data={paginatedData}
                       selectedRows={selectedRows}
@@ -748,11 +762,23 @@ export default function App() {
               </div>
             </SidebarInset>
           </SidebarProvider>
-        </AuthGate>
+      )}
+
+      {canDelete && <PermanentDeleteCleanupStatus refreshKey={cleanupRefreshKey} />}
+      {canDelete && deleteRequest && (
+        <PermanentDeleteDialog
+          open
+          onOpenChange={(open) => { if (!open) setDeleteRequest(null); }}
+          module={deleteRequest.module}
+          ids={deleteRequest.ids}
+          onDeleted={handleDeleted}
+          title={deleteRequest.module === 'work_orders' ? 'Hapus permanen Work Order beserta data turunannya' : undefined}
+        />
       )}
 
       {/* Detail Panel and Modals outside conditional flow */}
       <DetailPanel
+        canDelete={canDelete && deletionModule !== null}
         open={panelOpen}
         moduleId={effectiveModule}
         row={panelRow}

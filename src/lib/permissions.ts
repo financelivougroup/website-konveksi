@@ -77,3 +77,8 @@ export function canEditSalary(role: AppRole | null | undefined): boolean {
 /** Kalimat penjelas untuk pengguna yang tidak berhak menulis baris gaji. */
 export const SALARY_EDIT_HINT =
   'Hanya role Finance yang bisa mencatat atau mengubah gaji.'
+
+/** UI affordance only; the permanent-delete RPC enforces this independently. */
+export function canPermanentlyDelete(role: AppRole | null | undefined): boolean {
+  return role === 'owner' || role === 'finance'
+}

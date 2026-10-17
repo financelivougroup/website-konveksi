@@ -12,6 +12,14 @@ export interface Env {
   SIGN_EXPIRY_SECONDS: string;
   /** Basis project Supabase, dipakai untuk mengambil JWKS. */
   SUPABASE_URL: string;
+  /**
+   * Server-only secret, required for /cleanup and /sign/delete.
+   * Setup: wrangler secret put SUPABASE_SERVICE_ROLE_KEY
+   * Local development: set this name in ignored worker/.dev.vars.
+   * Never put the value in wrangler.toml, VITE_* variables, responses, or logs.
+   * The database RPCs must be installed before enabling these delete routes.
+   */
+  SUPABASE_SERVICE_ROLE_KEY: string;
   /** Daftar origin yang diizinkan, dipisah koma. */
   ALLOWED_ORIGINS: string;
 }

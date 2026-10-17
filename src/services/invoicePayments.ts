@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import type { InvoicePaymentRow } from '@/types/pipeline';
+import { preview, execute } from '@/services/permanentDeletion';
 
 const TABLE = 'invoice_payments';
 
@@ -85,13 +86,12 @@ export async function updatePayment(
 }
 
 export async function removePayment(id: string, invoiceId: string): Promise<{ error: Error | null }> {
-  const { data, error } = await supabase
-    .from(TABLE)
-    .delete()
-    .eq('id', id)
-    .eq('invoice_id', invoiceId)
-    .select('id')
-    .maybeSingle();
+  // Compensation for a just-created payment only; saved-row deletion uses the dialog.
+  const { data, error } = await supabase.from(TABLE).select('id').eq('id', id).eq('invoice_id', invoiceId).maybeSingle();
   if (error) return { error };
-  return { error: data ? null : new Error('Payment tidak ditemukan atau bukan milik invoice ini.') };
+  if (!data) return { error: new Error('Payment tidak ditemukan atau bukan milik invoice ini.') };
+  const impact = await preview('invoice_payments', [id]);
+  if (impact.error) return { error: impact.error };
+  const deleted = await execute('invoice_payments', [id], impact.data.fingerprint);
+  return { error: deleted.error };
 }

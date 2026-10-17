@@ -39,8 +39,10 @@ export async function requireUser(request: Request, env: Env): Promise<{ userId:
       issuer: `${env.SUPABASE_URL}/auth/v1`,
       audience: 'authenticated',
     });
-    if (!payload.sub) throw new Error('Token tidak memuat subjek.');
-    return { userId: payload.sub };
+    if (typeof payload.sub !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(payload.sub)) {
+      throw new Error('Token tidak memuat subjek pengguna yang valid.');
+    }
+    return { userId: payload.sub.toLowerCase() };
   } catch {
     throw new HttpError(401, 'INVALID_TOKEN', 'Sesi tidak valid atau sudah kedaluwarsa.');
   }

@@ -268,7 +268,8 @@ export async function ensureInvoiceForProductionOrder(
   const invoiceDate = todayIso();
   const monthYear = formatMonthYear(invoiceDate);
 
-  const { sequence: maxSeq } = await fetchMaxSequenceNumber();
+  const { sequence: maxSeq, error: sequenceError } = await fetchMaxSequenceNumber();
+  if (sequenceError) throw sequenceError;
   const invoiceCode = buildInvoiceCode({
     billingTypeCodeValue,
     clientCode: client.kodeClient,

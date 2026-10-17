@@ -1,11 +1,10 @@
 import {
   isAllowedR2ContentType,
-  isR2LogicalBucket,
   isSafeObjectPath,
   MAX_R2_UPLOAD_BYTES,
-  type R2LogicalBucket,
 } from '../../src/lib/r2';
 import { requireUser } from './auth';
+import { authorizeMediaDelete, cleanupJobs, MAX_DELETE_PATHS, requireJobIds, requireLogicalBucket, requirePath } from './cleanup';
 import { allowedOrigins, signExpirySeconds, type Env } from './env';
 import { errorBody, HttpError, json } from './errors';
 import { deleteObject, presignPut } from './sign';
@@ -17,8 +16,7 @@ import { deleteObject, presignPut } from './sign';
  * jadi setiap pemeriksaan di bawah ini memang menjadi pertahanan utama.
  */
 
-/** Batas jumlah path dalam satu panggilan hapus. */
-const MAX_DELETE_PATHS = 50;
+/** Cleanup accepts IDs only; paths and permission decisions come from the server. */
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -39,6 +37,11 @@ export default {
       }
       if (request.method === 'POST' && url.pathname === '/sign/delete') {
         return await handleDelete(request, env, origin);
+      }
+      if (request.method === 'POST' && url.pathname === '/cleanup') {
+        const { userId } = await requireUser(request, env);
+        const ids = requireJobIds(await readJson(request));
+        return json(await cleanupJobs(env, userId, ids), 200, origin);
       }
       throw new HttpError(404, 'NOT_FOUND', 'Endpoint tidak ditemukan.');
     } catch (error) {
@@ -76,7 +79,28 @@ function corsHeaders(origin: string | null): Record<string, string> {
 
 async function readJson(request: Request): Promise<Record<string, unknown>> {
   try {
-    const body = await request.json();
+    // Bound streamed bodies too; Content-Length alone is caller controlled.
+    if (!request.body) throw new Error('Empty body');
+    const reader = request.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > 32_768) {
+        await reader.cancel();
+        throw new Error('Body too large');
+      }
+      chunks.push(value);
+    }
+    const bytes = new Uint8Array(size);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    const body: unknown = JSON.parse(new TextDecoder().decode(bytes));
     if (!body || typeof body !== 'object' || Array.isArray(body)) {
       throw new Error('bukan objek');
     }
@@ -86,27 +110,16 @@ async function readJson(request: Request): Promise<Record<string, unknown>> {
   }
 }
 
-/** Validasi jenis lampiran dan kembalikan sebagai tipe sempit. */
-function requireLogicalBucket(value: unknown): R2LogicalBucket {
-  if (!isR2LogicalBucket(value)) {
-    throw new HttpError(403, 'BUCKET_NOT_ALLOWED', 'Jenis lampiran tidak dikenal.');
-  }
-  return value;
-}
-
-function requirePath(value: unknown): string {
-  if (!isSafeObjectPath(value)) {
-    throw new HttpError(403, 'INVALID_PATH', 'Path lampiran tidak valid.');
-  }
-  return value;
-}
-
 async function handleUpload(request: Request, env: Env, origin: string | null): Promise<Response> {
   await requireUser(request, env);
   const body = await readJson(request);
 
   const logicalBucket = requireLogicalBucket(body.logicalBucket);
-  const path = requirePath(body.path);
+  // Preserve upload validation; cleanup/delete use stricter URL-safe paths.
+  if (!isSafeObjectPath(body.path)) {
+    throw new HttpError(403, 'INVALID_PATH', 'Path lampiran tidak valid.');
+  }
+  const path = body.path;
 
   const contentType = body.contentType;
   if (!isAllowedR2ContentType(contentType)) {
@@ -128,7 +141,7 @@ async function handleUpload(request: Request, env: Env, origin: string | null): 
 }
 
 async function handleDelete(request: Request, env: Env, origin: string | null): Promise<Response> {
-  await requireUser(request, env);
+  const { userId } = await requireUser(request, env);
   const body = await readJson(request);
 
   const logicalBucket = requireLogicalBucket(body.logicalBucket);
@@ -140,6 +153,7 @@ async function handleDelete(request: Request, env: Env, origin: string | null): 
     throw new HttpError(400, 'TOO_MANY_PATHS', `Maksimal ${MAX_DELETE_PATHS} path per permintaan.`);
   }
   const paths = rawPaths.map(requirePath);
+  await authorizeMediaDelete(env, userId, logicalBucket, paths);
 
   // Best-effort, seperti `storage.remove`: sebagian boleh gagal tanpa
   // menggagalkan keseluruhan, dan kegagalannya dilaporkan per path.
@@ -153,11 +167,7 @@ async function handleDelete(request: Request, env: Env, origin: string | null): 
     if (result.status === 'fulfilled') {
       deleted += 1;
     } else {
-      const reason = result.reason;
-      errors.push({
-        path: paths[index],
-        message: reason instanceof Error ? reason.message : 'Gagal menghapus.',
-      });
+      errors.push({ path: paths[index], message: 'Gagal menghapus lampiran.' });
     }
   });
 
