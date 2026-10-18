@@ -135,9 +135,12 @@ BEGIN
   SELECT coalesce(array_agg(id::text),'{}') INTO v_detail FROM public.selesai_jahit WHERE work_code=ANY(v_work_codes);
   v_graph := v_graph || jsonb_build_object('selesai_jahit',public.permanent_delete_rows('selesai_jahit',v_detail));
   SELECT coalesce(array_agg(id::text),'{}') INTO v_detail FROM public.complain_penalti WHERE production_code=ANY(v_codes) OR work_code=ANY(v_work_codes);
-  IF EXISTS(SELECT FROM public.complain_penalti WHERE id::text=ANY(v_detail) AND
-     ((nullif(production_code,'') IS NOT NULL AND NOT(production_code=ANY(v_codes))) OR
-      (nullif(work_code,'') IS NOT NULL AND NOT(work_code=ANY(v_work_codes))))) THEN
+  -- A legacy work_code that matches no live WO is stale free text, not a conflict.
+  -- Only a code that points at another order's real WO is ambiguous.
+  IF EXISTS(SELECT FROM public.complain_penalti c WHERE c.id::text=ANY(v_detail) AND (
+      (nullif(c.production_code,'') IS NOT NULL AND NOT(c.production_code=ANY(v_codes)))
+      OR (nullif(c.work_code,'') IS NOT NULL AND NOT(c.work_code=ANY(v_work_codes))
+          AND EXISTS(SELECT FROM public.work_orders w WHERE w.work_code=c.work_code)))) THEN
    v_blocked := v_blocked || '"Complain memiliki relasi kode yang bertentangan."'::jsonb;
   END IF;
   v_graph := v_graph || jsonb_build_object('complain_penalti',public.permanent_delete_rows('complain_penalti',v_detail));
@@ -565,9 +568,16 @@ END $$;
 -- Destructive graph tables can only be deleted through the above transactions.
 -- Preserve old SELECT/INSERT/UPDATE policy expressions when splitting ALL.
 DO $$
-DECLARE p record; v_roles text; v_cmd text; v_suffix text; v_table text;
+DECLARE p record; v_roles text; v_table text; v_snapshot jsonb;
 BEGIN
- FOR p IN SELECT * FROM pg_policies WHERE schemaname='public' AND (tablename=ANY(public.permanent_delete_modules()) OR tablename IN ('invoice_payment_files','complain_files','production_order_variations','production_order_prices','production_order_price_components')) AND cmd IN ('ALL','DELETE') LOOP
+ -- Snapshot first: dropping policies while scanning the pg_policies view can
+ -- skip rows on a live catalogue. Only this snapshot drives the loop below.
+ SELECT coalesce(jsonb_agg(jsonb_build_object('policyname',policyname,'tablename',tablename,'cmd',cmd,'roles',to_jsonb(roles),'qual',qual,'with_check',with_check)),'[]'::jsonb)
+ INTO v_snapshot FROM pg_policies
+ WHERE schemaname='public'
+  AND (tablename=ANY(public.permanent_delete_modules()) OR tablename IN ('invoice_payment_files','complain_files','production_order_variations','production_order_prices','production_order_price_components'))
+  AND cmd IN ('ALL','DELETE');
+ FOR p IN SELECT * FROM jsonb_to_recordset(v_snapshot) AS r(policyname text,tablename text,cmd text,roles text[],qual text,with_check text) LOOP
   SELECT string_agg(CASE WHEN x='public' THEN 'PUBLIC' ELSE quote_ident(x) END,',') INTO v_roles FROM unnest(p.roles) x;
   EXECUTE format('DROP POLICY %I ON public.%I',p.policyname,p.tablename);
   IF p.cmd='ALL' THEN
