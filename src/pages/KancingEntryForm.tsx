@@ -17,6 +17,7 @@ import * as kancingRecordSvc from '@/services/kancingRecords';
 import { syncWorkOrderStatus } from '@/services/autoInvoice';
 import * as upstreamRecordSvc from '@/services/sewingRecords';
 import * as workOrderSvc from '@/services/workOrders';
+import { fetchAll as fetchAllKaryawan, activeKancingNames } from '@/services/registerPenjahit';
 import type { WorkOrder, KancingRecord, SewingRecord } from '@/types/pipeline';
 
 interface KancingEntryFormProps {
@@ -25,8 +26,6 @@ interface KancingEntryFormProps {
   existingKancingRecords?: KancingRecord[];
   existingSewingRecords?: SewingRecord[];
 }
-
-const penjahitList = ['Budi Santoso', 'Ani Wulandari', 'Caca', 'Dedi Kurniawan', 'Eka Prasetya', 'Fitri Handayani'];
 
 export default function KancingEntryForm({ onBack, workOrders: externalWorkOrders, existingKancingRecords: externalKancingRecords, existingSewingRecords: externalUpstreamRecords }: KancingEntryFormProps) {
   const { profile } = useAuth();
@@ -37,6 +36,7 @@ export default function KancingEntryForm({ onBack, workOrders: externalWorkOrder
   const [selection, setSelection] = useState(EMPTY_ENTRY_SELECTION);
   const { woId } = selection;
   const [pic, setPic] = useState('');
+  const [picOptions, setPicOptions] = useState<string[]>([]);
   const [qty, setQty] = useState('');
   const [tanggal, setTanggal] = useState(() => format(new Date(), 'yyyy-MM-dd'));
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -55,13 +55,19 @@ export default function KancingEntryForm({ onBack, workOrders: externalWorkOrder
       externalWorkOrders !== undefined ? { data: externalWorkOrders, error: null } : workOrderSvc.fetchAll(),
       externalKancingRecords !== undefined ? { data: externalKancingRecords, error: null } : kancingRecordSvc.fetchAll(),
       externalUpstreamRecords !== undefined ? { data: externalUpstreamRecords, error: null } : upstreamRecordSvc.fetchAll(),
+      fetchAllKaryawan(),
     ])
-      .then(([orders, records, upstream]) => {
+      .then(([orders, records, upstream, people]) => {
         if (!active) return;
         if (orders.error || records.error || upstream.error || !orders.data || !records.data || !upstream.data) {
           setLoadError('Data produksi belum dapat dimuat. Coba lagi.');
           return;
         }
+        if (people.error || !people.data) {
+          setLoadError('Daftar PIC belum dapat dimuat dari Contact. Coba lagi.');
+          return;
+        }
+        setPicOptions(activeKancingNames(people.data));
         setWorkOrders(orders.data);
         setExistingKancingRecords(records.data);
         setUpstreamRecords(upstream.data);
@@ -98,7 +104,7 @@ export default function KancingEntryForm({ onBack, workOrders: externalWorkOrder
     : 0;
   const sisaKancing = selectedWO ? selectedWO.quantity - sudahKancing : 0;
   const isQtyValid = isEntryQuantityValid(qty);
-  const isFormValid = Boolean(selectedWO && pic && isQtyValid && tanggal);
+  const isFormValid = Boolean(selectedWO && picOptions.includes(pic) && isQtyValid && tanggal);
 
   const showPic = Boolean(selectedWO && isQtyValid);
   const showDetails = Boolean(showPic && pic);
@@ -177,15 +183,16 @@ export default function KancingEntryForm({ onBack, workOrders: externalWorkOrder
                 </dl>
               )}
               <Field data-invalid={qty !== '' && !isQtyValid}>
-                <FieldLabel htmlFor="kancing-qty">1. Jumlah Pasang Kancing (pcs) *</FieldLabel>
+                <FieldLabel htmlFor="kancing-qty">1. Jumlah Pasang Kancing (pcs)</FieldLabel>
                 <NumberField id="kancing-qty" value={qty} onChange={setQty} min={1} placeholder="Contoh: 30" />
                 {qty !== '' && !isQtyValid && <FieldDescription className="text-destructive">Jumlah harus berupa bilangan bulat positif.</FieldDescription>}
               </Field>
               <div hidden={!showPic}>
                 <Field>
-                  <FieldLabel htmlFor="kancing-pic-trigger">2. Pemasang *</FieldLabel>
+                  <FieldLabel htmlFor="kancing-pic-trigger">2. Pemasang</FieldLabel>
                   <AppSelect key={woId} bare id="kancing-pic" required value={pic} onValueChange={setPic} disabled={busy || !showPic}
-                    placeholder="Pilih Pemasang" options={toOptions(penjahitList)} />
+                    placeholder="Pilih Pemasang" options={toOptions(picOptions)} />
+                  {picOptions.length === 0 && <FieldDescription>Belum ada karyawan Aktif berposisi Penjahit atau Finishing — daftarkan di Contact → Karyawan.</FieldDescription>}
                 </Field>
               </div>
               <div hidden={!showDetails} className={showDetails ? 'flex min-w-0 flex-col gap-5' : 'hidden'}>

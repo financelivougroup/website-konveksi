@@ -35,6 +35,8 @@ interface AppSelectProps {
   options: SelectOption[];
   /** Teks opsi pengosong; bila ada, opsi ini ditambahkan di posisi pertama. */
   placeholder?: string;
+  /** Keep the trigger placeholder without offering it as a clear-selection item. */
+  showPlaceholderOption?: boolean;
   /** Label di atas trigger; mengikuti struktur `Field` pada c-select-4. */
   label?: string;
   required?: boolean;
@@ -80,6 +82,7 @@ export function AppSelect({
   onValueChange,
   options,
   placeholder,
+  showPlaceholderOption = true,
   label,
   required = false,
   disabled = false,
@@ -140,11 +143,11 @@ export function AppSelect({
         </SelectTrigger>
 
         <SelectContent className={contentClassName}>
-          {items.length === 0 && !placeholder ? (
+          {items.length === 0 && (!placeholder || !showPlaceholderOption) ? (
             <div className="px-3 py-2 text-[12px] text-slate-400">{emptyMessage}</div>
           ) : (
             <SelectGroup>
-              {placeholder && (
+              {placeholder && showPlaceholderOption && (
                 <SelectItem value={EMPTY_VALUE} className="text-[12px] text-slate-400">
                   {placeholder}
                 </SelectItem>
@@ -171,10 +174,10 @@ export function AppSelect({
       {label && (
         <FieldLabel
           htmlFor={id ? `${id}-trigger` : undefined}
-          className="text-[11px] font-semibold uppercase tracking-wider text-slate-500"
+          className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-muted-foreground"
         >
           {label}
-          {required && <span className="ml-0.5 text-rose-400">*</span>}
+          {required && <span className="sr-only"> (wajib diisi)</span>}
         </FieldLabel>
       )}
 
@@ -193,11 +196,11 @@ export function AppSelect({
         </SelectTrigger>
 
         <SelectContent className={contentClassName}>
-          {items.length === 0 && !placeholder ? (
+          {items.length === 0 && (!placeholder || !showPlaceholderOption) ? (
             <div className="px-3 py-2 text-[12px] text-slate-400">{emptyMessage}</div>
           ) : (
             <SelectGroup>
-              {placeholder && (
+              {placeholder && showPlaceholderOption && (
                 <SelectItem value={EMPTY_VALUE} className="text-[12px] text-slate-400">
                   {placeholder}
                 </SelectItem>

@@ -10,6 +10,8 @@
  */
 import { renderToStaticMarkup } from 'react-dom/server';
 import { LogDashboardPanel } from '@/components/Production/LogDashboardPanel';
+import { LaporanKpiCards } from '@/components/Laporan/LaporanKpiCards';
+import { summarizeLaporan } from '@/lib/laporanCompute';
 import { KodeProduksiList } from '@/components/Production/KodeProduksiList';
 import { EMPTY_FILTERS, type LaporanRow } from '@/lib/laporanCompute';
 
@@ -54,6 +56,24 @@ const list = renderToStaticMarkup(
 );
 check('left panel "KODE PRODUKSI" header is gone', !/Kode Produksi<\/span>/.test(list));
 check('left panel still renders its "Semua" row', list.includes('>Semua<'));
+
+for (const kind of ['jahit','kancing','finishing'] as const) {
+  const html = renderToStaticMarkup(<LogDashboardPanel {...base} kind={kind} scopedRows={rows} filters={{bulan:'2026-09',produk:'',pic:'Budi'}} targets={[{id:1,nama:'Budi',bulan_tahun:'2026-09',target_monthly:20}]} today={new Date(2026,9,21)} />);
+  check(`${kind}: requested subtitles removed`, !html.includes('pcs dikerjakan') && !html.includes('work order'));
+  check(`${kind}: gauge shows percentage and missing qty`,html.includes('Realisasi vs Target')&&html.includes('50%')&&html.includes('Kurang 10 pcs')&&html.includes('aria-label="Realisasi 50'));
+  check(`${kind}: gauge has one thick arc, track and no chart library`,html.includes('stroke-width="24"')&&html.includes('linearGradient')&&!html.includes('recharts'));
+  check(`${kind}: stage gradient classes emitted for light and dark`,html.includes('[stop-color:')&&html.includes('dark:[stop-color:'));
+  check(`${kind}: workday average replaces proof/PIC count`,html.includes('Rata-rata per Hari')&&!html.includes('hari kerja')&&!html.includes('Bukti Barang')&&!html.includes('orang tercatat'));
+}
+const reportCards = renderToStaticMarkup(<LaporanKpiCards kind="jahit" summary={summarizeLaporan(rows)} picLabel="Penjahit" />);
+check('shared report cards keep original presentation',reportCards.includes('pcs dikerjakan')&&reportCards.includes('Bukti Barang'));
+const surplusRows: LaporanRow[] = [{ ...rows[0], qty: 25 }];
+const surplus = renderToStaticMarkup(<LogDashboardPanel {...base} scopedRows={surplusRows} filters={{bulan:'2026-09',produk:'',pic:'Budi'}} targets={[{id:1,nama:'Budi',bulan_tahun:'2026-09',target_monthly:20}]} today={new Date(2026,9,21)} />);
+check('surplus gauge shows +percent and Extra pcs, not Kurang',surplus.includes('+125%')&&surplus.includes('Extra 5 pcs')&&!surplus.includes('Kurang'));
+const exact = renderToStaticMarkup(<LogDashboardPanel {...base} scopedRows={[{ ...rows[0], qty: 20 }]} filters={{bulan:'2026-09',produk:'',pic:'Budi'}} targets={[{id:1,nama:'Budi',bulan_tahun:'2026-09',target_monthly:20}]} today={new Date(2026,9,21)} />);
+check('exact target shows 100 percent without shortfall/extra',exact.includes('100%')&&!exact.includes('Kurang')&&!exact.includes('Extra'));
+const failedMetrics = renderToStaticMarkup(<LogDashboardPanel {...base} scopedRows={rows} targetError="Target gagal" onRetryMetrics={()=>{}} />);
+check('supporting error preserves Qty and retry',failedMetrics.includes('Total Qty')&&failedMetrics.includes('Target gagal')&&failedMetrics.includes('Muat ulang KPI'));
 
 // ---------- 2. Search box lives in the slicer row ----------
 check('search box is rendered', withRows.includes('Cari kode / produk / PIC...'));

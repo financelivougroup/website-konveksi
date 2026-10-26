@@ -295,9 +295,8 @@ export function ExpenseDialog({
           <DialogTitle className="text-[14px]">
             {readOnly ? 'Lihat Catatan Biaya' : isEdit ? 'Edit Catatan Biaya' : 'Catat Biaya Baru'}
           </DialogTitle>
-          <DialogDescription className="text-[12px]">
-            Nama kategori dan vendor disalin ke catatan ini apa adanya, sehingga riwayat
-            biaya tetap terbaca walau namanya kelak diubah.
+          <DialogDescription className="sr-only">
+            Form catatan biaya.
           </DialogDescription>
         </DialogHeader>
 
@@ -327,7 +326,7 @@ export function ExpenseDialog({
 
           <div className="space-y-1.5">
             <Label htmlFor="expense-payee" className="text-[12px]">
-              Vendor / Karyawan <span className="text-rose-600">*</span>
+              Vendor / Karyawan
             </Label>
             <PayeeCombobox
               id="expense-payee"
@@ -341,7 +340,7 @@ export function ExpenseDialog({
 
           <div className="space-y-1.5">
             <Label htmlFor="expense-nama-barang" className="text-[12px]">
-              Nama Barang <span className="text-rose-600">*</span>
+              Nama Barang
             </Label>
             <Input
               id="expense-nama-barang"
@@ -356,14 +355,14 @@ export function ExpenseDialog({
           <div className="grid gap-3.5 sm:grid-cols-3">
             <div className="space-y-1.5">
               <Label htmlFor="expense-date" className="text-[12px]">
-                Date Invoice <span className="text-rose-600">*</span>
+                Date Invoice
               </Label>
               <ComplainDatePicker id="expense-date" value={date} onChange={setDate} />
             </div>
 
             <div className="space-y-1.5">
               <Label htmlFor="expense-quantity" className="text-[12px]">
-                Jumlah <span className="text-rose-600">*</span>
+                Jumlah
               </Label>
               <Input
                 id="expense-quantity"
@@ -380,7 +379,7 @@ export function ExpenseDialog({
 
             <div className="space-y-1.5">
               <Label htmlFor="expense-unit-price" className="text-[12px]">
-                Harga/Item <span className="text-rose-600">*</span>
+                Harga/Item
               </Label>
               <Input
                 id="expense-unit-price"
@@ -445,9 +444,6 @@ export function ExpenseDialog({
                 ? '—'
                 : formatCurrency(computeTotalPayment(amounts))}
             </p>
-            <p className="text-[11px] text-slate-400">
-              Dihitung otomatis: Total + Ongkir/Admin − Discount/Cashback.
-            </p>
           </div>
 
           {(amountWarning || (parsedQty === null && quantity.trim() !== '') || (parsedPrice === null && unitPrice.trim() !== '')) && (
@@ -460,7 +456,7 @@ export function ExpenseDialog({
           <div className="grid gap-3.5 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="expense-flow" className="text-[12px]">
-                Flow Transaction <span className="text-rose-600">*</span>
+                Flow Transaction
               </Label>
               <AppSelect
                 id="expense-flow"
@@ -474,7 +470,7 @@ export function ExpenseDialog({
 
             <div className="space-y-1.5">
               <Label htmlFor="expense-pic" className="text-[12px]">
-                PIC <span className="text-rose-600">*</span>
+                PIC
               </Label>
               <AppSelect
                 id="expense-pic"
@@ -493,7 +489,7 @@ export function ExpenseDialog({
           {flowTransaction === FLOW_REQUIRING_PROOF && (
             <div className="space-y-1.5">
               <Label className="text-[12px]">
-                Proof Payment from PIC <span className="text-rose-600">*</span>
+                Proof Payment from PIC
               </Label>
               {initial?.proofPaymentUrl && !proofPaymentFile && (
                 <div className="mb-2 flex items-center gap-2.5 rounded-lg border bg-white p-2.5">

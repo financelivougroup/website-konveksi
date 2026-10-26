@@ -206,13 +206,13 @@ export default function SewingEntryForm({ onBack, workOrders: externalWorkOrders
                 </dl>
               )}
               <Field data-invalid={qty !== '' && !isQtyValid}>
-                <FieldLabel htmlFor="sewing-qty">1. Jumlah Selesai Jahit (pcs) *</FieldLabel>
+                <FieldLabel htmlFor="sewing-qty">1. Jumlah Selesai Jahit (pcs)</FieldLabel>
                 <NumberField id="sewing-qty" value={qty} onChange={setQty} min={1} placeholder="Contoh: 30" />
                 {qty !== '' && !isQtyValid && <FieldDescription className="text-destructive">Jumlah harus berupa bilangan bulat positif.</FieldDescription>}
               </Field>
               <div hidden={!showPic}>
                 <Field>
-                  <FieldLabel htmlFor="sewing-pic-trigger">2. Penjahit *</FieldLabel>
+                  <FieldLabel htmlFor="sewing-pic-trigger">2. Penjahit</FieldLabel>
                   <AppSelect key={woId} bare id="sewing-pic" required value={pic} onValueChange={setPic} disabled={busy || !showPic}
                     placeholder="Pilih Penjahit" options={toOptions(penjahitOptions)} />
                   {penjahitOptions.length === 0 && <FieldDescription>Belum ada karyawan Aktif berposisi Penjahit — daftarkan di menu Contact → tab Karyawan.</FieldDescription>}

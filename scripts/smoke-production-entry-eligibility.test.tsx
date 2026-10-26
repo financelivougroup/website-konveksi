@@ -29,7 +29,9 @@ const kancing = [
 const finishing = [{ workOrderId: 'partial', qtyFinishing: 4 }] as FinishingRecord[];
 
 function assertCards(html: string, expected: string[]) {
-  assert.deepEqual([...html.matchAll(/WO: (WORK-[A-Z]+)/g)].map((match) => match[1]), expected);
+  const visibleIds = [...html.matchAll(/data-work-order-id="([^"]+)"/g)].map((match) => match[1]);
+  assert.deepEqual(visibleIds.map((id) => orders.find((order) => order.id === id)?.workCode), expected);
+  assert.ok(!html.includes('WO: '));
 }
 
 test('actual Sewing page shows only cutting balance per variation, including order qty zero', () => {
@@ -51,14 +53,14 @@ test('actual Finishing page allows partial kancing but excludes equal finishing 
 test('explicit empty upstream is authoritative even with nonempty injected orders', () => {
   const html = renderToStaticMarkup(<SewingEntryForm workOrders={orders} existingCuttingRecords={[]} existingSewingRecords={[]} />);
   assertCards(html, []);
-  assert.ok(html.includes('Tidak ada WO yang tersedia'));
+  assert.ok(html.includes('Tidak ada produksi yang tersedia'));
   assert.ok(!html.includes('Memuat work order'));
 });
 
 test('explicit empty orders remains empty despite positive upstream records', () => {
   const html = renderToStaticMarkup(<KancingEntryForm workOrders={[]} existingSewingRecords={sewing} existingKancingRecords={[]} />);
   assertCards(html, []);
-  assert.ok(html.includes('Tidak ada WO yang tersedia'));
+  assert.ok(html.includes('Tidak ada produksi yang tersedia'));
 });
 
 test('missing upstream or own collections hides choices instead of assuming zero', () => {
@@ -70,6 +72,6 @@ test('missing upstream or own collections hides choices instead of assuming zero
     const html = renderToStaticMarkup(page);
     assertCards(html, []);
     assert.ok(html.includes('Memuat work order'));
-    assert.ok(!html.includes('Tidak ada WO yang tersedia'));
+    assert.ok(!html.includes('Tidak ada produksi yang tersedia'));
   }
 });

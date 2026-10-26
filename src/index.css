@@ -49,27 +49,58 @@
     --chart-3: 197 37% 24%;
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
+
+    /* ---------------------------------------------------------------------
+       Monitor Kinerja Produksi.
+
+       Tiga warna ini sengaja jadi token, bukan kelas Tailwind langsung, karena
+       artinya semantik dan harus konsisten di seluruh dashboard (brief bagian 8):
+         realisasi = biru, target = merah, tercapai/surplus = hijau.
+       Mode Bulan memakai aksen biru tua, mode Akumulasi hijau — keduanya
+       menurunkan `--kpi-aksen` sehingga tidak perlu menduplikasi kelas di
+       setiap komponen.
+
+       Nilai lightness dipilih agar teks putih di atasnya tetap >= 4.5:1
+       (WCAG AA untuk teks normal), termasuk pada badge kecil. Rasio terukur
+       terhadap latar putih: realisasi 5.98, target 4.80, tercapai 4.62,
+       peringatan 4.97, netral 4.72. Varian gelap didefinisikan ulang di `.dark`
+       karena token yang sama dipakai sebagai WARNA TEKS di atas latar gelap.
+       --------------------------------------------------------------------- */
+    --kpi-realisasi: 217 91% 45%;
+    --kpi-target: 0 72% 51%;
+    --kpi-tercapai: 158 74% 30%;
+    --kpi-peringatan: 32 95% 34%;
+    --kpi-netral: 215 16% 47%;
+
+    /* Aksen per mode; ditimpa oleh .kpi-mode-* di bawah. */
+    --kpi-aksen: 217 91% 45%;
+    --kpi-aksen-lembut: 217 91% 96%;
+    --kpi-aksen-teks: 217 91% 32%;
+
+    /* Permukaan header halaman per orang (navy, sesuai brief bagian 5). */
+    --kpi-navy: 222 47% 20%;
+    --kpi-navy-foreground: 210 40% 98%;
   }
 
   .dark {
-    --background: 240 10% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 240 10% 3.9%;
-    --card-foreground: 0 0% 98%;
-    --popover: 240 10% 3.9%;
-    --popover-foreground: 0 0% 98%;
+    --background: 222 35% 8%;
+    --foreground: 210 30% 96%;
+    --card: 222 26% 12%;
+    --card-foreground: 210 30% 96%;
+    --popover: 222 23% 16%;
+    --popover-foreground: 210 30% 96%;
     --primary: 0 0% 98%;
     --primary-foreground: 240 5.9% 10%;
-    --secondary: 240 3.7% 15.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 240 3.7% 15.9%;
-    --muted-foreground: 240 5% 64.9%;
-    --accent: 240 3.7% 15.9%;
-    --accent-foreground: 0 0% 98%;
+    --secondary: 222 21% 20%;
+    --secondary-foreground: 210 30% 96%;
+    --muted: 222 21% 18%;
+    --muted-foreground: 215 20% 74%;
+    --accent: 222 22% 23%;
+    --accent-foreground: 210 30% 96%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 0 0% 98%;
-    --border: 240 3.7% 15.9%;
-    --input: 240 3.7% 15.9%;
+    --border: 218 18% 29%;
+    --input: 218 18% 34%;
     --ring: 240 4.9% 83.9%;
     --sidebar-background: 240 5.9% 10%;
     --sidebar-foreground: 240 4.8% 95.9%;
@@ -96,6 +127,23 @@
     --chart-3: 30 80% 55%;
     --chart-4: 280 65% 60%;
     --chart-5: 340 75% 55%;
+
+    /* Monitor Kinerja Produksi — token yang sama dipakai sebagai WARNA TEKS
+       di atas latar gelap, jadi harus dinaikkan lightness-nya. Nilai di bawah
+       sudah diukur terhadap latar `240 10% 3.9%`: realisasi 6.53, target 6.10,
+       tercapai 10.74, peringatan 9.58, netral 7.82 (semua >= 4.5:1). */
+    --kpi-realisasi: 217 91% 65%;
+    --kpi-target: 0 72% 65%;
+    --kpi-tercapai: 158 64% 55%;
+    --kpi-peringatan: 32 95% 60%;
+    --kpi-netral: 215 16% 65%;
+
+    --kpi-aksen: 217 91% 62%;
+    --kpi-aksen-lembut: 217 40% 18%;
+    --kpi-aksen-teks: 217 91% 78%;
+
+    --kpi-navy: 222 47% 16%;
+    --kpi-navy-foreground: 210 40% 98%;
   }
 }
 
@@ -111,7 +159,7 @@
 
 /* Form Inputs */
 .form-input {
-  @apply w-full h-9 px-3 text-[13px] border border-gray-200 rounded-lg outline-none transition-all bg-white;
+  @apply w-full h-9 px-3 text-[13px] border border-gray-200 rounded-lg outline-none transition-all bg-white dark:border-input dark:bg-card dark:text-foreground;
   font-family: inherit;
 }
 .form-input:focus {
@@ -120,7 +168,7 @@
 }
 .form-input.readonly,
 .form-input:disabled {
-  @apply bg-slate-50 text-slate-400 cursor-not-allowed border-gray-100;
+  @apply bg-slate-50 text-slate-400 cursor-not-allowed border-gray-100 dark:bg-muted dark:text-muted-foreground dark:border-border;
 }
 select.form-input {
   @apply appearance-none;
@@ -207,6 +255,47 @@ select.form-input {
   -webkit-backdrop-filter: blur(24px) saturate(180%);
   border: 1px solid rgba(255, 255, 255, 0.7);
   box-shadow: 0 8px 32px rgba(15, 23, 42, 0.08);
+}
+
+/* ===========================================================================
+   Monitor Kinerja Produksi — aksen per mode.
+
+   Mode Bulan bertema biru tua, mode Akumulasi bertema hijau (brief bagian 0).
+   Hanya tiga token yang berganti, jadi komponen cukup memakai
+   `text-[hsl(var(--kpi-aksen))]` / `bg-[hsl(var(--kpi-aksen-lembut))]` dan
+   otomatis mengikuti mode tanpa percabangan kelas.
+   =========================================================================== */
+.kpi-mode-bulan {
+  --kpi-aksen: 217 91% 45%;
+  --kpi-aksen-lembut: 217 91% 96%;
+  --kpi-aksen-teks: 217 91% 30%;
+}
+
+.kpi-mode-akumulasi {
+  --kpi-aksen: 158 74% 30%;
+  --kpi-aksen-lembut: 158 64% 95%;
+  --kpi-aksen-teks: 158 74% 24%;
+}
+
+/* Mode juga harus terbaca di latar gelap: kelas di atas menimpa token gelap
+   dari `.dark`, jadi variannya didefinisikan ulang di sini. */
+.dark .kpi-mode-bulan {
+  --kpi-aksen: 217 91% 62%;
+  --kpi-aksen-lembut: 217 40% 18%;
+  --kpi-aksen-teks: 217 91% 78%;
+}
+
+.dark .kpi-mode-akumulasi {
+  --kpi-aksen: 158 64% 45%;
+  --kpi-aksen-lembut: 158 40% 16%;
+  --kpi-aksen-teks: 158 64% 72%;
+}
+
+/* Angka besar (gauge, KPI) memakai lebar digit seragam supaya tidak "bergetar"
+   saat angkanya berubah setelah refresh. */
+.kpi-angka {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
 }
 
 @media (prefers-reduced-transparency: reduce) {

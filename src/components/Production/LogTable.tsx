@@ -41,23 +41,8 @@ interface Props {
   onPageChange: (page: number) => void;
   /** Tinggi maksimum narah gulir tabel. */
   maxHeightClass?: string;
-  /**
-   * Aksi baris (Ubah / Hapus). Bila tidak diisi, kolom Aksi tidak dirender
-   * sama sekali — tabel kembali seperti semula.
-   *
-   * Halaman yang menentukan isinya lewat `canEditProductionLog(profile.role)`,
-   * jadi aturan role hidup di satu tempat (`src/lib/permissions.ts`) dan tabel
-   * ini tidak perlu tahu apa-apa soal role.
-   */
+  /** Selected-row actions; the caller retains all role checks. */
   rowActions?: (row: LaporanRow) => React.ReactNode;
-  /** Label kolom aksi. Muncul hanya bila `rowActions` diisi. */
-  actionsLabel?: string;
-  /**
-   * Jumlah kolom yang dipakai kolom aksi + sisipan baris Total. Dipakai baris
-   * Total agar "Total Qty" tetap sejajar dengan kolom Qty saat kolom aksi
-   * muncul atau hilang.
-   */
-  trailingColumns?: number;
 }
 
 export function LogTable({
@@ -69,8 +54,6 @@ export function LogTable({
   onPageChange,
   maxHeightClass = 'max-h-[calc(100vh-380px)]',
   rowActions,
-  actionsLabel = 'Aksi',
-  trailingColumns = 0,
 }: Props) {
   const pageRows = paginate(rows, page);
   const totalQty = rows.reduce((sum, row) => sum + row.qty, 0);
@@ -163,7 +146,6 @@ export function LogTable({
               ? (row) => rowActions(row as unknown as LaporanRow)
               : undefined
           }
-          actionsLabel={actionsLabel}
           emptyMessage={<div className="py-10 text-center text-[13px] text-gray-400">{emptyText}</div>}
           footer={
             <tr className="border-t-2 border-[#D1D5DB] bg-[#F9FAFB]">
@@ -172,10 +154,8 @@ export function LogTable({
               <td className={cn(T_TD, 'text-right font-semibold tabular-nums text-gray-900')}>
                 {totalQty.toLocaleString('id-ID')}
               </td>
-              {/* Bukti (1) + kolom aksi bila ada. Baris Total harus menutup
-                  tepat di lebar tabel, kalau tidak "Total Qty" bergeser satu
-                  sel dari kolom Qty-nya. */}
-              <td className={T_TD} colSpan={1 + trailingColumns} />
+              {/* PIC and evidence remain after Qty; selection is reserved above. */}
+              <td className={T_TD} colSpan={2} />
             </tr>
           }
         />

@@ -105,17 +105,17 @@ export function getBadgeClass(value: unknown): string {
 export function getBadgeStyles(variant: string): string {
   switch (variant) {
     case 'success':
-      return 'bg-green-100 text-green-700';
+      return 'bg-green-100 text-green-700 dark:bg-green-400/10 dark:text-green-300';
     case 'warning':
-      return 'bg-amber-100 text-amber-700';
+      return 'bg-amber-100 text-amber-700 dark:bg-amber-400/10 dark:text-amber-300';
     case 'danger':
-      return 'bg-red-100 text-red-700';
+      return 'bg-red-100 text-red-700 dark:bg-red-400/10 dark:text-red-300';
     case 'info':
-      return 'bg-blue-100 text-blue-700';
+      return 'bg-blue-100 text-blue-700 dark:bg-blue-400/10 dark:text-blue-300';
     case 'purple':
-      return 'bg-purple-100 text-purple-700';
+      return 'bg-purple-100 text-purple-700 dark:bg-purple-400/10 dark:text-purple-300';
     default:
-      return 'bg-gray-100 text-gray-700';
+      return 'bg-gray-100 text-gray-700 dark:bg-muted dark:text-muted-foreground';
   }
 }
 
@@ -135,11 +135,11 @@ export function getRowCondColor(row: Record<string, unknown>, condColors: Array<
 
 function getCondColorClass(color: string): string {
   switch (color) {
-    case 'red': return 'bg-red-50 hover:bg-red-100';
-    case 'yellow': return 'bg-amber-50 hover:bg-amber-100';
-    case 'green': return 'bg-green-50 hover:bg-green-100';
-    case 'blue': return 'bg-blue-50 hover:bg-blue-100';
-    case 'purple': return 'bg-purple-50 hover:bg-purple-100';
+    case 'red': return 'bg-red-50 hover:bg-red-100 dark:bg-red-400/10 dark:hover:bg-red-400/20';
+    case 'yellow': return 'bg-amber-50 hover:bg-amber-100 dark:bg-amber-400/10 dark:hover:bg-amber-400/20';
+    case 'green': return 'bg-green-50 hover:bg-green-100 dark:bg-green-400/10 dark:hover:bg-green-400/20';
+    case 'blue': return 'bg-blue-50 hover:bg-blue-100 dark:bg-blue-400/10 dark:hover:bg-blue-400/20';
+    case 'purple': return 'bg-purple-50 hover:bg-purple-100 dark:bg-purple-400/10 dark:hover:bg-purple-400/20';
     default: return '';
   }
 }

@@ -157,16 +157,15 @@ export function AddClientDialog({
           <DialogTitle className="text-[14px]">
             {isEdit ? 'Edit Client' : 'Tambah Client Baru'}
           </DialogTitle>
-          <DialogDescription className="text-[12px]">
-            Client akan langsung tersimpan di Contact → tab Client dan
-            bisa dipakai untuk kode invoice.
+          <DialogDescription className="sr-only">
+            Form data client.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3.5 py-1">
           <div className="space-y-1.5">
             <Label htmlFor="add-client-nama" className="text-[12px]">
-              Nama client <span className="text-rose-600">*</span>
+              Nama client
             </Label>
             <Input
               id="add-client-nama"
@@ -179,7 +178,7 @@ export function AddClientDialog({
 
           <div className="space-y-1.5">
             <Label htmlFor="add-client-kode" className="text-[12px]">
-              Kode client <span className="text-rose-600">*</span>
+              Kode client
             </Label>
             <Input
               id="add-client-kode"
@@ -189,10 +188,6 @@ export function AddClientDialog({
               maxLength={10}
               className="h-9 text-[13px] uppercase"
             />
-            <p className="text-[11px] text-slate-400">
-              Huruf, angka, dan tanda hubung antarbagian; otomatis huruf besar.
-              Contoh: 001-LVU atau 002-CSC (INV/MP/001-LVU/…).
-            </p>
           </div>
 
           <div className="space-y-1.5">

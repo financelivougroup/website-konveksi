@@ -168,7 +168,7 @@ export function KategoriBiayaPage() {
     {
       key: 'type', label: 'Type', width: '110px',
       render: (row: Record<string, unknown>) => (
-        <span className="font-mono text-gray-700">{(row.type as string) || EMPTY_CELL}</span>
+        <span className="text-gray-700">{(row.type as string) || EMPTY_CELL}</span>
       ),
     },
     {
@@ -267,27 +267,25 @@ export function KategoriBiayaPage() {
   return (
     <main className="flex-1 flex flex-col min-w-0 overflow-auto">
       <div className="px-6 pt-3 pb-0">
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <h1 className="text-[17px] font-semibold tracking-tight text-slate-900">Kategori Biaya</h1>
-          </div>
-          <div className="flex items-center gap-2.5">
+        <div className="mb-3">
+          <h1 className="text-[17px] font-semibold tracking-tight text-slate-900">Kategori Biaya</h1>
+        </div>
+        <div className="flex flex-wrap items-center justify-end gap-2.5 mb-1">
+          <button
+            onClick={() => void refresh()}
+            className="h-8 px-3.5 text-[12px] font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 hover:shadow-md hover:shadow-slate-200 transition-all flex items-center gap-2"
+          >
+            <RefreshCw className="w-3.5 h-3.5" /> Refresh
+          </button>
+          {canManage && ADDABLE_LEVELS.map((level) => (
             <button
-              onClick={() => void refresh()}
-              className="h-8 px-3.5 text-[12px] font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 hover:shadow-md hover:shadow-slate-200 transition-all flex items-center gap-2"
+              key={level}
+              onClick={() => { setEditTarget(null); setDialogLevel(level); }}
+              className="h-8 px-3.5 text-[12px] font-medium bg-primary text-white rounded-lg hover:bg-primary/90 hover:shadow-md hover:shadow-slate-300 transition-all flex items-center gap-2"
             >
-              <RefreshCw className="w-3.5 h-3.5" /> Refresh
+              <Plus className="w-3.5 h-3.5" /> {levelLabel(level)}
             </button>
-            {canManage && ADDABLE_LEVELS.map((level) => (
-              <button
-                key={level}
-                onClick={() => { setEditTarget(null); setDialogLevel(level); }}
-                className="h-8 px-3.5 text-[12px] font-medium bg-primary text-white rounded-lg hover:bg-primary/90 hover:shadow-md hover:shadow-slate-300 transition-all flex items-center gap-2"
-              >
-                <Plus className="w-3.5 h-3.5" /> {levelLabel(level)}
-              </button>
-            ))}
-          </div>
+          ))}
         </div>
       </div>
 

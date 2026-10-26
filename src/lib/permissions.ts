@@ -82,3 +82,20 @@ export const SALARY_EDIT_HINT =
 export function canPermanentlyDelete(role: AppRole | null | undefined): boolean {
   return role === 'owner' || role === 'finance'
 }
+
+/**
+ * Benar bila role ini boleh melihat penghasilan **semua** staf — gaji, biaya,
+ * utang, dan benefit — bukan hanya miliknya sendiri.
+ *
+ * Permintaan user (verbatim): *"kalau finance dan owner ya bisa lihat semua
+ * fitur. gak ada yang di lock"*. Siapa pun selain dua role ini hanya melihat
+ * barisnya sendiri (dipetakan lewat `profiles.orang_id`).
+ *
+ * Dipasangkan dengan `public.staff_settlement_read` di database, yang memakai
+ * aturan yang sama: owner/finance menerima seluruh staf, selain itu hanya
+ * `orang_id` miliknya. Keduanya harus tetap sama — UI tidak boleh menjanjikan
+ * data yang kemudian ditolak server, dan sebaliknya.
+ */
+export function canViewAllStaffMoney(role: AppRole | null | undefined): boolean {
+  return role === 'owner' || role === 'finance'
+}

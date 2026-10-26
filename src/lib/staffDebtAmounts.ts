@@ -3,7 +3,7 @@
 // `staffDebtEligibility.ts`, dan `targetBenefit.ts`.
 //
 // Permintaan user (verbatim):
-//   "di bagian Utang Staf tolong ganti Total Nilai PCS ke Realisasi Cost / Posisi"
+//   "di bagian Utang Staff tolong ganti Total Nilai PCS ke Realisasi Cost / Posisi"
 //
 // Perubahan yang diminta BUKAN sekadar ganti judul kolom: nilainya ikut
 // berubah. Dulu "Total Nilai PCS" dihitung `computeDebt` langsung dari

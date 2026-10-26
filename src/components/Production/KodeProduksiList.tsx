@@ -1,5 +1,7 @@
 import { ChevronLeft, ImageOff, Layers } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { T_CODE } from '@/lib/tableStyles';
+import { productionBatchNumber } from '@/lib/productionBatch';
 import { StatusBadge } from './StatusBadge';
 import type { KodeListEntry } from '@/lib/logDashboard';
 
@@ -72,6 +74,7 @@ export function KodeProduksiList({
             ) : (
               entries.map(({ group, rowQty, rowCount }) => {
                 const isActive = selected === group.productNote;
+                const batch = productionBatchNumber(group.clientProductionCode);
                 return (
                   <button
                     key={group.productNote}
@@ -108,7 +111,7 @@ export function KodeProduksiList({
                       <span className="min-w-0 flex-1">
                         <span className="flex items-start justify-between gap-2">
                           <span
-                            className="min-w-0 flex-1 truncate font-mono text-[11px] font-bold leading-tight text-slate-900"
+                            className={`min-w-0 flex-1 truncate text-[11px] font-bold leading-tight text-slate-900 ${T_CODE}`}
                             title={group.productNote}
                           >
                             {group.productNote}
@@ -117,10 +120,19 @@ export function KodeProduksiList({
                         </span>
                         {/* Kode Produksi Client — informasi yang dicari user. */}
                         <span
-                          className="mt-0.5 block truncate font-mono text-[10px] text-slate-500"
+                          className={`mt-0.5 block truncate text-[10px] text-slate-500 ${T_CODE}`}
                           title={group.clientProductionCode ?? undefined}
                         >
                           {group.clientProductionCode || '—'}
+                        </span>
+                        <span className="mt-1 block truncate text-xs font-medium text-slate-900" title={group.product}>
+                          {group.product || '—'}
+                        </span>
+                        <span className="mt-0.5 block truncate text-xs text-slate-500" title={group.brand}>
+                          Client: {group.brand || '—'}
+                        </span>
+                        <span className="mt-0.5 block text-xs tabular-nums text-slate-500">
+                          Batch Produksi: {batch ?? '—'}
                         </span>
                         <span className="mt-0.5 block text-[10px] tabular-nums text-slate-500">
                           {rowCount} baris · {rowQty.toLocaleString('id-ID')} pcs

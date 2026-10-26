@@ -26,6 +26,11 @@ export async function create(input: Omit<DaftarLiburRow, 'id'>): Promise<{ data:
   return { data: data as DaftarLiburRow | null, error }
 }
 
+export async function update(id: number, input: Partial<Omit<DaftarLiburRow, 'id'>>): Promise<{ error: Error | null }> {
+  const { data, error } = await supabase.from(TABLE).update(input).eq('id', id).select('id')
+  return { error: error ?? (data?.length ? null : new Error('Hari libur tidak ditemukan atau tidak boleh diubah.')) }
+}
+
 export async function remove(id: number): Promise<{ error: Error | null }> {
   const { error } = await supabase
     .from(TABLE)

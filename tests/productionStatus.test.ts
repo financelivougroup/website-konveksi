@@ -3,8 +3,12 @@ import test from 'node:test';
 import {
   STATUS_ORDER,
   deriveStatus,
+  monitoringProductionStatus,
   deriveVariasiStatuses,
   needsUpPos,
+  posUpdateLabel,
+  NEED_UP_POS_LABEL,
+  DONE_UP_POS_LABEL,
   variasiStatusText,
   validateStatusTransition,
 } from '../src/lib/productionStatus.ts';
@@ -14,6 +18,18 @@ import {
   variasiStatusLabel,
 } from '../src/types/pipeline.ts';
 import type { VariasiStatus } from '../src/types/pipeline.ts';
+
+test('monitoring preserves INVOICED after invoice creation instead of deriving FINISHED', () => {
+  assert.equal(monitoringProductionStatus({productionStatus:'INVOICED',invoiceStatus:'PAID'},100,100,100,100,100),'INVOICED');
+  for (const invoiceStatus of ['INVOICED','PARTIAL_PAID','PAID'] as const) {
+    assert.equal(monitoringProductionStatus({productionStatus:'FINISHED',invoiceStatus},100,100,100,100,100),'INVOICED');
+  }
+});
+
+test('waiting for invoice is not invoice issued; uninvoiced production remains derived', () => {
+  assert.equal(monitoringProductionStatus({productionStatus:'FINISHED',invoiceStatus:'WAITING_INVOICE'},100,100,100,100,100),'FINISHED');
+  assert.equal(monitoringProductionStatus({productionStatus:'FINISHED',invoiceStatus:'NONE'},100,20,100,0,0),'PROGRESS');
+});
 
 // ===== deriveStatus =====
 // Revisi user: TIDAK ada status CUTTING. Begitu cutting terisi, WO langsung
@@ -555,6 +571,20 @@ test('setiap status variasi punya label tampilan', () => {
   for (const s of semua) {
     assert.equal(typeof variasiStatusLabel[s], 'string');
     assert.ok(variasiStatusLabel[s].length > 0, `label kosong untuk ${s}`);
+  }
+});
+
+test('POS label is Done Up POS only when positive client quantity matches finishing', () => {
+  assert.equal(posUpdateLabel(100,100),DONE_UP_POS_LABEL);
+  assert.equal(DONE_UP_POS_LABEL,'Done Up POS');
+  assert.equal(NEED_UP_POS_LABEL,'Need Up POS');
+  assert.equal(posUpdateLabel(100,80),NEED_UP_POS_LABEL);
+  assert.equal(posUpdateLabel(16,0),NEED_UP_POS_LABEL);
+});
+
+test('POS label is empty before finishing catches up, for zero equality and invalid values', () => {
+  for (const [finishing,qty] of [[0,0],[0,100],[80,100],[NaN,100],[100,NaN],[Infinity,Infinity]]) {
+    assert.equal(posUpdateLabel(finishing,qty),'');
   }
 });
 

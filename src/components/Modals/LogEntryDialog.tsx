@@ -162,7 +162,7 @@ export function LogEntryDialog({
               htmlFor="log-entry-pic-trigger"
               className="text-[11px] font-semibold uppercase tracking-wider text-slate-500"
             >
-              {picLabel} <span className="text-rose-600">*</span>
+              {picLabel}
             </FieldLabel>
             <AppSelect
               bare
@@ -181,7 +181,7 @@ export function LogEntryDialog({
               htmlFor="log-entry-qty"
               className="text-[11px] font-semibold uppercase tracking-wider text-slate-500"
             >
-              Jumlah (pcs) <span className="text-rose-600">*</span>
+              Jumlah (pcs)
             </FieldLabel>
             <NumberField
               id="log-entry-qty"

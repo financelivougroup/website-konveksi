@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ChangeEvent, type ReactNode } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
   AlertCircle,
@@ -37,7 +37,7 @@ import {
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
-import { rowClass, T_HEAD_ROW, T_TABLE, T_TD, T_TH } from '@/lib/tableStyles';
+import { rowClass, T_HEAD_ROW, T_TABLE, T_TD, T_TH, T_CODE } from '@/lib/tableStyles';
 import {
   emptyOrderEntryValues,
   hasDuplicateVariations,
@@ -45,7 +45,6 @@ import {
   orderEntryErrorMessage,
   orderEntryValuesFromDetail,
   totalOrderPrice,
-  totalOrderQuantity,
   variationCombinationKey,
 } from '@/lib/orderEntry';
 import { buildVariationId } from '@/lib/workOrderIdentity';
@@ -126,10 +125,6 @@ interface OrderEntryDialogProps {
   onOpenChange: (open: boolean) => void;
   /** `photoWarning` terisi bila order tersimpan tetapi unggah fotonya gagal. */
   onSaved: (detail: OrderEntryDetail, photoWarning: string | null) => void;
-}
-
-function rupiah(value: number): string {
-  return `Rp ${value.toLocaleString('id-ID')}`;
 }
 
 /**
@@ -243,23 +238,6 @@ export function OrderEntryDialog({
   const watchedComponents = form.watch('components');
   const watchedBrand = form.watch('brand');
   const watchedProductId = form.watch('productId');
-  const watchedProductionCode = form.watch('productionCode');
-  const watchedClientProductionCode = form.watch('clientProductionCode');
-  const watchedProduct = form.watch('product');
-  /**
-   * Total qty dibaca dari DATA TERSIMPAN, bukan dari form.
-   *
-   * Form tidak lagi punya field qty (dihapus atas permintaan user), jadi angka
-   * ini datang dari `detail.variations` — qty hasil sinkronisasi POS client.
-   * Order baru selalu 0 di sini, dan itu memang benar: client belum
-   * menguploadnya. Karena itu ringkasan di bawah menampilkan tanda pisah, bukan
-   * "0 pcs", supaya tidak terbaca sebagai "order kosong".
-   */
-  const totalQuantity = useMemo(
-    () => totalOrderQuantity(detail?.variations ?? []),
-    [detail?.variations],
-  );
-  const totalPerPiece = useMemo(() => totalOrderPrice(watchedComponents), [watchedComponents]);
   const readOnly = effectiveMode === 'view' || !detail?.canEdit && effectiveMode === 'edit';
   const structureLocked = detail?.structureLocked ?? false;
   /** Kode produksi hanya disusun untuk order baru; order lama mempertahankan kodenya. */
@@ -624,9 +602,10 @@ export function OrderEntryDialog({
               </Badge>
             )}
           </div>
-          <DialogDescription className="mt-0.5 text-[12px] text-slate-500">
-            Satu kode produksi dapat memiliki beberapa kombinasi warna dan size dengan satu harga bersama.
-          </DialogDescription>
+          {/* Teks penjelasan sengaja tidak ditampilkan lagi atas permintaan user.
+              Tetap ada sebagai sr-only karena Radix memakai DialogDescription
+              untuk aria-describedby; menghapusnya total memunculkan warning. */}
+          <DialogDescription className="sr-only">{modeTitle}</DialogDescription>
         </DialogHeader>
 
         <Form {...form}>
@@ -647,10 +626,7 @@ export function OrderEntryDialog({
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    <Section
-                      title="Identitas kode produksi"
-                      description="Kode produksi disusun otomatis dari client dan bulan berjalan. Kode produksi client diisi manual sesuai kode yang dikirim client."
-                    >
+                    <Section title="Identitas kode produksi">
                       <div className="grid gap-3.5 sm:grid-cols-2">
                         <Field label="Kode produksi" required>
                           <FormField control={form.control} name="productionCode" render={({ field }) => (
@@ -668,7 +644,7 @@ export function OrderEntryDialog({
                                         ? ''
                                         : 'Pilih client terlebih dahulu'
                                   }
-                                  className="h-8 bg-slate-50 font-mono text-[13px] text-slate-700"
+                                  className={`h-8 bg-slate-50 text-[13px] text-slate-700 ${T_CODE}`}
                                 />
                               </FormControl>
                               <FormMessage className="text-[11px]" />
@@ -691,7 +667,7 @@ export function OrderEntryDialog({
                                     {...field}
                                     disabled={readOnly}
                                     placeholder="Contoh: PDFF_LVU-PNT-02_B-00_PRDN"
-                                    className="h-8 flex-1 font-mono text-[13px]"
+                                    className={`h-8 flex-1 text-[13px] ${T_CODE}`}
                                   />
                                   <Button
                                     type="button"
@@ -801,9 +777,6 @@ export function OrderEntryDialog({
                                   onChange={handlePhotoSelected}
                                 />
                               </label>
-                              <p className="mt-1 text-[11px] text-slate-400">
-                                Satu foto per kode produksi. Disimpan saat order disimpan.
-                              </p>
                             </div>
                           )}
                         </div>
@@ -817,7 +790,6 @@ export function OrderEntryDialog({
 
                     <Section
                       title="Variasi warna dan size"
-                      description="Setiap baris akan menjadi satu Work Order saat order di-Pull. Qty diisi otomatis dari POS client, bukan diketik di sini."
                       action={!readOnly && !structureLocked ? (
                         <Button
                           type="button"
@@ -860,7 +832,6 @@ export function OrderEntryDialog({
                                 kolom "Qty Diterima Client" pada Production
                                 Monitoring. */}
                             <th className={cn(T_TH, 'hidden text-left md:table-cell')}>Variation ID</th>
-                            <th className={cn(T_TH, 'w-10 px-2')} />
                           </tr></thead>
                           <tbody>
                             {variationFields.fields.map((field, index) => {
@@ -935,24 +906,24 @@ export function OrderEntryDialog({
                                     )} />
                                   </td>
                                   <td className="px-3 py-1.5">
-                                    <FormField control={form.control} name={`variations.${index}.size`} render={({ field: input }) => (
-                                      <FormItem className="gap-1">
-                                        <FormControl><Input {...input} disabled={readOnly || structureLocked} placeholder="M" className="h-8 text-[13px]" /></FormControl>
-                                        <FormMessage className="text-[11px]" />
-                                      </FormItem>
-                                    )} />
+                                    <div className="flex items-start gap-2">
+                                      <FormField control={form.control} name={`variations.${index}.size`} render={({ field: input }) => (
+                                        <FormItem className="min-w-0 flex-1 gap-1">
+                                          <FormControl><Input {...input} disabled={readOnly || structureLocked} placeholder="M" className="h-8 text-[13px]" /></FormControl>
+                                          <FormMessage className="text-[11px]" />
+                                        </FormItem>
+                                      )} />
+                                      {!readOnly && !structureLocked && variationFields.fields.length > 1 && (
+                                        <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => variationFields.remove(index)} aria-label={`Hapus variasi ${index + 1}`}>
+                                          <Trash2 className="h-3.5 w-3.5 text-red-500" />
+                                        </Button>
+                                      )}
+                                    </div>
                                   </td>
                                   {/* Sel input Quantity dihapus — lihat catatan
                                       pada <th> di atas. */}
                                   <td className="hidden max-w-[240px] truncate px-3 py-1.5 text-[12px] text-slate-500 md:table-cell">
                                     {buildVariationId(watchedProductId, variation?.color ?? '', variation?.size ?? '') || '—'}
-                                  </td>
-                                  <td className="px-2 py-1.5">
-                                    {!readOnly && !structureLocked && variationFields.fields.length > 1 && (
-                                      <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => variationFields.remove(index)} aria-label={`Hapus variasi ${index + 1}`}>
-                                        <Trash2 className="h-3.5 w-3.5 text-red-500" />
-                                      </Button>
-                                    )}
                                   </td>
                                 </tr>
                               );
@@ -967,7 +938,6 @@ export function OrderEntryDialog({
 
                     <Section
                       title="Komponen harga per potong"
-                      description="Satu set harga berlaku untuk seluruh variasi dalam kode produksi ini."
                       action={
                         !readOnly && (
                           <Button
@@ -1051,30 +1021,7 @@ export function OrderEntryDialog({
             </div>
 
             <footer className="shrink-0 border-t border-gray-200 bg-white px-5 py-3 sm:px-6">
-              <div className="mx-auto flex w-full max-w-5xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <dl className="grid grid-cols-2 gap-x-6 gap-y-1.5 sm:flex sm:items-center sm:gap-6">
-                  <SummaryItem label="Buyer" value={watchedBrand || '—'} />
-                  <SummaryItem label="Kode produksi" value={watchedProductionCode || '—'} />
-                  <SummaryItem label="Kode client" value={watchedClientProductionCode || '—'} />
-                  <SummaryItem label="Article" value={watchedProduct || '—'} />
-                  <SummaryItem label="Variasi" value={`${watchedVariations.length} kombinasi`} />
-                  {/*
-                    Qty 0 = "belum diterima dari POS client", bukan "nol pcs".
-                    Menampilkan "0 pcs" di sini akan terbaca seolah ordernya
-                    kosong, jadi ditampilkan tanda pisah sampai POS mengirim
-                    angkanya. Nilai order ikut disembunyikan karena
-                    `0 × harga` selalu Rp 0 dan itu menyesatkan.
-                  */}
-                  <SummaryItem
-                    label="Total qty"
-                    value={totalQuantity > 0 ? `${totalQuantity.toLocaleString('id-ID')} pcs` : '—'}
-                  />
-                  <SummaryItem label="Harga / pcs" value={rupiah(totalPerPiece)} />
-                  <SummaryItem
-                    label="Nilai order"
-                    value={totalQuantity > 0 ? rupiah(totalQuantity * totalPerPiece) : '—'}
-                  />
-                </dl>
+              <div className="mx-auto flex w-full max-w-5xl justify-end">
                 <div className="flex items-center justify-end gap-2">
                   <Button type="button" variant="outline" className="h-8 px-4 text-[13px]" onClick={() => onOpenChange(false)} disabled={saving || uploadingPhoto}>
                     {readOnly ? 'Tutup' : 'Batal'}
@@ -1082,7 +1029,7 @@ export function OrderEntryDialog({
                   {!readOnly && (
                     <Button type="submit" className="h-8 px-4 text-[13px]" disabled={saving || uploadingPhoto || loading}>
                       {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-                      {saving ? 'Menyimpan…' : effectiveMode === 'create' ? 'Simpan order' : 'Simpan perubahan'}
+                      {saving ? 'Menyimpan…' : effectiveMode === 'create' ? 'Simpan Order' : 'Simpan perubahan'}
                     </Button>
                   )}
                 </div>
@@ -1159,16 +1106,7 @@ function FormLabelStatic({ required, children }: { required?: boolean; children:
   return (
     <p className="mb-1 text-[12px] text-slate-500">
       {children}
-      {required && <span className="ml-0.5 text-red-500">*</span>}
+      {required && <span className="sr-only"> (wajib diisi)</span>}
     </p>
-  );
-}
-
-function SummaryItem({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="min-w-0">
-      <dt className="text-[11px] uppercase tracking-wide text-slate-400">{label}</dt>
-      <dd className="truncate text-[13px] text-slate-700">{value}</dd>
-    </div>
   );
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, type ReactNode } from 'react';
 import { Plus, RefreshCw, Search, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -35,7 +35,7 @@ const EMPTY_CELL = <span className="text-gray-300">—</span>;
  * `<h1>` yang naik ke shell `ContactPage`. Kunci `useColumnSettings` sengaja
  * tidak diubah supaya pengaturan kolom user tidak kembali ke awal.
  */
-export function ClientTab() {
+export function ClientTab({ tabs }: { tabs?: ReactNode } = {}) {
   const { profile } = useAuth();
   const canDelete = canPermanentlyDelete(profile.role);
   const [items, setItems] = useState<RegisterClientRow[]>([]);
@@ -186,9 +186,12 @@ export function ClientTab() {
 
   if (loading) {
     return (
-      <div className="flex-1 flex items-center justify-center">
-        <p className="text-slate-400 text-sm">Loading Client...</p>
-      </div>
+      <>
+        <div className="px-6 pt-3">{tabs}</div>
+        <div className="flex-1 flex items-center justify-center">
+          <p className="text-slate-400 text-sm">Loading Client...</p>
+        </div>
+      </>
     );
   }
 
@@ -196,13 +199,16 @@ export function ClientTab() {
   return (
     <>
       <div className="px-6 pt-3 pb-0">
-        <div className="flex items-center justify-end gap-2.5 mb-4">
-          <button onClick={refresh} className="h-8 px-3.5 text-[12px] font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 hover:shadow-md hover:shadow-slate-200 transition-all flex items-center gap-2">
-            <RefreshCw className="w-3.5 h-3.5" /> Refresh
-          </button>
-          <button onClick={openCreate} className="h-8 px-3.5 text-[12px] font-medium bg-primary text-white rounded-lg hover:bg-primary/90 hover:shadow-md hover:shadow-slate-300 transition-all flex items-center gap-2">
-            <Plus className="w-3.5 h-3.5" /> Tambah Client
-          </button>
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+          {tabs}
+          <div className="ml-auto flex items-center gap-2.5">
+            <button onClick={refresh} className="h-8 px-3.5 text-[12px] font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 hover:shadow-md hover:shadow-slate-200 transition-all flex items-center gap-2">
+              <RefreshCw className="w-3.5 h-3.5" /> Refresh
+            </button>
+            <button onClick={openCreate} className="h-8 px-3.5 text-[12px] font-medium bg-primary text-white rounded-lg hover:bg-primary/90 hover:shadow-md hover:shadow-slate-300 transition-all flex items-center gap-2">
+              <Plus className="w-3.5 h-3.5" /> Tambah Client
+            </button>
+          </div>
         </div>
         {message && <div className="mb-3 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[12px] text-blue-700">{message}</div>}
       </div>

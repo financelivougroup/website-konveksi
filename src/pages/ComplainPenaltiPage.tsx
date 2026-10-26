@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import type { ChangeEvent } from 'react';
 import { Plus, RefreshCw, Search, Camera, X, Trash2, Check, ChevronsUpDown } from 'lucide-react';
 import { cn, formatCurrency } from '@/lib/utils';
-import { T_WRAP, softBadgeClass} from '@/lib/tableStyles';
+import { T_WRAP, T_CODE, softBadgeClass} from '@/lib/tableStyles';
 import { formatDate } from '@/data/pipelineData';
 import { DataTable } from '@/components/Table/DataTable';
 import { FilterButton, SortButton, ExportButton } from '@/components/Table/TableTools';
@@ -110,8 +110,8 @@ const STATUS_BADGE: Record<string, string> = {
  * perlu diubah.
  */
 const STATUS_OPTIONS = [
-  { value: COMPLAIN_STATUS.NEED_PROCEED, label: COMPLAIN_STATUS.NEED_PROCEED },
-  { value: COMPLAIN_STATUS.SOLVED, label: COMPLAIN_STATUS.SOLVED },
+  { value: COMPLAIN_STATUS.NEED_PROCEED, label: 'Need Proceed' },
+  { value: COMPLAIN_STATUS.SOLVED, label: 'Solved' },
 ];
 
 /** Sel kosong untuk nilai yang belum diisi (pola `ExpensePage.tsx`). */
@@ -299,7 +299,7 @@ export function ComplainPenaltiPage() {
    * per PIC per bulan.
    *
    * Memakai segmented control, bukan dua tabel bertumpuk, mengikuti pola yang
-   * sudah dipakai Target Jahit (Target / Belum Jahit / Utang Staf / Benefit)
+   * sudah dipakai Target Jahit (Target / Belum Jahit / Utang Staff / Benefit)
    * dan Production Monitoring — lihat keputusan user saat ditanya.
    */
   const [tab, setTab] = useState<'complain' | 'summary'>('complain');
@@ -309,7 +309,7 @@ export function ComplainPenaltiPage() {
   const [fileCounts, setFileCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
+  const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
   const [filters, setFilters] = useState<FilterRule[]>([]);
   const [sorts, setSorts] = useState<SortRule[]>([]);
   const [message, setMessage] = useState<string | null>(null);
@@ -760,14 +760,14 @@ export function ComplainPenaltiPage() {
       key: 'productionCode', label: 'Kode Produksi Konveksi', width: '180px',
       render: (row: Record<string, unknown>) => {
         const code = row.productionCode as string | null;
-        return <span className="font-mono text-gray-700" title={code ?? ''}>{code || EMPTY_CELL}</span>;
+        return <span className={`${T_CODE} text-gray-700`} title={code ?? ''}>{code || EMPTY_CELL}</span>;
       },
     },
     {
       key: 'workCode', label: 'Kode Produksi Client', width: '170px',
       render: (row: Record<string, unknown>) => {
         const code = row.workCode as string | null;
-        return <span className="font-mono text-gray-700" title={code ?? ''}>{code || EMPTY_CELL}</span>;
+        return <span className={`${T_CODE} text-gray-700`} title={code ?? ''}>{code || EMPTY_CELL}</span>;
       },
     },
     { key: 'product', label: 'Produk', width: '160px' },
@@ -802,7 +802,7 @@ export function ComplainPenaltiPage() {
         const tingkat = row.tingkat as string | null;
         if (!tingkat) return EMPTY_CELL;
         return (
-          <span className={softBadgeClass(TINGKAT_BADGE[tingkat])}>
+          <span className={cn(softBadgeClass(TINGKAT_BADGE[tingkat]), 'inline-flex items-center align-middle')}>
             {TINGKAT_OPTIONS.find((t) => t.key === tingkat)?.label ?? tingkat}
           </span>
         );
@@ -847,8 +847,8 @@ export function ComplainPenaltiPage() {
               <SelectTrigger
                 aria-label={`Status ${item.product}`}
                 className={cn(
-                  'h-[19px] w-auto gap-1 rounded-md border-0 px-2 text-[11px] font-semibold shadow-none focus:ring-1 focus:ring-slate-300 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:opacity-70',
                   softBadgeClass(STATUS_BADGE[status]),
+                  'inline-flex h-auto w-auto items-center gap-1 align-middle shadow-none focus:ring-1 focus:ring-slate-300 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:opacity-70',
                 )}
               >
                 <SelectValue />
@@ -905,7 +905,7 @@ export function ComplainPenaltiPage() {
   // Multi-select + toolbar (same pattern as Production Monitoring RAW DATA).
   // "Select all" is owned by the grid now — it toggles every visible row and
   // replays the difference through `handleToggleRow`.
-  const handleToggleRow = (id: string) => setSelectedRows(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const handleToggleRow = (id: number) => setSelectedRows(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const handleImport = () => { if (selectedRows.size === 0) { alert('Pilih minimal 1!'); return; } alert(`✅ ${selectedRows.size} complain di-import`); setSelectedRows(new Set()); };
   const handleExport = () => {
     const esc = (v: string | number | null | undefined) => `"${String(v ?? '').replace(/"/g, '""')}"`;
@@ -947,7 +947,7 @@ export function ComplainPenaltiPage() {
 
   const handleBulkDelete = () => {
     if (!canDelete || selectedRows.size === 0) return;
-    setDeleteIds(items.filter((item) => selectedRows.has(String(item.id))).map((item) => String(item.id)));
+    setDeleteIds(items.filter((item) => selectedRows.has(item.id)).map((item) => String(item.id)));
     setDeleteDialogOpen(true);
   };
   const handleDeleted = async (result: PermanentDeleteResult) => {
@@ -1040,14 +1040,6 @@ export function ComplainPenaltiPage() {
       <div className="px-6 pt-3 pb-0">
         <div className="flex items-center justify-between mb-3">
           <h1 className="text-[17px] font-semibold tracking-tight text-slate-900">Complain & Penalti</h1>
-          <div className="flex items-center gap-2.5">
-            <Button onClick={refresh} variant="outline" size="sm" className="h-8 px-3.5">
-              <RefreshCw className="w-3.5 h-3.5 mr-2" /> Refresh
-            </Button>
-            <Button onClick={openCreate} size="sm" className="h-8 px-3.5 bg-primary hover:bg-primary/90">
-              <Plus className="w-3.5 h-3.5 mr-2" /> Tambah Complain
-            </Button>
-          </div>
         </div>
         {message && (
           <div className="mb-3 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[12px] text-blue-700">
@@ -1058,25 +1050,35 @@ export function ComplainPenaltiPage() {
         {/* Tabs — segmented control, pola Target Jahit & Production Monitoring.
             Dua section yang diminta user: tabel complain (yang sudah ada) dan
             summary per orang per bulan. */}
-        <div className="flex items-center gap-2 mb-1">
-          <button
-            onClick={() => setTab('complain')}
-            className={cn(
-              'h-8 px-4 text-[12px] font-medium rounded-lg transition-colors',
-              tab === 'complain' ? 'bg-primary text-white shadow-md shadow-slate-300' : 'bg-white text-slate-600 border border-gray-200 hover:bg-slate-50 hover:text-blue-700',
-            )}
-          >
-            Complain
-          </button>
-          <button
-            onClick={() => setTab('summary')}
-            className={cn(
-              'h-8 px-4 text-[12px] font-medium rounded-lg transition-colors',
-              tab === 'summary' ? 'bg-primary text-white shadow-md shadow-slate-300' : 'bg-white text-slate-600 border border-gray-200 hover:bg-slate-50 hover:text-blue-700',
-            )}
-          >
-            Summary
-          </button>
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-3 mb-1">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setTab('complain')}
+              className={cn(
+                'h-8 px-4 text-[12px] font-medium rounded-lg transition-colors',
+                tab === 'complain' ? 'bg-primary text-white shadow-md shadow-slate-300' : 'bg-white text-slate-600 border border-gray-200 hover:bg-slate-50 hover:text-blue-700',
+              )}
+            >
+              Complain
+            </button>
+            <button
+              onClick={() => setTab('summary')}
+              className={cn(
+                'h-8 px-4 text-[12px] font-medium rounded-lg transition-colors',
+                tab === 'summary' ? 'bg-primary text-white shadow-md shadow-slate-300' : 'bg-white text-slate-600 border border-gray-200 hover:bg-slate-50 hover:text-blue-700',
+              )}
+            >
+              Summary
+            </button>
+          </div>
+          <div className="flex items-center gap-2.5">
+            <Button onClick={refresh} variant="outline" size="sm" className="h-8 px-3.5">
+              <RefreshCw className="w-3.5 h-3.5 mr-2" /> Refresh
+            </Button>
+            <Button onClick={openCreate} size="sm" className="h-8 px-3.5 bg-primary hover:bg-primary/90">
+              <Plus className="w-3.5 h-3.5 mr-2" /> Tambah Complain
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -1183,7 +1185,7 @@ export function ComplainPenaltiPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label htmlFor="complain-tanggal" className={labelCls}>
-                    Tanggal <span className="text-rose-600">*</span>
+                    Tanggal
                   </Label>
                   <ComplainDatePicker
                     id="complain-tanggal"
@@ -1193,7 +1195,7 @@ export function ComplainPenaltiPage() {
                 </div>
                 <div className="space-y-1.5">
                   <Label className={labelCls}>
-                    Produk <span className="text-rose-600">*</span>
+                    Produk
                   </Label>
                   <SearchSelect
                     value={form.product}
@@ -1214,7 +1216,7 @@ export function ComplainPenaltiPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label htmlFor="complain-warna" className={labelCls}>
-                    Warna <span className="text-rose-600">*</span>
+                    Warna
                   </Label>
                   <FormSelect
                     id="complain-warna"
@@ -1227,7 +1229,7 @@ export function ComplainPenaltiPage() {
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="complain-clientcode" className={labelCls}>
-                    Kode Produksi Client <span className="text-rose-600">*</span>
+                    Kode Produksi Client
                   </Label>
                   <FormSelect
                     id="complain-clientcode"
@@ -1245,17 +1247,16 @@ export function ComplainPenaltiPage() {
                   diketik hanya menambah peluang salah isi. */}
               <div className="space-y-1.5">
                 <Label className={labelCls}>Kode Produksi Konveksi</Label>
-                <div className="flex h-9 items-center rounded-lg border border-slate-200 bg-slate-50 px-3 font-mono text-[12px] text-slate-700">
+                <div className={`flex h-9 items-center rounded-lg border border-slate-200 bg-slate-50 px-3 text-[12px] text-slate-700 ${T_CODE}`}>
                   {form.productionCode || <span className="text-slate-400">Terisi otomatis</span>}
                 </div>
-                <p className="text-[11px] text-slate-400">Terisi otomatis setelah Kode Produksi Client dipilih.</p>
               </div>
 
               {/* Row 3: PIC | Posisi */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label className={labelCls}>
-                    PIC <span className="text-rose-600">*</span>
+                    PIC
                   </Label>
                   <SearchSelect
                     value={form.pic}
@@ -1268,7 +1269,7 @@ export function ComplainPenaltiPage() {
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="complain-posisi" className={labelCls}>
-                    Posisi <span className="text-rose-600">*</span>
+                    Posisi
                   </Label>
                   <FormSelect
                     id="complain-posisi"
@@ -1284,7 +1285,7 @@ export function ComplainPenaltiPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label htmlFor="complain-tingkat" className={labelCls}>
-                    Tingkat <span className="text-rose-600">*</span>
+                    Tingkat
                   </Label>
                   <FormSelect
                     id="complain-tingkat"
@@ -1296,7 +1297,7 @@ export function ComplainPenaltiPage() {
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="complain-potongan" className={labelCls}>
-                    Potongan/PCS <span className="text-rose-600">*</span>
+                    Potongan/PCS
                   </Label>
                   <Input
                     id="complain-potongan"
@@ -1307,7 +1308,6 @@ export function ComplainPenaltiPage() {
                     placeholder="0"
                     className="h-9 text-[12px]"
                   />
-                  <p className="text-[11px] text-slate-400">Saran otomatis dari harga Order Entry — bisa diubah.</p>
                 </div>
               </div>
 
@@ -1319,13 +1319,12 @@ export function ComplainPenaltiPage() {
                     ? `${selectedPoin} poin — ${TINGKAT_OPTIONS.find((t) => t.key === form.tingkat)?.label ?? form.tingkat}`
                     : '—'}
                 </div>
-                <p className="text-[11px] text-slate-400">Status baru otomatis NEED PROCEED; tandai SOLVED dari tabel setelah potongan dieksekusi.</p>
               </div>
 
               {/* Detail complain */}
               <div className="space-y-1.5">
                 <Label htmlFor="complain-detail" className={labelCls}>
-                  Detail Complain <span className="text-rose-600">*</span>
+                  Detail Complain
                 </Label>
                 <Textarea
                   id="complain-detail"
@@ -1346,11 +1345,15 @@ export function ComplainPenaltiPage() {
                 <div className="flex flex-wrap gap-2">
                   {existingFiles.map((f) => (
                     <div key={f.id} className="relative w-16 h-16">
-                      <img
-                        src={f.fileUrl}
-                        alt={f.fileName}
-                        className="w-16 h-16 rounded-lg object-cover border border-gray-200"
-                      />
+                      <Button asChild variant="ghost" className="h-16 w-16 rounded-lg p-0">
+                        <a href={f.fileUrl} target="_blank" rel="noopener noreferrer" aria-label={`Buka bukti foto ${f.fileName}`}>
+                          <img
+                            src={f.fileUrl}
+                            alt={f.fileName}
+                            className="w-16 h-16 rounded-lg object-cover border border-gray-200"
+                          />
+                        </a>
+                      </Button>
                       <button
                         type="button"
                         onClick={() => void handleRemoveExisting(f)}
@@ -1363,11 +1366,15 @@ export function ComplainPenaltiPage() {
                   ))}
                   {pendingFiles.map((p) => (
                     <div key={p.previewUrl} className="relative w-16 h-16">
-                      <img
-                        src={p.previewUrl}
-                        alt={p.file.name}
-                        className="w-16 h-16 rounded-lg object-cover border border-slate-200"
-                      />
+                      <Button asChild variant="ghost" className="h-16 w-16 rounded-lg p-0">
+                        <a href={p.previewUrl} target="_blank" rel="noopener noreferrer" aria-label={`Buka bukti foto ${p.file.name}`}>
+                          <img
+                            src={p.previewUrl}
+                            alt={p.file.name}
+                            className="w-16 h-16 rounded-lg object-cover border border-slate-200"
+                          />
+                        </a>
+                      </Button>
                       <button
                         type="button"
                         onClick={() => removePending(p.previewUrl)}

@@ -11,11 +11,12 @@ import {
   CarouselPrevious,
   type CarouselApi,
 } from '@/components/ui/carousel';
-import { Field, FieldDescription, FieldLabel } from '@/components/ui/field';
+import { Field, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { entryProductSuggestions, searchEntryWorkOrders } from '@/lib/productionEntryOptions';
 import { cn } from '@/lib/utils';
+import { T_CODE } from '@/lib/tableStyles';
 import type { WorkOrder } from '@/types/pipeline';
 
 export interface WorkOrderCardPickerProps {
@@ -34,7 +35,7 @@ function WorkOrderPhoto({ order }: { order: WorkOrder }) {
   const [failedSource, setFailedSource] = useState<string | null>(null);
 
   return (
-    <span className="flex aspect-[4/3] w-full shrink-0 items-center justify-center overflow-hidden rounded-t-xl bg-muted">
+    <span className="flex aspect-video w-full shrink-0 items-center justify-center overflow-hidden rounded-t-xl bg-muted">
       {source && failedSource !== source ? (
         <img
           src={source}
@@ -80,7 +81,7 @@ function PickerNavigation({ api, disabled, count }: { api: CarouselApi; disabled
   return (
     <div className="flex items-center justify-between gap-3 pt-3">
       <p className="min-w-0 text-xs text-muted-foreground" role="status" aria-live="polite">
-        {count} WO · Posisi {position} dari {snapCount}
+        {count} pilihan · Posisi {position} dari {snapCount}
       </p>
       <div className="flex shrink-0 gap-2">
         <CarouselPrevious
@@ -132,7 +133,7 @@ export function WorkOrderCardPicker({
   return (
     <div id={id} className="min-w-0 w-full space-y-4" aria-busy={loading}>
       <Field className="min-w-0 gap-2">
-        <FieldLabel htmlFor={`${id}-search`}>Pilih Work Order</FieldLabel>
+        <FieldLabel htmlFor={`${id}-search`}>Pilih Produksi</FieldLabel>
         <Input
           id={`${id}-search`}
           type="search"
@@ -140,11 +141,7 @@ export function WorkOrderCardPicker({
           onChange={(event) => setQuery(event.target.value)}
           disabled={busy}
           placeholder="Cari produk, kode produksi, warna, atau ukuran"
-          aria-describedby={`${id}-description`}
         />
-        <FieldDescription id={`${id}-description`} className="text-xs">
-          Pilih satu WO sesuai kode produksi, warna, dan ukuran. Menggeser kartu tidak mengubah pilihan.
-        </FieldDescription>
       </Field>
 
       {suggestions.length > 0 && (
@@ -186,28 +183,12 @@ export function WorkOrderCardPicker({
         </div>
       )}
 
-      {selectedOrder ? (
-        <div className="min-w-0 rounded-lg border bg-muted/50 p-3 text-sm" role="status" aria-live="polite">
-          <p className="flex items-center gap-2 font-medium">
-            <Check className="size-4 shrink-0" aria-hidden="true" /> WO terpilih
-          </p>
-          <p className="mt-1 break-words font-medium">{selectedOrder.product}</p>
-          <p className="break-words text-xs text-muted-foreground">
-            {selectedOrder.productNote || 'Kode produksi belum tersedia'} · {selectedOrder.workCode}
-          </p>
-          <p className="break-words text-xs text-muted-foreground">
-            Warna: {selectedOrder.warna || '—'} · Ukuran: {selectedOrder.size || '—'}
-          </p>
-          {selectedOrder.clientProductionCode && (
-            <p className="break-words text-xs text-muted-foreground">Kode client: {selectedOrder.clientProductionCode}</p>
-          )}
-        </div>
-      ) : selectedId ? (
+      {selectedId && !selectedOrder ? (
         <p className="text-xs text-muted-foreground" role="status">
-          WO terpilih tidak tersedia dalam daftar saat ini. Pilihan tidak diubah otomatis.
+          Produksi terpilih tidak tersedia dalam daftar saat ini. Pilihan tidak diubah otomatis.
         </p>
       ) : (
-        <p className="text-xs text-muted-foreground">Belum ada WO dipilih.</p>
+        <p className="sr-only" role="status" aria-live="polite">{selectedOrder ? `Produksi ${selectedOrder.product} dipilih.` : 'Belum ada produksi dipilih.'}</p>
       )}
 
       {loading ? (
@@ -216,7 +197,7 @@ export function WorkOrderCardPicker({
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3" aria-hidden="true">
             {[0, 1, 2].map((index) => (
               <Card key={index} className={cn('overflow-hidden', index > 0 && 'hidden sm:block', index > 1 && 'sm:hidden lg:block')}>
-                <Skeleton className="aspect-[4/3] rounded-none" />
+                <Skeleton className="aspect-video rounded-none" />
                 <div className="space-y-2 p-3">
                   <Skeleton className="h-4 w-3/4" />
                   <Skeleton className="h-3 w-1/2" />
@@ -236,7 +217,7 @@ export function WorkOrderCardPicker({
         </Alert>
       ) : orders.length === 0 ? (
         <Alert role="status">
-          <AlertTitle>Tidak ada WO yang tersedia</AlertTitle>
+          <AlertTitle>Tidak ada produksi yang tersedia</AlertTitle>
           <AlertDescription>Belum ada work order yang memenuhi syarat untuk entry ini.</AlertDescription>
         </Alert>
       ) : filteredOrders.length === 0 ? (
@@ -246,14 +227,14 @@ export function WorkOrderCardPicker({
         </Alert>
       ) : (
         <Carousel
-          opts={{ align: 'start', watchDrag: !busy }}
+          opts={{ align: 'start', watchDrag: (_api, event) => !busy && !(event.target instanceof Element && event.target.closest('[data-production-code]')) }}
           setApi={setApi}
           className="w-full min-w-0 max-w-3xl"
           aria-label="Daftar work order yang dapat dipilih"
         >
           <CarouselContent>
             {filteredOrders.map((order) => (
-              <CarouselItem key={order.id} className="basis-[85%] sm:basis-1/2 lg:basis-1/3">
+              <CarouselItem key={order.id} data-work-order-id={order.id} className="basis-full sm:basis-1/2 lg:basis-1/3">
                 <div className="h-full p-1">
                   <Card className={cn('h-full overflow-hidden', selectedId === order.id && 'border-primary')}>
                     <button
@@ -265,18 +246,27 @@ export function WorkOrderCardPicker({
                     >
                       <WorkOrderPhoto order={order} />
                       <span className="flex w-full min-w-0 flex-1 flex-col gap-2 p-3">
-                        <span className="break-words text-sm font-semibold">{order.product}</span>
-                        <span className="break-words text-xs text-muted-foreground">
-                          Kode produksi: {order.productNote || '—'}
+                        <span className="flex min-w-0 flex-col gap-1">
+                          <span className="break-words text-sm font-semibold">{order.product}</span>
+                          <span className="text-xs text-muted-foreground">{order.warna || '—'} / {order.size || '—'}</span>
                         </span>
-                        <span className="break-words text-xs text-muted-foreground">WO: {order.workCode}</span>
-                        {order.clientProductionCode && (
-                          <span className="break-words text-xs text-muted-foreground">Kode client: {order.clientProductionCode}</span>
-                        )}
-                        <span className="break-words text-xs">Warna: {order.warna || '—'} · Ukuran: {order.size || '—'}</span>
+                        <span className="flex min-w-0 flex-col gap-2 border-t pt-2">
+                          <span className="flex min-w-0 flex-col gap-1">
+                            <span className="text-xs text-muted-foreground">Kode Konveksi</span>
+                            <span data-production-code="konveksi" className={cn('block w-full overflow-x-auto whitespace-nowrap text-xs', T_CODE)} title={order.productNote}>
+                              {order.productNote || '—'}
+                            </span>
+                          </span>
+                          <span className="flex min-w-0 flex-col gap-1">
+                            <span className="text-xs text-muted-foreground">Kode Client</span>
+                            <span data-production-code="client" className={cn('block w-full overflow-x-auto whitespace-nowrap text-xs', T_CODE)} title={order.clientProductionCode ?? undefined}>
+                              {order.clientProductionCode || '—'}
+                            </span>
+                          </span>
+                        </span>
                         <span className="mt-auto flex items-center gap-1 pt-1 text-xs font-medium">
                           {selectedId === order.id && <Check className="size-3 shrink-0" aria-hidden="true" />}
-                          {selectedId === order.id ? 'Terpilih' : 'Pilih WO ini'}
+                          {selectedId === order.id ? 'Terpilih' : 'Pilih produksi'}
                         </span>
                       </span>
                     </button>

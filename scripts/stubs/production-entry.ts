@@ -70,14 +70,20 @@ export async function fetchAllForService(service: string) {
   const mode = params.get('mode');
   const stage = params.get('stage') || 'sewing';
   if (mode === 'loading') await new Promise((resolve) => setTimeout(resolve, 1200));
-  // WO is injected. Sewing fetches employees + own + upstream; other stages fetch two records.
-  const firstLoadCount = stage === 'sewing' ? 3 : 2;
+  // WO is injected; each stage fetches employees plus own/upstream records.
+  const firstLoadCount = 3;
   const upstreamService = stage === 'sewing' ? 'cuttingRecords' : stage === 'kancing' ? 'sewingRecords' : 'kancingRecords';
   const failUpstream = mode === 'failed-upstream' && service === upstreamService && !upstreamFailed;
   if (failUpstream) upstreamFailed = true;
   if ((mode === 'error' && fetchCount <= firstLoadCount) || failUpstream) {
     return { data: null, error: new Error(`fixture ${service} fetch failure`) };
   }
+  if (service === 'registerPenjahit') return { data: [
+    { id: 1, picPenjahit: 'Fixture Penjahit', posisi: 'Penjahit', status: 'Aktif' },
+    { id: 2, picPenjahit: 'Fixture Finisher', posisi: 'Finishing', status: 'Aktif' },
+    { id: 3, picPenjahit: 'Fixture Leader', posisi: 'Leader', status: 'Aktif' },
+    { id: 4, picPenjahit: 'Fixture Nonaktif', posisi: 'Finishing', status: 'Non-Aktif' },
+  ], error: null };
   if (mode === 'failed-upstream') {
     const records = service === 'cuttingRecords' ? eligibilityFixture.cuttingRecords
       : service === 'sewingRecords' ? eligibilityFixture.sewingRecords
@@ -95,4 +101,5 @@ export async function create(input: Record<string, unknown>) {
 }
 export async function syncWorkOrderStatus(id: string) { syncCalls.push(id); }
 export function activePenjahitNames() { return ['Fixture Penjahit']; }
+export { activeKancingNames, activeFinishingNames } from '../../src/lib/karyawan';
 export function useAuth() { return { profile: { displayName: 'Fixture Operator' } }; }

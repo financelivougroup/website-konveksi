@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Plus, RefreshCw, Search, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { PermanentDeleteDialog } from '@/components/Modals/PermanentDeleteDialog';
@@ -43,7 +43,7 @@ function csvCell(value: unknown): string {
  * KaryawanTab: checkbox paling kiri, kolom "#" tidak lagi dipakai, dan lebar
  * kolom mengisi penuh halamannya.
  */
-export function VendorTab() {
+export function VendorTab({ tabs }: { tabs?: ReactNode } = {}) {
   const { profile } = useAuth();
   // Hanya owner dan finance yang boleh mengubah master vendor; role lain
   // tetap bisa melihat. Mengikuti pola yang sudah dipakai InvoicingPage.
@@ -194,9 +194,12 @@ export function VendorTab() {
 
   if (loading && vendors.length === 0) {
     return (
-      <div className="flex-1 flex items-center justify-center">
-        <p className="text-slate-400 text-sm">Loading Vendor...</p>
-      </div>
+      <>
+        <div className="px-6 pt-3">{tabs}</div>
+        <div className="flex-1 flex items-center justify-center">
+          <p className="text-slate-400 text-sm">Loading Vendor...</p>
+        </div>
+      </>
     );
   }
 
@@ -204,21 +207,24 @@ export function VendorTab() {
   return (
     <>
       <div className="px-6 pt-3 pb-0">
-        <div className="flex items-center justify-end gap-2.5 mb-4">
-          <button
-            onClick={() => void refresh()}
-            className="h-8 px-3.5 text-[12px] font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 hover:shadow-md hover:shadow-slate-200 transition-all flex items-center gap-2"
-          >
-            <RefreshCw className="w-3.5 h-3.5" /> Refresh
-          </button>
-          {canManage && (
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+          {tabs}
+          <div className="ml-auto flex items-center gap-2.5">
             <button
-              onClick={() => { setEditTarget(null); setDialogOpen(true); }}
-              className="h-8 px-3.5 text-[12px] font-medium bg-primary text-white rounded-lg hover:bg-primary/90 hover:shadow-md hover:shadow-slate-300 transition-all flex items-center gap-2"
+              onClick={() => void refresh()}
+              className="h-8 px-3.5 text-[12px] font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 hover:shadow-md hover:shadow-slate-200 transition-all flex items-center gap-2"
             >
-              <Plus className="w-3.5 h-3.5" /> Tambah Vendor
+              <RefreshCw className="w-3.5 h-3.5" /> Refresh
             </button>
-          )}
+            {canManage && (
+              <button
+                onClick={() => { setEditTarget(null); setDialogOpen(true); }}
+                className="h-8 px-3.5 text-[12px] font-medium bg-primary text-white rounded-lg hover:bg-primary/90 hover:shadow-md hover:shadow-slate-300 transition-all flex items-center gap-2"
+              >
+                <Plus className="w-3.5 h-3.5" /> Tambah Vendor
+              </button>
+            )}
+          </div>
         </div>
       </div>
 

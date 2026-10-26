@@ -188,7 +188,7 @@ export function AddCategoryDialog({
 
           <div className="space-y-1.5">
             <Label htmlFor="add-category-nama" className="text-[12px]">
-              Nama {levelLabel(level)} <span className="text-rose-600">*</span>
+              Nama {levelLabel(level)}
             </Label>
             <Input
               id="add-category-nama"

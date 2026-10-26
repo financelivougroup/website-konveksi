@@ -30,7 +30,7 @@ export const STATUS_OPTIONS = ['Aktif', 'Non-Aktif']
 // pemanggil lama tetap punya satu pintu masuk. Jangan menyalin logikanya ke
 // halaman mana pun — itulah yang dulu menyebabkan Entry Jahitan memakai daftar
 // nama dummy sementara Planning sudah benar.
-export { isActivePenjahit, activePenjahitNames, type KaryawanSelectionRow } from '@/lib/karyawan'
+export { isActivePenjahit, activePenjahitNames, activeKancingNames, activeFinishingNames, type KaryawanSelectionRow } from '@/lib/karyawan'
 
 /**
  * 'YYYY-MM-DD' dari kolom `date`, '' bila kosong.

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ChevronDown, RefreshCw, Search, Trash2 } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
-import { T_WRAP } from '@/lib/tableStyles';
+import { T_WRAP, T_CODE } from '@/lib/tableStyles';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -125,7 +125,7 @@ function PoCodeCell({
   // database, jadi selalu ada. Pemeriksaan yang selalu benar hanya menambah
   // cabang yang tidak pernah terpakai.
   if (!onOpenPo) {
-    return <span className="font-mono text-gray-700">{item.productionCode}</span>;
+    return <span className={`${T_CODE} text-gray-700`}>{item.productionCode}</span>;
   }
 
   const jump: PoJump = { orderId: item.productionOrderId, code: item.productionCode };
@@ -136,14 +136,14 @@ function PoCodeCell({
         <button
           type="button"
           title="Buka PO ini di halaman lain"
-          className="group inline-flex items-center gap-1 font-mono text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 rounded"
+          className={`group inline-flex items-center gap-1 text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 rounded ${T_CODE}`}
         >
           {item.productionCode}
           <ChevronDown className="w-3 h-3 opacity-0 transition-opacity group-hover:opacity-60" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-[248px]">
-        <DropdownMenuLabel className="font-mono text-[11px] font-normal text-muted-foreground">
+        <DropdownMenuLabel className={`text-[11px] font-normal text-muted-foreground ${T_CODE}`}>
           {item.productionCode}
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
@@ -273,13 +273,13 @@ export function RegisterHargaPage({
       render: (row: Record<string, unknown>) => {
         const code = row.clientProductionCode as string | null;
         if (!code) return <Empty />;
-        return <span className="block max-w-[220px] truncate font-mono text-gray-700" title={code}>{code}</span>;
+        return <span className={`block max-w-[220px] truncate text-gray-700 ${T_CODE}`} title={code}>{code}</span>;
       },
     },
     {
       key: 'productId', label: 'Product ID', width: '130px',
       render: (row: Record<string, unknown>) => (
-        <span className="font-mono text-gray-700">{(row.productId as string) || <Empty />}</span>
+        <span className={`${T_CODE} text-gray-700`}>{(row.productId as string) || <Empty />}</span>
       ),
     },
     {

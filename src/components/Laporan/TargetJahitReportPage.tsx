@@ -17,6 +17,7 @@ import {
   TargetRealisasiChart,
   type MonthlyMode,
 } from '@/components/Laporan/TargetJahitCharts';
+import { PencapaianDonut } from '@/components/Laporan/PencapaianDonut';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Badge } from '@/components/reui/badge';
 import { useAuth } from '@/contexts/AuthContext';
@@ -25,6 +26,7 @@ import { T_WRAP, T_TABLE, T_HEAD_ROW, T_TH, T_TD, rowClass } from '@/lib/tableSt
 import { enrichTargetRows, type EnrichedTargetRow } from '@/lib/targetCompute';
 import { buildSalaryLookup } from '@/lib/staffSalary';
 import * as expenseSvc from '@/services/expenseEntries';
+import {applySettlementMonths,fetchStaffSettlements} from '@/services/staffSettlement';
 import type { WorkOrderDesignIdentity } from '@/lib/targetDetailIdentity';
 import {
   buildMonthAggregates,
@@ -101,7 +103,7 @@ export function TargetJahitReportPage() {
     setLoading(true);
     setError(null);
     try {
-      const [t, d, l, s, wo, pm, rates, sal] = await Promise.all([
+      const [t, d, l, s, wo, pm, rates, sal, money] = await Promise.all([
         targetJahitSvc.fetchAll(),
         targetJahitDetailSvc.fetchAll(),
         daftarLiburSvc.fetchAll(),
@@ -110,6 +112,7 @@ export function TargetJahitReportPage() {
         buildPriceMap(),
         fetchSewingRatesByProductionOrder(),
         expenseSvc.fetchSalaries(),
+        canSeeCost ? fetchStaffSettlements() : Promise.resolve({data:[],error:null}),
       ]);
 
       if (myGen !== generation.current) return; // refresh lebih baru sudah jalan
@@ -137,8 +140,8 @@ export function TargetJahitReportPage() {
         ] as const),
       );
 
-      setRows(
-        enrichTargetRows(
+      if (canSeeCost && money.error) throw money.error;
+      const computed = enrichTargetRows(
           t.data ?? [],
           sewing,
           design,
@@ -150,8 +153,12 @@ export function TargetJahitReportPage() {
           // Kegagalan memuatnya TIDAK menjatuhkan laporan — biaya tampil 0 dan
           // badge "belum diinput" hanya ada di halaman Target Jahit.
           buildSalaryLookup(sal.data ?? []),
-        ),
-      );
+        );
+      const financialRows = canSeeCost ? applySettlementMonths(computed, money.data) : computed;
+      if (canSeeCost && financialRows.some(row => !Number.isFinite(row.realisasiCostPosisi))) {
+        throw new Error('Biaya realisasi belum lengkap: periksa identitas atau tarif di Target Jahit sebelum memakai laporan biaya.');
+      }
+      setRows(financialRows);
 
       // Kegagalan tarif tidak menjatuhkan laporan; biaya jahit jatuh ke PriceMap
       // dan angkanya hanya kehilangan komponen tarif, bukan seluruh halaman.
@@ -162,7 +169,7 @@ export function TargetJahitReportPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [canSeeCost]);
 
   useEffect(() => {
     void load();
@@ -375,40 +382,59 @@ export function TargetJahitReportPage() {
               ]}
             />
 
+            {/* Ringkasan pencapaian sebagai donut — pasangan visual dari angka
+                persen di baris KPI di atas, supaya progres terbaca sebagai
+                bentuk, bukan hanya angka. */}
+            <div className="mt-4 bg-card border border-border rounded-lg p-4 flex items-center gap-5">
+              <PencapaianDonut pct={kpi.pencapaian} size={132} />
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Pencapaian
+                </p>
+                <p className="mt-1.5 text-[13px] text-muted-foreground">
+                  Realisasi{' '}
+                  <span className="font-semibold tabular-nums text-foreground">
+                    {kpi.totalRealisasi.toLocaleString('id-ID')}
+                  </span>{' '}
+                  dari target{' '}
+                  <span className="font-semibold tabular-nums text-foreground">
+                    {kpi.totalTarget.toLocaleString('id-ID')}
+                  </span>{' '}
+                  pcs
+                </p>
+              </div>
+            </div>
+
             {/* Keseluruhan = per bulan & akumulasi, bukan per orang. Sumbu Y
                 tidak memuat nama penjahit di sini; tiap batang/titik adalah satu
                 bulan yang sudah dijumlahkan lintas penjahit.
 
-                Dua kartu berdampingan; bila biaya tak terlihat (inventory) hanya
-                ada satu kartu, jadi kolomnya tidak dipaksa dua agar tidak
-                menyisakan setengah baris kosong. */}
+                Dua kartu BERTUMPUK penuh (bukan berdampingan): kartu biaya di
+                atas kartu pcs, karena "sisa uang yang harus dikejar" adalah
+                angka yang dibaca lebih dulu. Bila biaya tak terlihat (inventory)
+                hanya kartu pcs yang tersisa. */}
             {months.length === 0 ? (
               <div className="bg-card border border-border rounded-lg p-8 text-center">
                 <p className="text-[13px] text-muted-foreground">Belum ada data bulan yang bisa digambarkan.</p>
               </div>
             ) : (
-              <div
-                className={cn(
-                  'grid grid-cols-1 gap-4',
-                  canSeeCost && adaBiaya && 'lg:grid-cols-2',
-                )}
-              >
-                <ChartCard
-                  title="Target vs Realisasi per Bulan"
-                  mode={modePcs}
-                  onModeChange={setModePcs}
-                >
-                  <TargetRealisasiChart months={months} mode={modePcs} className="mt-2" />
-                </ChartCard>
+              <div className="mt-4 flex flex-col gap-4">
                 {canSeeCost && adaBiaya && (
                   <ChartCard
-                    title="Target Cost vs Realisasi Cost per Bulan"
+                    title="Target vs Realisasi Biaya per Bulan"
                     mode={modeCost}
                     onModeChange={setModeCost}
                   >
                     <CostRealisasiChart months={months} mode={modeCost} className="mt-2" />
                   </ChartCard>
                 )}
+                <ChartCard
+                  title="Target vs Realisasi (pcs) per Bulan"
+                  mode={modePcs}
+                  onModeChange={setModePcs}
+                >
+                  <TargetRealisasiChart months={months} mode={modePcs} className="mt-2" />
+                </ChartCard>
               </div>
             )}
 
@@ -691,16 +717,14 @@ function KpiRow({ tiles }: { tiles: Tile[] }) {
  * Sengaja TIDAK lagi memuat angka target pcs, realisasi pcs, target cost, dan
  * realisasi cost: keempatnya sekarang dibawa grafik batang di atas, dan
  * mengulanginya dalam bentuk angka membuat halaman ini kembali terasa seperti
- * tabel. Yang tersisa di kartu hanya yang tidak digambar grafik: persentase
- * pencapaian, sisa (kurang) pcs, dan sisa uang.
+ * tabel. Yang tersisa di kartu hanya yang tidak digambar grafik: cincin
+ * persentase pencapaian, sisa (kurang) pcs, dan sisa uang.
  *
- * Meter memakai track biru muda — langkah terang dari ramp yang sama — sehingga
- * keadaan terbaca di sepanjang batang, bukan hanya di ujung isian.
+ * Pencapaian digambar sebagai DONUT (bukan meter batang): satu bentuk yang sama
+ * dipakai di ringkasan Keseluruhan, jadi arti warna konsisten — biru muda =
+ * belum tercapai, hijau = tercapai. Warna dipegang `PencapaianDonut`.
  */
 function PenjahitCard({ p, canSeeCost }: { p: PenjahitAggregate; canSeeCost: boolean }) {
-  const pct = p.pencapaian * 100;
-  const tercapai = p.pencapaian >= 1;
-
   return (
     <div className="bg-card border border-border rounded-lg p-4 flex flex-col gap-3">
       <div className="flex items-start justify-between gap-2">
@@ -708,50 +732,30 @@ function PenjahitCard({ p, canSeeCost }: { p: PenjahitAggregate; canSeeCost: boo
         <StatusBadge status={p.status} />
       </div>
 
-      <div>
-        <div className="flex items-baseline justify-between mb-1.5">
-          <span className="text-[11px] text-muted-foreground">Pencapaian</span>
-          <span
-            className={cn(
-              'text-[15px] font-semibold tabular-nums',
-              tercapai ? 'text-success' : 'text-foreground',
-            )}
-          >
-            {pct.toFixed(1)}%
-          </span>
-        </div>
-        <div className="h-2 w-full rounded-full bg-primary/15 overflow-hidden">
-          <div
-            className={cn(
-              'h-full rounded-full transition-all duration-300',
-              tercapai ? 'bg-success' : 'bg-primary',
-            )}
-            style={{ width: `${Math.min(pct, 100)}%` }}
-          />
-        </div>
-      </div>
-
-      <dl className="grid grid-cols-2 gap-x-3 text-[11px] border-t border-border pt-2.5">
-        <div>
-          <dt className="text-muted-foreground">Kurang</dt>
-          <dd
-            className={cn(
-              'tabular-nums font-semibold',
-              p.kurang > 0 ? 'text-destructive' : 'text-muted-foreground',
-            )}
-          >
-            {p.kurang.toLocaleString('id-ID')} pcs
-          </dd>
-        </div>
-        {canSeeCost && (
+      <div className="flex items-center gap-4">
+        <PencapaianDonut pct={p.pencapaian} size={92} />
+        <dl className="flex-1 min-w-0 flex flex-col gap-2 text-[11px]">
           <div>
-            <dt className="text-muted-foreground">Sisa Uang</dt>
-            <dd className="tabular-nums font-semibold text-warning-foreground">
-              {formatCurrency(p.sisaUang)}
+            <dt className="text-muted-foreground">Kurang</dt>
+            <dd
+              className={cn(
+                'tabular-nums font-semibold',
+                p.kurang > 0 ? 'text-destructive' : 'text-muted-foreground',
+              )}
+            >
+              {p.kurang.toLocaleString('id-ID')} pcs
             </dd>
           </div>
-        )}
-      </dl>
+          {canSeeCost && (
+            <div>
+              <dt className="text-muted-foreground">Sisa Uang</dt>
+              <dd className="tabular-nums font-semibold text-warning-foreground">
+                {formatCurrency(p.sisaUang)}
+              </dd>
+            </div>
+          )}
+        </dl>
+      </div>
     </div>
   );
 }

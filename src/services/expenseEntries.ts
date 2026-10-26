@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase'
-import { publicUrlFor, removeFromR2, uploadToR2 } from '@/services/r2Storage'
+import { attachmentUrlFor, durableAttachmentUrlFor, removeFromR2, uploadToR2 } from '@/services/r2Storage'
 import type { ExpenseEntry } from '@/lib/expenseEntries'
 import { SALARY_SUB_CATEGORY } from '@/lib/staffSalary'
 
@@ -25,6 +25,7 @@ function mapRow(row: Record<string, unknown>): ExpenseEntry {
     itemId: (row.item_id as number | null) ?? null,
     vendorId: (row.vendor_id as number | null) ?? null,
     staffId: (row.staff_id as number | null) ?? null,
+    benefitPaymentId: (row.benefit_payment_id as string | null) ?? null,
     vendorName: (row.vendor_name as string) ?? '',
     quantity: Number(row.quantity ?? 0),
     unitPrice: Number(row.unit_price ?? 0),
@@ -37,7 +38,12 @@ function mapRow(row: Record<string, unknown>): ExpenseEntry {
     namaBarang: (row.nama_barang as string) ?? '',
     pic: (row.pic as string) ?? '',
     proofPaymentPath: (row.proof_payment_path as string | null) ?? null,
-    proofPaymentUrl: (row.proof_payment_url as string | null) ?? null,
+    proofPaymentUrl:
+      attachmentUrlFor(
+        'expense-proofs',
+        row.proof_payment_path as string | null,
+        row.proof_payment_url as string | null,
+      ) ?? null,
     typeName: (row.type_name as string) ?? '',
     mainCategoryName: (row.main_category_name as string) ?? '',
     subCategoryName: (row.sub_category_name as string) ?? '',
@@ -45,7 +51,12 @@ function mapRow(row: Record<string, unknown>): ExpenseEntry {
     categoryPath: (row.category_path as string) ?? '',
     note: (row.note as string) ?? '',
     proofPath: (row.proof_path as string | null) ?? null,
-    proofUrl: (row.proof_url as string | null) ?? null,
+    proofUrl:
+      attachmentUrlFor(
+        'expense-proofs',
+        row.proof_path as string | null,
+        row.proof_url as string | null,
+      ) ?? null,
     inputBy: (row.input_by as string | null) ?? null,
     createdAt: (row.created_at as string) ?? '',
   }
@@ -254,7 +265,7 @@ export async function uploadProof(entryId: number, file: File): Promise<UploadPr
   })
   if (uploadError) return { path: null, url: null, error: uploadError }
 
-  return { path, url: publicUrlFor('expense-proofs', path), error: null }
+  return { path, url: durableAttachmentUrlFor('expense-proofs', path), error: null }
 }
 
 /**

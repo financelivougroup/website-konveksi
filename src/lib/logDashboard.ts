@@ -5,7 +5,9 @@ import type {
   WorkOrder,
 } from '@/types/pipeline';
 import type { KanbanGroup } from './kanban.ts';
-import { buildLaporanRows } from './laporanCompute.ts';
+import { buildLaporanRows, applyLaporanFilters } from './laporanCompute.ts';
+import { hariKerjaRentang, tanggalHariIni } from './kpi.ts';
+import type { LaporanFilters } from './laporanCompute.ts';
 import type { LaporanKind, LaporanRow } from './laporanCompute.ts';
 
 // ===== Panel dashboard log (Sewing / Kancing / Finishing) =====
@@ -15,6 +17,45 @@ import type { LaporanKind, LaporanRow } from './laporanCompute.ts';
 
 /** Tab log yang punya panel dashboard dua-kolom. */
 export type LogTab = 'sewing' | 'kancing' | 'finishing';
+
+export interface LogTarget { id:number; nama:string; bulan_tahun:string; target_monthly:number }
+export interface LogCardMetrics {
+  target:number|null; percent:number|null; remaining:number|null; extra:number|null;
+  average:number|null; workdays:number; from:string|null; to:string|null;
+  excludedDates:number; missingPeople:number; cumulative:boolean;
+}
+function validLogDate(value:string):boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [y,m,d]=value.split('-').map(Number);
+  const date=new Date(y,m-1,d);
+  return date.getFullYear()===y&&date.getMonth()===m-1&&date.getDate()===d;
+}
+/** Targets are full person/month goals; product/code only narrow actual output. */
+export function logCardMetrics(scopedRows:LaporanRow[],filters:LaporanFilters,targets:readonly LogTarget[],holidays:readonly string[],today:Date):LogCardMetrics {
+  const now=tanggalHariIni(today);
+  const rows=applyLaporanFilters(scopedRows,filters);
+  const actual=rows.reduce((sum,row)=>sum+(Number(row.qty)||0),0);
+  const targetRows=targets.filter(t=>(!filters.pic||t.nama===filters.pic)&&(/^\d{4}-(0[1-9]|1[0-2])$/.test(t.bulan_tahun))&&(filters.bulan?t.bulan_tahun===filters.bulan:t.bulan_tahun<=now.slice(0,7)));
+  const unique=new Map(targetRows.map(t=>[t.id,t]));
+  const values=[...unique.values()];
+  const target=values.length&&values.every(t=>t.target_monthly!=null&&Number.isFinite(Number(t.target_monthly))&&Number(t.target_monthly)>=0)
+    ?values.reduce((sum,t)=>sum+Number(t.target_monthly),0):null;
+  const scopePeople=new Set(rows.map(row=>row.pic).filter(Boolean));
+  const missingPeople=[...scopePeople].filter(name=>!targetRows.some(t=>t.nama===name)).length;
+  let from:string|null=null;let to:string|null=null;
+  if (filters.bulan && /^\d{4}-(0[1-9]|1[0-2])$/.test(filters.bulan) && filters.bulan<=now.slice(0,7)) {
+    from=filters.bulan+'-01';
+    const [y,m]=filters.bulan.split('-').map(Number);
+    to=filters.bulan===now.slice(0,7)?now:filters.bulan+'-'+new Date(y,m,0).getDate();
+  } else if (!filters.bulan) {
+    const scopedForAverage=applyLaporanFilters(scopedRows,{...filters,bulan:''});
+    from=scopedForAverage.map(r=>r.tanggal).filter(d=>validLogDate(d)&&d<=now).sort()[0]??null;
+    to=from?now:null;
+  }
+  const dated=rows.filter(row=>validLogDate(row.tanggal)&&from&&to&&row.tanggal>=from&&row.tanggal<=to);
+  const workdays=from&&to?hariKerjaRentang(from,to,holidays):0;
+  return {target,percent:target!==null&&target>0?actual/target*100:null,remaining:target===null?null:Math.max(0,target-actual),extra:target===null?null:Math.max(0,actual-target),average:workdays>0?dated.reduce((s,r)=>s+(Number(r.qty)||0),0)/workdays:null,workdays,from,to,excludedDates:rows.length-dated.length,missingPeople,cumulative:!filters.bulan};
+}
 
 /**
  * Peta tab → jenis laporan.

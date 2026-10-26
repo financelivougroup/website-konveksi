@@ -38,7 +38,7 @@ export function AddViewModal({ open, onClose, onCreate }: AddViewModalProps) {
         <div className="space-y-4 py-4">
           <div>
             <label className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1.5 block">
-              View Name <span className="text-rose-500">*</span>
+              View Name
             </label>
             <Input
               type="text"

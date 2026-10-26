@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Image as ImageIcon, ImageOff } from 'lucide-react';
-import { CartesianGrid, Line, LineChart, XAxis, YAxis } from 'recharts';
+import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from 'recharts';
 
 import {
   ResizableHandle,
@@ -403,7 +403,7 @@ export function KanbanCardDetail({
                 role="img"
                 aria-label={`Grafik pergerakan harian produksi — ${scopeLabel}`}
               >
-                <LineChart data={days} margin={{ top: 8, right: 12, bottom: 4, left: 4 }}>
+                <AreaChart data={days} margin={{ top: 8, right: 12, bottom: 4, left: 4 }}>
                   <CartesianGrid vertical={false} stroke="hsl(var(--border))" strokeWidth={1} />
                   <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} fontSize={11} />
                   <YAxis
@@ -437,8 +437,11 @@ export function KanbanCardDetail({
                       bergantung warna saja. Satu seri sudah dijelaskan judul
                       panel, jadi kotak legend berswab tunggal hanya mengulang. */}
                   {activeStages.length > 1 && <ChartLegend content={<ChartLegendContent />} />}
+                  {/* Area chart (permintaan user): garis tetap tegas 2px dengan
+                      isian gradasi yang memudar ke permukaan kartu. `fillOpacity`
+                      rendah karena empat area bisa bertumpuk pada mode "All". */}
                   {activeStages.map((key) => (
-                    <Line
+                    <Area
                       key={key}
                       dataKey={key}
                       name={key}
@@ -447,11 +450,13 @@ export function KanbanCardDetail({
                       strokeWidth={2}
                       strokeLinecap="round"
                       strokeLinejoin="round"
+                      fill={`var(--color-${key})`}
+                      fillOpacity={0.14}
                       dot={{ r: 3, fill: `var(--color-${key})`, strokeWidth: 2, stroke: 'hsl(var(--card))' }}
                       activeDot={{ r: 5, strokeWidth: 2, stroke: 'hsl(var(--card))' }}
                     />
                   ))}
-                </LineChart>
+                </AreaChart>
               </ChartContainer>
             )}
           </div>

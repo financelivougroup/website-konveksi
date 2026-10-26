@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import { removeAttachment } from '@/services/permanentDeletion';
-import { publicUrlFor, removeFromR2, uploadToR2 } from '@/services/r2Storage';
+import { attachmentUrlFor, durableAttachmentUrlFor, removeFromR2, uploadToR2 } from '@/services/r2Storage';
 import type { InvoicePaymentFileRow } from '@/types/pipeline';
 
 const TABLE = 'invoice_payment_files';
@@ -20,7 +20,8 @@ function mapRow(row: DbRow): InvoicePaymentFileRow {
     paymentId: row.payment_id,
     fileName: row.file_name,
     filePath: row.file_path,
-    fileUrl: row.file_url,
+    // Dihitung ulang dari path; lihat catatan di `complainFiles.ts`.
+    fileUrl: attachmentUrlFor('invoice-payment-proofs', row.file_path, row.file_url) ?? '',
     uploadedAt: row.uploaded_at,
   };
 }
@@ -63,7 +64,8 @@ export async function uploadPaymentProof(input: UploadPaymentProofInput): Promis
   return {
     fileName: input.file.name,
     filePath,
-    fileUrl: publicUrlFor('invoice-payment-proofs', filePath) ?? '',
+    // Nilai untuk DISIMPAN: lihat `durableAttachmentUrlFor`.
+    fileUrl: durableAttachmentUrlFor('invoice-payment-proofs', filePath),
     error: null,
   };
 }

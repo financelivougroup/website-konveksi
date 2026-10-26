@@ -113,6 +113,7 @@ export type ModuleId =
   | 'kancing-entry'
   | 'invoicing'
   | 'laporan-target-jahit'
+  | 'laporan-kinerja-produksi'
   | 'stock-monitoring'
   | 'profit-loss';
 

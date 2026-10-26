@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Download, RefreshCw, Search, Sparkles, Trash2, Wallet } from 'lucide-react'
+import { Download, RefreshCw, Search, Sparkles, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { fetchAllInvoices } from '@/services/invoices'
 import { fetchPaymentsByInvoiceIds } from '@/services/invoicePayments'
@@ -18,7 +18,7 @@ import { InvoiceImage } from '@/components/Invoice/InvoiceImage'
 import { useColumnSettings } from '@/lib/columnSettings'
 import { applyFilters, applySorts } from '@/lib/tableQuery'
 import type { FieldOption, FilterRule, SortRule } from '@/lib/tableQuery'
-import { T_WRAP, T_ROW_BTN, softBadgeClass } from '@/lib/tableStyles'
+import { T_WRAP, T_CODE, softBadgeClass } from '@/lib/tableStyles'
 import { matchesPoJump, poCodeFromWorkCode } from '@/lib/poJump'
 import { PoFilterBanner } from '@/components/Table/PoFilterBanner'
 import type { InvoiceRow, InvoicePaymentRow, WorkOrder } from '@/types/pipeline'
@@ -75,6 +75,7 @@ export function InvoicingPage({ poJump, onClearPoJump }: { poJump?: PoJump | nul
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
   const [deleteIds, setDeleteIds] = useState<readonly string[]>([])
   const invoiceImageRefs = useRef<Record<string, HTMLDivElement | null>>({})
+  const downloadInFlight = useRef(false)
   const refreshRequestRef = useRef(0)
   const [searchQuery, setSearchQuery] = useState('')
   const [filters, setFilters] = useState<FilterRule[]>([])
@@ -178,19 +179,19 @@ export function InvoicingPage({ poJump, onClearPoJump }: { poJump?: PoJump | nul
     { key: 'clientName', label: 'Client', width: '150px' },
     {
       key: 'workCode', label: 'Kode Produksi Konveksi', width: '170px',
-      render: (row: Record<string, unknown>) => <span className="font-mono">{String(row.workCode)}</span>,
+      render: (row: Record<string, unknown>) => <span className={T_CODE}>{String(row.workCode)}</span>,
     },
     {
       key: 'clientProductionCode', label: 'Kode Produksi Client', width: '180px',
       render: (row: Record<string, unknown>) => (
-        <span className="font-mono">{row.clientProductionCode ? String(row.clientProductionCode) : '—'}</span>
+        <span className={T_CODE}>{row.clientProductionCode ? String(row.clientProductionCode) : '—'}</span>
       ),
     },
     { key: 'pcsLinked', label: 'Total Qty', align: 'right' as const, width: '90px' },
     { key: 'unitPrice', label: 'Nominal/PCS', align: 'right' as const, width: '110px', format: 'currency' as const },
     {
       key: 'invoiceCode', label: 'Kode Invoice', width: '140px',
-      render: (row: Record<string, unknown>) => <span className="font-mono">{String(row.invoiceCode)}</span>,
+      render: (row: Record<string, unknown>) => <span className={T_CODE}>{String(row.invoiceCode)}</span>,
     },
     { key: 'totalAmount', label: 'Total', align: 'right' as const, width: '120px', format: 'currency' as const },
     {
@@ -305,6 +306,7 @@ export function InvoicingPage({ poJump, onClearPoJump }: { poJump?: PoJump | nul
   }, [])
 
   const clearSelection = useCallback(() => setSelectedRows(new Set()), [])
+  const selectedInvoices = invoices.filter((invoice) => selectedRows.has(invoice.id))
 
   const openPermanentDelete = () => {
     if (!canDeleteInvoice || selectedRows.size === 0) return
@@ -322,6 +324,7 @@ export function InvoicingPage({ poJump, onClearPoJump }: { poJump?: PoJump | nul
   }
 
   async function handleDownload(invoice: InvoiceRow) {
+    if (downloadInFlight.current) return
     if (!paymentsByInvoice[invoice.id] || paymentLoadError) {
       showFeedback('error', 'Data pembayaran belum tersedia. Refresh lalu coba lagi.')
       return
@@ -331,6 +334,7 @@ export function InvoicingPage({ poJump, onClearPoJump }: { poJump?: PoJump | nul
       showFeedback('error', 'Image element belum siap, coba lagi sebentar.')
       return
     }
+    downloadInFlight.current = true
     setDownloadingId(invoice.id)
     try {
       const { downloadInvoicePng } = await import('@/lib/downloadInvoicePng')
@@ -341,6 +345,7 @@ export function InvoicingPage({ poJump, onClearPoJump }: { poJump?: PoJump | nul
     } catch (error) {
       showFeedback('error', `Gagal download: ${error instanceof Error ? error.message : 'unknown'}`)
     } finally {
+      downloadInFlight.current = false
       setDownloadingId(null)
     }
   }
@@ -376,9 +381,9 @@ export function InvoicingPage({ poJump, onClearPoJump }: { poJump?: PoJump | nul
   return (
     <main className="flex-1 flex flex-col min-w-0 overflow-auto">
       <div className="px-6 pt-3 pb-0">
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex flex-col gap-3 mb-1">
           <h1 className="text-[17px] font-semibold tracking-tight text-slate-900">Invoicing</h1>
-          <div className="flex items-center gap-2.5">
+          <div className="flex flex-wrap items-center justify-end gap-2.5">
             <button
               onClick={() => void refresh()}
               className="h-8 px-3.5 text-[12px] font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 hover:shadow-md hover:shadow-slate-200 transition-all flex items-center gap-2"
@@ -453,16 +458,29 @@ export function InvoicingPage({ poJump, onClearPoJump }: { poJump?: PoJump | nul
           />
         )}
 
-        {canDeleteInvoice && selectedRows.size > 0 && (
-          <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2">
-            <span className="text-[12px] font-medium text-red-800">{selectedRows.size} invoice dipilih</span>
-            <button
+        {selectedRows.size > 0 && (
+          <div role="toolbar" aria-label="Invoice terpilih" className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2">
+            <span className="text-[12px] font-medium">{selectedRows.size} invoice dipilih</span>
+            {selectedInvoices.map((invoice) => (
+              <button
+                key={invoice.id}
+                type="button"
+                onClick={() => void handleDownload(invoice)}
+                disabled={downloadingId !== null || !paymentsByInvoice[invoice.id] || Boolean(paymentLoadError)}
+                className="h-8 px-2.5 text-[11px] rounded-lg flex items-center gap-1.5 font-medium border bg-background hover:bg-accent disabled:opacity-50"
+                title={!paymentsByInvoice[invoice.id] || paymentLoadError ? 'Data pembayaran belum tersedia. Refresh lalu coba lagi.' : undefined}
+              >
+                <Download className="w-3.5 h-3.5" />
+                {downloadingId === invoice.id ? 'Mengunduh…' : `Download Gambar${selectedInvoices.length > 1 ? ` · ${invoice.invoiceCode}` : ''}`}
+              </button>
+            ))}
+            {canDeleteInvoice && <button
               type="button"
               onClick={openPermanentDelete}
               className="h-8 px-2.5 text-[11px] rounded-lg flex items-center gap-1.5 font-medium bg-red-500 text-white hover:bg-red-600 transition-colors"
             >
               <Trash2 className="w-3 h-3" /> Delete ({selectedRows.size})
-            </button>
+            </button>}
             <button
               type="button"
               onClick={clearSelection}
@@ -480,36 +498,7 @@ export function InvoicingPage({ poJump, onClearPoJump }: { poJump?: PoJump | nul
             data={paginatedInvoices as unknown as Record<string, unknown>[]}
             selectedRows={selectedRows}
             onToggleRow={handleSelectRow}
-            rowActions={(row) => {
-              const invoice = row as unknown as InvoiceTableRow
-              const isDownloading = downloadingId === invoice.id
-              return (
-                <div className="flex items-center justify-center gap-1">
-                  <button
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      setPaymentTarget(invoice)
-                    }}
-                    className={cn(T_ROW_BTN, 'text-slate-400 hover:bg-slate-50 hover:text-blue-700')}
-                    title="Input atau edit pembayaran"
-                  >
-                    <Wallet className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      void handleDownload(invoice)
-                    }}
-                    className={cn(T_ROW_BTN, 'text-slate-400 hover:bg-slate-100 hover:text-slate-600 disabled:opacity-50')}
-                    title={invoice.paymentStatus === 'Unavailable' ? 'Data pembayaran belum tersedia' : 'Download Invoice'}
-                    disabled={isDownloading || invoice.paymentStatus === 'Unavailable'}
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              )
-            }}
-            actionsLabel="Actions"
+            onRowClick={(row) => setPaymentTarget(row as unknown as InvoiceTableRow)}
             hiddenColumns={hiddenCols}
             frozenColumns={frozenCols}
             headerFrozen={headerFrozen}

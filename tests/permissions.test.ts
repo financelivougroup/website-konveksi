@@ -7,6 +7,7 @@ import {
   SALARY_EDIT_HINT,
   canEditProductionLog,
   canEditSalary,
+  canViewAllStaffMoney,
 } from '../src/lib/permissions.ts';
 
 // Permintaan user (verbatim): "tolong buat settingan kalau khusus role finance
@@ -154,4 +155,63 @@ test('allow-list, bukan deny-list: role baru tidak otomatis dapat hak gaji', () 
 test('pesan penjelas gaji menyebut Finance, bukan Owner', () => {
   assert.match(SALARY_EDIT_HINT, /Finance/);
   assert.doesNotMatch(SALARY_EDIT_HINT, /Owner/);
+});
+
+// ===== Utang Staff & Benefit =====
+//
+// Permintaan user (verbatim): "semua penjahit bisa akses Utang Staf dan Benefit
+// (jangan di lock). tapi mereka cuma bisa liat nama mereka sendiri (berdasarkan
+// akun login). tapi kalau finance dan owner ya bisa liat semua fitur. gada yg
+// di lock."
+//
+// Yang diuji di sini hanya satu hal: siapa yang boleh melihat SELURUH staf.
+// Siapa pun yang tidak ada di daftar ini tetap boleh membuka tab dan melihat
+// barisnya sendiri — jadi `false` TIDAK berarti "terkunci".
+//
+// Cerminan SQL-nya (`public.staff_settlement_read`) sudah diuji langsung lewat
+// Supabase MCP dengan impersonasi tiap akun pada data nyata:
+//   owner     → 6 baris
+//   finance   → 6 baris
+//   Arief     → 1 baris (dirinya sendiri)
+//   Azrul     → 0 baris (tidak punya data settlement sama sekali)
+//   inventory → 0 baris (akun tanpa orang_id)
+//   Arief memanggil read(7) untuk staf lain → SETTLEMENT_FORBIDDEN
+//   Arief memanggil staff_benefit_pay          → SETTLEMENT_FORBIDDEN
+
+test('owner boleh melihat penghasilan seluruh staf', () => {
+  assert.equal(canViewAllStaffMoney('owner'), true);
+});
+
+test('finance boleh melihat penghasilan seluruh staf', () => {
+  assert.equal(canViewAllStaffMoney('finance'), true);
+});
+
+test('staff TIDAK boleh melihat staf lain — tetapi barisnya sendiri tetap terbuka', () => {
+  // Inti permintaan: "cuma bisa liat nama mereka sendiri". `false` di sini
+  // bukan "terkunci"; halaman menampilkan barisnya sendiri.
+  assert.equal(canViewAllStaffMoney('staff'), false);
+});
+
+test('supervisor TIDAK melihat seluruh staf', () => {
+  assert.equal(canViewAllStaffMoney('supervisor'), false);
+});
+
+test('inventory TIDAK melihat seluruh staf', () => {
+  assert.equal(canViewAllStaffMoney('inventory'), false);
+});
+
+test('tanpa profil (null/undefined) ditolak — gagal ke arah aman', () => {
+  assert.equal(canViewAllStaffMoney(null), false);
+  assert.equal(canViewAllStaffMoney(undefined), false);
+});
+
+test('allow-list, bukan deny-list: role baru tidak otomatis melihat semua staf', () => {
+  assert.equal(canViewAllStaffMoney('manager' as never), false);
+  assert.equal(canViewAllStaffMoney('' as never), false);
+});
+
+test('hak lihat-seluruh hanya owner dan finance, tidak lebih luas dari itu', () => {
+  const semuaRole = ['owner', 'finance', 'inventory', 'supervisor', 'staff'] as const;
+  const boleh = semuaRole.filter((role) => canViewAllStaffMoney(role));
+  assert.deepEqual(boleh, ['owner', 'finance']);
 });

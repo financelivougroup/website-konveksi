@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { buildKanbanGroups, groupStatus, type KanbanWorkOrder } from '../src/lib/kanban.ts';
+import { monitoringProductionStatus } from '../src/lib/productionStatus.ts';
 import type { ProductionStatus } from '../src/types/pipeline.ts';
 
 /**
@@ -32,6 +33,14 @@ function wo(over: Partial<KanbanWorkOrder> = {}): KanbanWorkOrder {
     ...over,
   };
 }
+
+test('invoiced work order remains in INVOICED Kanban group after totals recompute', () => {
+  const order = wo({productionStatus:'INVOICED',invoiceStatus:'PAID'});
+  const derivedStatus = monitoringProductionStatus(order,100,100,100,100,100);
+  const [group] = buildKanbanGroups([{...order,derivedStatus}]);
+  assert.equal(group.status,'INVOICED');
+  assert.equal(groupStatus(group.workOrders),'INVOICED');
+});
 
 // ===== Aturan inti: status kartu = yang BELUM selesai =====
 // Permintaan user: kalau satu kode produksi konveksi punya >1 variasi dan masih

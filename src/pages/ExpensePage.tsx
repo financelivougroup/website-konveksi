@@ -527,11 +527,11 @@ export function ExpensePage() {
   return (
     <main className="flex-1 flex flex-col min-w-0 overflow-auto">
       <div className="px-6 pt-3 pb-0">
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex flex-col gap-3 mb-1">
           <div>
             <h1 className="text-[17px] font-semibold tracking-tight text-slate-900">Expense</h1>
           </div>
-          <div className="flex items-center gap-2.5">
+          <div className="flex flex-wrap items-center justify-end gap-2.5">
             <button
               onClick={() => void refresh()}
               className="h-8 px-3.5 text-[12px] font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 hover:shadow-md hover:shadow-slate-200 transition-all flex items-center gap-2"
@@ -668,11 +668,12 @@ export function ExpensePage() {
             data={pagedRows as unknown as Record<string, unknown>[]}
             selectedRows={selectedRows}
             onToggleRow={handleToggleRow}
+            onRowClick={(row) => setViewTarget(row as unknown as ExpenseEntry)}
             rowActions={canManage ? (row) => {
               const entry = row as unknown as ExpenseEntry;
               // Edit, lampiran, dan duplikasi GAJI tetap khusus finance.
               // Hapus permanen memakai izin owner/finance tersendiri.
-              const canWrite = entry.staffId === null || canEditSalary(profile.role);
+              const canWrite = !entry.benefitPaymentId && (entry.staffId === null || canEditSalary(profile.role));
               return (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>

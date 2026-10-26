@@ -12,6 +12,17 @@ export interface Profile {
   username: string
   displayName: string
   role: AppRole
+  /**
+   * `register_penjahit.id` milik akun ini; `null` untuk akun tanpa data
+   * karyawan (owner, finance, inventory).
+   *
+   * Dipakai halaman Target Jahit untuk menampilkan **hanya baris sendiri**
+   * pada tab Utang Staff/Benefit. Kolom ini sudah ada di database sejak
+   * `2026-10-19-kpi-produksi-fase1.sql` dan dipakai KPI; jangan diturunkan
+   * dengan mencocokkan `displayName` ke `pic_penjahit` — nama bisa berubah,
+   * `orang_id` tidak.
+   */
+  orangId: number | null
 }
 
 export function usernameToEmail(username: string): string {
@@ -33,7 +44,7 @@ export async function signOut(): Promise<void> {
 export async function fetchProfile(userId: string): Promise<{ data: Profile | null; error: Error | null }> {
   const { data, error } = await supabase
     .from('profiles')
-    .select('id, username, display_name, role')
+    .select('id, username, display_name, role, orang_id')
     .eq('id', userId)
     .single()
 
@@ -45,6 +56,7 @@ export async function fetchProfile(userId: string): Promise<{ data: Profile | nu
       username: data.username as string,
       displayName: data.display_name as string,
       role: data.role as AppRole,
+      orangId: (data.orang_id as number | null) ?? null,
     },
     error: null,
   }

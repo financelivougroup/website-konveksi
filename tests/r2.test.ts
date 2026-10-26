@@ -8,6 +8,8 @@ import {
   isSafeObjectPath,
   MAX_R2_KEY_LENGTH,
   MAX_R2_UPLOAD_BYTES,
+  MEDIA_PATH_PREFIX,
+  parseMediaObjectPath,
   R2_LOGICAL_BUCKETS,
   r2Key,
   r2PublicUrl,
@@ -139,4 +141,39 @@ test('memakai tiga awalan MIME: image/*, PDF, dan cadangan octet-stream', () => 
     'text/html',
     'application/xhtml+xml',
   ]);
+});
+
+test('rute media memecah jenis lampiran dan path relatif', () => {
+  assert.equal(MEDIA_PATH_PREFIX, '/media/');
+  assert.deepEqual(
+    parseMediaObjectPath('/media/product-photos/PO-abc/1700000000000-foto.jpg'),
+    { logicalBucket: 'product-photos', path: 'PO-abc/1700000000000-foto.jpg' },
+  );
+  assert.deepEqual(
+    parseMediaObjectPath('/media/expense-proofs/expense-17/1789703033702-XGF.png'),
+    { logicalBucket: 'expense-proofs', path: 'expense-17/1789703033702-XGF.png' },
+  );
+  // Path bertingkat tetap utuh: hanya segmen pertama yang jadi jenis lampiran.
+  assert.deepEqual(
+    parseMediaObjectPath('/media/product-photos/PO-a/uuid/1700000000000-foto.jpg'),
+    { logicalBucket: 'product-photos', path: 'PO-a/uuid/1700000000000-foto.jpg' },
+  );
+});
+
+test('rute media menolak path yang bukan lampiran sah', () => {
+  // Bukan rute media sama sekali.
+  assert.equal(parseMediaObjectPath('/health'), null);
+  assert.equal(parseMediaObjectPath('/sign/upload'), null);
+  assert.equal(parseMediaObjectPath('/media/'), null);
+  assert.equal(parseMediaObjectPath('/media'), null);
+  // Jenis lampiran tidak dikenal.
+  assert.equal(parseMediaObjectPath('/media/secrets/a.jpg'), null);
+  assert.equal(parseMediaObjectPath('/media/../a.jpg'), null);
+  // Path kosong setelah jenis lampiran.
+  assert.equal(parseMediaObjectPath('/media/product-photos/'), null);
+  // Traversal dan sintaks URL sisa.
+  assert.equal(parseMediaObjectPath('/media/product-photos/../a.jpg'), null);
+  assert.equal(parseMediaObjectPath('/media/product-photos/a/%2e%2e/b.jpg'), null);
+  assert.equal(parseMediaObjectPath('/media/product-photos/a/b.jpg?x=1'), null);
+  assert.equal(parseMediaObjectPath('/media/product-photos/a//b.jpg'), null);
 });

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useLocation, useNavigate } from 'react-router';
 import { computeCutVsUpload, computeStatusStock } from '@/lib/utils';
 import { Landing } from '@/pages/Landing';
 import ProductionMonitoring from '@/pages/ProductionMonitoring';
@@ -14,6 +15,7 @@ import { KategoriBiayaPage } from '@/pages/KategoriBiayaPage';
 import { ExpensePage } from '@/pages/ExpensePage';
 import { ContactPage } from '@/pages/ContactPage';
 import { LaporanTargetJahitPage } from '@/pages/LaporanTargetJahitPage';
+import { LaporanKinerjaProduksiPage } from '@/pages/LaporanKinerjaProduksiPage';
 import StockMonitoringPage from '@/pages/StockMonitoringPage';
 import ProfitLossPage from '@/pages/ProfitLossPage';
 import OrderEntry from '@/pages/OrderEntry';
@@ -38,7 +40,7 @@ import { AddViewModal } from '@/components/Modals/AddViewModal';
 import { useToast } from '@/hooks/useToast';
 import { useAuth } from '@/contexts/AuthContext';
 import { canPermanentlyDelete } from '@/lib/permissions';
-import { PermanentDeleteDialog, PermanentDeleteCleanupStatus } from '@/components/Modals/PermanentDeleteDialog';
+import { PermanentDeleteDialog, PermanentDeleteCleanupDialog } from '@/components/Modals/PermanentDeleteDialog';
 import { Button } from '@/components/ui/button';
 import type { PermanentDeleteResult, PermanentDeletionModule } from '@/types/permanentDeletion';
 import { viewConfig } from '@/data/mockData';
@@ -75,11 +77,27 @@ export default function App() {
 
 function AuthenticatedApp() {
   const { profile } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
   const canDelete = canPermanentlyDelete(profile.role);
   const [deleteRequest, setDeleteRequest] = useState<{ module: PermanentDeletionModule; ids: readonly string[] } | null>(null);
-  const [cleanupRefreshKey, setCleanupRefreshKey] = useState(0);
+  const [cleanupOpen, setCleanupOpen] = useState(false);
   const [viewMode, setViewMode] = useState<'app' | 'landing'>('app');
-  const [currentView, setCurrentView] = useState<ModuleId>('production-monitoring');
+  const [currentViewState, setCurrentViewState] = useState<ModuleId>('production-monitoring');
+  /**
+   * Modul yang benar-benar tampil.
+   *
+   * Monitor Kinerja Produksi adalah SATU-SATUNYA modul yang punya URL sendiri
+   * (`/laporan`, `/laporan/team`, `/laporan/orang/:id`) karena halaman per orang
+   * harus bisa dibuka langsung dan dibagikan. Karena itu modul ini DITURUNKAN
+   * dari alamat halaman, bukan disimpan di state: tombol Back/Forward browser
+   * dan tautan langsung otomatis ikut benar tanpa efek sinkronisasi.
+   *
+   * Modul lain tetap memakai state seperti biasa, dan URL-nya dikembalikan ke
+   * akar saat berpindah (lihat `handleSwitchView`).
+   */
+  const diLaporan = location.pathname === '/laporan' || location.pathname.startsWith('/laporan/');
+  const currentView: ModuleId = diLaporan ? 'laporan-kinerja-produksi' : currentViewState;
   const [currentViewTab, setCurrentViewTab] = useState(0);
   const [activeSubModule, setActiveSubModule] = useState<ModuleId>('register-jahit');
   const [searchQuery, setSearchQuery] = useState('');
@@ -322,8 +340,18 @@ function AuthenticatedApp() {
       showToast(`${view} coming soon!`, 'info');
       return;
     }
+    // Monitor Kinerja Produksi memakai URL sungguhan (`/laporan`, `/laporan/team`,
+    // `/laporan/orang/:id`) karena halaman per orang harus bisa dibuka langsung
+    // dan dibagikan. Rute lain tetap memakai state `currentView` seperti biasa;
+    // karena itu saat meninggalkan modul ini URL dikembalikan ke akar supaya
+    // tidak tertinggal alamat /laporan di bilah alamat.
+    if (view === 'laporan-kinerja-produksi') {
+      navigate('/laporan');
+    } else if (diLaporan) {
+      navigate('/');
+    }
     if (view === 'invoicing') {
-      setCurrentView(view as ModuleId);
+      setCurrentViewState(view as ModuleId);
       setCurrentViewTab(0);
       setCurrentPage(1);
       setSelectedRows(new Set());
@@ -334,7 +362,7 @@ function AuthenticatedApp() {
       setPanelOpen(false);
       return;
     }
-    setCurrentView(view as ModuleId);
+    setCurrentViewState(view === 'laporan-kinerja-produksi' ? 'production-monitoring' : view as ModuleId);
     setCurrentViewTab(0);
     setCurrentPage(1);
     setSelectedRows(new Set());
@@ -344,7 +372,7 @@ function AuthenticatedApp() {
     setDateField('');
     setPanelOpen(false);
     if (view === 'production-data') setActiveSubModule('register-jahit');
-  }, [showToast]);
+  }, [showToast, navigate, diLaporan]);
 
   /**
    * Niat lompat dari nomor PO di Register Harga.
@@ -452,9 +480,17 @@ function AuthenticatedApp() {
     }
     setSelectedRows(new Set());
     setDeleteRequest(null);
-    setCleanupRefreshKey((key) => key + 1);
     await refetchTableData();
-    showToast(`${result.deletedIds.length} data dihapus permanen.${result.cleanupPending > 0 || result.cleanupError ? ' Pembersihan media masih tertunda; periksa status pembersihan.' : ''}`, 'success');
+    const tertunda = result.cleanupPending > 0 || result.cleanupError !== null;
+    showToast(
+      tertunda
+        ? `${result.deletedIds.length} data dihapus permanen. Pembersihan lampiran masih tertunda.`
+        : `${result.deletedIds.length} data dihapus permanen.`,
+      'success',
+    );
+    // Status pembersihan tidak lagi menetap di dasar halaman; dialog dibuka
+    // hanya saat memang ada pekerjaan tertunda.
+    if (tertunda) setCleanupOpen(true);
   };
 
   const handleAddNew = useCallback(() => {
@@ -505,7 +541,7 @@ function AuthenticatedApp() {
           break;
         }
         case 'daftar-libur': {
-          const { error: e } = await supabase.from('daftar_libur').update(formData).eq('id', Number(id));
+          const { error: e } = await daftarLiburSvc.update(Number(id), formData);
           error = e;
           break;
         }
@@ -592,16 +628,16 @@ function AuthenticatedApp() {
                   DataTable) memang dirancang menempel, bukan berjarak. */}
               <div className="flex flex-1 flex-col overflow-auto">
                 {/* All views rendered inside consistent wrapper */}
-                {currentView === 'sewing-entry' && <SewingEntryForm onBack={() => setCurrentView('production-monitoring')} />}
-                {currentView === 'finishing-entry' && <FinishingEntryForm onBack={() => setCurrentView('production-monitoring')} />}
-                {currentView === 'kancing-entry' && <KancingEntryForm onBack={() => setCurrentView('production-monitoring')} />}
+                {currentView === 'sewing-entry' && <SewingEntryForm onBack={() => setCurrentViewState('production-monitoring')} />}
+                {currentView === 'finishing-entry' && <FinishingEntryForm onBack={() => setCurrentViewState('production-monitoring')} />}
+                {currentView === 'kancing-entry' && <KancingEntryForm onBack={() => setCurrentViewState('production-monitoring')} />}
                 {currentView === 'production-monitoring' && (
                   <ProductionMonitoring
                     poJump={poJump}
                     onClearPoJump={clearPoJump}
-                    onOpenSewingEntry={() => setCurrentView('sewing-entry')}
-                    onOpenFinishingEntry={() => setCurrentView('finishing-entry')}
-                    onOpenKancingEntry={() => setCurrentView('kancing-entry')}
+                    onOpenSewingEntry={() => setCurrentViewState('sewing-entry')}
+                    onOpenFinishingEntry={() => setCurrentViewState('finishing-entry')}
+                    onOpenKancingEntry={() => setCurrentViewState('kancing-entry')}
                   />
                 )}
                 {currentView === 'invoicing' && (
@@ -618,11 +654,12 @@ function AuthenticatedApp() {
                 {currentView === 'expense' && <ExpensePage />}
                 {currentView === 'contact' && <ContactPage />}
                 {currentView === 'laporan-target-jahit' && <LaporanTargetJahitPage />}
+                {currentView === 'laporan-kinerja-produksi' && <LaporanKinerjaProduksiPage />}
                 {currentView === 'stock-monitoring' && <StockMonitoringPage />}
                 {currentView === 'profit-loss' && <ProfitLossPage />}
 
                 {/* DataTable pages with toolbar - only for views not listed above */}
-                {!['sewing-entry', 'finishing-entry', 'kancing-entry', 'production-monitoring', 'invoicing', 'order-entry', 'planning-produksi', 'complain-penalti', 'target-jahit', 'register-penjahit', 'register-client', 'register-harga', 'kategori-biaya', 'expense', 'vendor', 'contact', 'laporan-target-jahit', 'stock-monitoring', 'profit-loss'].includes(currentView) && (
+                {!['sewing-entry', 'finishing-entry', 'kancing-entry', 'production-monitoring', 'invoicing', 'order-entry', 'planning-produksi', 'complain-penalti', 'target-jahit', 'register-penjahit', 'register-client', 'register-harga', 'kategori-biaya', 'expense', 'vendor', 'contact', 'laporan-target-jahit', 'laporan-kinerja-produksi', 'stock-monitoring', 'profit-loss'].includes(currentView) && (
                   <>
                     <TopBar onRefresh={handleRefresh} onAddNew={handleAddNew} />
                     <ViewTabs
@@ -764,7 +801,12 @@ function AuthenticatedApp() {
           </SidebarProvider>
       )}
 
-      {canDelete && <PermanentDeleteCleanupStatus refreshKey={cleanupRefreshKey} />}
+      {/* Komponen "Status pembersihan lampiran" yang dulu dirender di sini
+          (di luar SidebarProvider, sehingga muncul sebagai kotak nyasar di
+          bawah SETIAP halaman) sudah dihapus atas permintaan user. Status
+          cleanup kini dilaporkan lewat toast setelah penghapusan; tombol
+          coba-ulang pembersihan akan dipasang di dalam alur penghapusan
+          permanen, bukan sebagai blok lepas di dasar halaman. */}
       {canDelete && deleteRequest && (
         <PermanentDeleteDialog
           open
@@ -774,6 +816,10 @@ function AuthenticatedApp() {
           onDeleted={handleDeleted}
           title={deleteRequest.module === 'work_orders' ? 'Hapus permanen Work Order beserta data turunannya' : undefined}
         />
+      )}
+
+      {canDelete && cleanupOpen && (
+        <PermanentDeleteCleanupDialog open onOpenChange={setCleanupOpen} />
       )}
 
       {/* Detail Panel and Modals outside conditional flow */}

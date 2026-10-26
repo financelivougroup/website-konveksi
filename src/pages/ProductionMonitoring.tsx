@@ -43,10 +43,13 @@ import * as cuttingRecordSvc from '@/services/cuttingRecords';
 import * as sewingRecordSvc from '@/services/sewingRecords';
 import * as finishingRecordSvc from '@/services/finishingRecords';
 import * as kancingRecordSvc from '@/services/kancingRecords';
+import * as targetJahitSvc from '@/services/targetJahit';
+import * as daftarLiburSvc from '@/services/daftarLibur';
+import type { LogTarget } from '@/lib/logDashboard';
 import { fetchAll as fetchAllKaryawan, activePenjahitNames } from '@/services/registerPenjahit';
 import type { WorkOrder, SewingRecord, CuttingRecord, FinishingRecord, KancingRecord, ProductionStatus, VariasiStatus } from '@/types/pipeline';
 import { productionStatusLabel, productionStatusColor } from '@/types/pipeline';
-import { STATUS_ORDER, deriveStatus, validateStatusTransition, deriveVariasiStatuses, variasiStatusText, needsUpPos, NEED_UP_POS_LABEL } from '@/lib/productionStatus';
+import { STATUS_ORDER, deriveStatus, monitoringProductionStatus, validateStatusTransition, deriveVariasiStatuses, variasiStatusText, posUpdateLabel, NEED_UP_POS_LABEL, DONE_UP_POS_LABEL } from '@/lib/productionStatus';
 import { VariasiStatusBadge } from '@/components/Production/VariasiStatusBadge';
 import { buildKanbanGroups, type KanbanGroup } from '@/lib/kanban';
 import { matchesPoJump } from '@/lib/poJump';
@@ -80,7 +83,7 @@ import {
   type LaporanFilters,
 } from '@/lib/laporanCompute';
 import { canEditProductionLog, canPermanentlyDelete, PRODUCTION_LOG_EDIT_HINT } from '@/lib/permissions';
-import { T_WRAP, T_SUB_LABEL, T_ROW_BTN, softBadgeClass } from '@/lib/tableStyles';
+import { T_WRAP, T_SUB_LABEL, T_ROW_BTN, T_CODE, softBadgeClass } from '@/lib/tableStyles';
 import { DataTable } from '@/components/Table/DataTable';
 import { FilterButton, SortButton } from '@/components/Table/TableTools';
 import { ColumnSettingsButton, type ColumnOption } from '@/components/Table/ColumnSettings';
@@ -139,14 +142,14 @@ function KanbanCard({
       onClick={handleClick}
       className={cn('bg-white rounded-[14px] border border-[#E5E7EB] shadow-sm p-[14px] hover:-translate-y-0.5 hover:scale-[1.01] hover:shadow-md transition-all duration-200 ease-out cursor-pointer w-full max-w-[350px] touch-none', isDragging && 'opacity-50 scale-105 shadow-lg')}>
       <div className="flex items-start justify-between gap-2 mb-[10px]">
-        <span className="text-[11px] font-mono font-bold leading-[1.3] text-slate-900 truncate flex-1 min-w-0">{group.productNote}</span>
+        <span className={`text-[11px] font-bold leading-[1.3] text-slate-900 truncate flex-1 min-w-0 ${T_CODE}`}>{group.productNote}</span>
         <StatusBadge status={group.status} />
       </div>
       <div className="flex flex-col gap-1">
         <span className="text-[12px] font-semibold leading-[1.4] text-slate-800">{group.product} · {group.brand}</span>
         {/* Kode Produksi Client adalah identitas yang dicari user, sedangkan
             judul kartu = Kode Produksi Konveksi (product note). */}
-        <span className="text-[11px] font-mono text-slate-500 truncate" title={group.clientProductionCode ?? undefined}>
+        <span className={`text-[11px] text-slate-500 truncate ${T_CODE}`} title={group.clientProductionCode ?? undefined}>
           {group.clientProductionCode || '—'}
         </span>
         {/* Total qty = 0 berarti "belum diterima dari POS client" (input qty
@@ -283,6 +286,25 @@ export default function ProductionMonitoring({ poJump, onClearPoJump, onOpenSewi
   const [finishingRecords, setFinishingRecords] = useState<FinishingRecord[]>([]);
   const [kancingRecords, setKancingRecords] = useState<KancingRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [logTargets, setLogTargets] = useState<LogTarget[]>([]);
+  const [logHolidays, setLogHolidays] = useState<string[]>([]);
+  const [metricsLoading, setMetricsLoading] = useState(true);
+  const [targetError, setTargetError] = useState<string | null>(null);
+  const [calendarError, setCalendarError] = useState<string | null>(null);
+  const [metricsNonce, setMetricsNonce] = useState(0);
+  useEffect(() => {
+    let active = true;
+    void Promise.all([targetJahitSvc.fetchAll(),daftarLiburSvc.fetchAll()]).then(([targets,holidays])=>{
+      if (!active) return;
+      setLogTargets(targets.error?[]:targets.data??[]);
+      setLogHolidays(holidays.error?[]:(holidays.data??[]).map(row=>row.tanggal));
+      setTargetError(targets.error?.message??null);
+      setCalendarError(holidays.error?.message??null);
+    }).catch(()=>{if(active){setTargetError('Target belum dapat dimuat.');setCalendarError('Kalender belum dapat dimuat.');}})
+      .finally(()=>{if(active)setMetricsLoading(false);});
+    return ()=>{active=false;};
+  }, [metricsNonce]);
+  const reloadLogMetrics = () => {setMetricsLoading(true);setMetricsNonce(n=>n+1);};
   const [selectedGroup, setSelectedGroup] = useState<KanbanGroup | null>(null);
   // Nama karyawan Aktif berposisi Penjahit (Register Karyawan → Contact →
   // Karyawan). Dipakai dialog ubah log sebagai pilihan PIC. Sumbernya helper
@@ -376,12 +398,11 @@ export default function ProductionMonitoring({ poJump, onClearPoJump, onOpenSewi
         const finishingTotal = getFinishingTotalLocal(wo.id);
         const kancingTotal = getKancingTotalLocal(wo.id);
         const orderQty = Number(wo.quantity) || 0;
-        const status = deriveStatus(cuttingTotal, sewingTotal, orderQty, kancingTotal, finishingTotal);
+        const status = monitoringProductionStatus(wo, cuttingTotal, sewingTotal, orderQty, kancingTotal, finishingTotal);
         const variasiStatuses = deriveVariasiStatuses({ cuttingTotal, sewingTotal, finishingTotal, kancingTotal, orderQty });
-        // Revisi 2026-09-28: alert ditentukan HANYA oleh finishing vs Qty —
-        // jahit tidak lagi ikut dibandingkan. Lihat catatan di `needsUpPos`.
-        const upPos = needsUpPos(finishingTotal, orderQty);
-        return { ...wo, cuttingTotal, sewingTotal, finishingTotal, kancingTotal, derivedStatus: status, variasiStatuses, upPos };
+        const upPosLabel = posUpdateLabel(finishingTotal, orderQty);
+        const upPos = upPosLabel === NEED_UP_POS_LABEL;
+        return { ...wo, cuttingTotal, sewingTotal, finishingTotal, kancingTotal, derivedStatus: status, variasiStatuses, upPos, upPosLabel };
       })
       .sort((a, b) => {
         const da = a.createdAt || a.pulledAt || '';
@@ -414,9 +435,7 @@ export default function ProductionMonitoring({ poJump, onClearPoJump, onOpenSewi
     [decoratedWO, cuttingRecords],
   );
 
-  // Kolom tabel Antrian Cutting. Kolom Cutting + Action memuat input dan tombol
-  // simpan, jadi keduanya dirender sendiri lewat `render`; tabel bersama tidak
-  // perlu tahu soal state input per-baris.
+  // Cutting combines quantity and save in one cell; no separate action column.
   const cuttingQueueColumns = useMemo(() => [
     {
       key: 'product', label: 'Produk', width: '260px',
@@ -446,29 +465,21 @@ export default function ProductionMonitoring({ poJump, onClearPoJump, onOpenSewi
       },
     },
     {
-      key: 'cutting', label: 'Cutting', width: '130px', align: 'center' as const,
+      key: 'cutting', label: 'Cutting', width: '210px', align: 'center' as const,
       render: (row: Record<string, unknown>) => {
         const id = String(row.id);
         return (
-          <input
-            type="number"
-            value={cuttingInputs[id] || ''}
-            onChange={e => setCuttingInputs(prev => ({ ...prev, [id]: e.target.value }))}
-            className="w-24 h-8 px-2 text-[13px] border border-gray-300 rounded-md text-center focus:outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200 tabular-nums"
-          />
+          <div className="flex items-center justify-center gap-2">
+            <input
+              type="number"
+              value={cuttingInputs[id] || ''}
+              onChange={e => setCuttingInputs(prev => ({ ...prev, [id]: e.target.value }))}
+              className="w-24 h-8 px-2 text-[13px] border border-gray-300 rounded-md text-center focus:outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200 tabular-nums"
+            />
+            <Button type="button" size="sm" onClick={() => void handleInputCutting(id)}>Simpan</Button>
+          </div>
         );
       },
-    },
-    {
-      key: 'action', label: 'Action', width: '100px', align: 'center' as const,
-      render: (row: Record<string, unknown>) => (
-        <button
-          onClick={() => void handleInputCutting(String(row.id))}
-          className="px-3.5 py-1.5 text-[12px] font-medium bg-primary text-white rounded-md hover:bg-primary/90 transition-colors"
-        >
-          Simpan
-        </button>
-      ),
     },
   // `handleInputCutting` is recreated every render, so listing it here would
   // rebuild the columns on every keystroke and remount the inputs mid-typing.
@@ -594,7 +605,7 @@ export default function ProductionMonitoring({ poJump, onClearPoJump, onOpenSewi
     sisa: Math.max(0, wo.cuttingTotal - wo.sewingTotal),
     statusLabel: productionStatusLabel[wo.derivedStatus as ProductionStatus] ?? String(wo.derivedStatus),
     variasiStatusLabel: variasiStatusText(wo.variasiStatuses),
-    upPosLabel: wo.upPos ? NEED_UP_POS_LABEL : '',
+    upPosLabel: wo.upPosLabel,
     createdAtLabel: formatDate(wo.createdAt),
   })), [decoratedWO]);
   const rawRows = useMemo(() => applySorts(applyFilters(flatRows, rawFilters), rawSorts), [flatRows, rawFilters, rawSorts]);
@@ -611,14 +622,14 @@ export default function ProductionMonitoring({ poJump, onClearPoJump, onOpenSewi
       key: 'productNote', label: 'Kode Produksi Konveksi', width: '180px',
       render: (row: Record<string, unknown>) => {
         const v = row.productNote as string | null;
-        return v ? <span className="font-mono text-gray-700">{v}</span> : <span className="text-gray-300">—</span>;
+        return v ? <span className={`${T_CODE} text-gray-700`}>{v}</span> : <span className="text-gray-300">—</span>;
       },
     },
     {
       key: 'clientProductionCode', label: 'Kode Produksi Client', width: '180px',
       render: (row: Record<string, unknown>) => {
         const v = row.clientProductionCode as string | null;
-        return v ? <span className="font-mono text-gray-700">{v}</span> : <span className="text-gray-300">—</span>;
+        return v ? <span className={`${T_CODE} text-gray-700`}>{v}</span> : <span className="text-gray-300">—</span>;
       },
     },
     {
@@ -738,14 +749,11 @@ export default function ProductionMonitoring({ poJump, onClearPoJump, onOpenSewi
       ),
     },
     {
-      // Alert "Need Up POS" (revisi 2026-09-28): finishing sudah melebihi Qty
-      // Diterima Client, jadi angka di POS perlu dinaikkan. Jahit tidak lagi
-      // ikut dibandingkan. Sel kosong (bukan badge abu-abu) bila tidak ada
-      // masalah, supaya mata langsung tertuju ke baris yang bertanda.
+      // Label yang sama dipakai badge, filter, sort, dan export.
       key: 'upPosLabel', label: 'Need Up POS', width: '130px', align: 'center' as const,
       render: (row: Record<string, unknown>) => (
-        row.upPos
-          ? <span className={softBadgeClass('rose')}>{NEED_UP_POS_LABEL}</span>
+        row.upPosLabel
+          ? <span className={softBadgeClass(row.upPosLabel === DONE_UP_POS_LABEL ? 'emerald' : 'rose')}>{String(row.upPosLabel)}</span>
           : <span className="text-gray-300">—</span>
       ),
     },
@@ -882,6 +890,8 @@ export default function ProductionMonitoring({ poJump, onClearPoJump, onOpenSewi
     if (kr.data) setKancingRecords(kr.data);
     if (error) showToast(`Data dihapus, tetapi gagal memuat ulang: ${error.message}`);
     setSelectedRows(new Set());
+    setMetricsLoading(true);
+    setMetricsNonce(n=>n+1);
   }, []);
 
   // Jenis log yang sedang ditampilkan — dipakai dialog ubah & hapus agar tahu
@@ -1105,6 +1115,8 @@ export default function ProductionMonitoring({ poJump, onClearPoJump, onOpenSewi
                   key={`${activeLogTab}:${selectedKodeNote ?? 'semua'}`}
                   kind={LAPORAN_KIND_BY_TAB[activeLogTab]}
                   scopedRows={panelScopedRows}
+                  targets={logTargets} holidays={logHolidays} metricsLoading={metricsLoading}
+                  targetError={targetError} calendarError={calendarError} onRetryMetrics={reloadLogMetrics}
                   filters={panelFilters}
                   onFiltersChange={(next) =>
                     setLogFilters((prev) => ({ ...prev, [activeLogTab]: next }))
@@ -1129,7 +1141,7 @@ export default function ProductionMonitoring({ poJump, onClearPoJump, onOpenSewi
                             : 'bg-emerald-500 hover:bg-emerald-600',
                       )}
                     >
-                      ➕ Entry {LAPORAN_KIND_BY_TAB[activeLogTab] === 'jahit' ? 'Jahitan' : activeLogTab === 'kancing' ? 'Pasang Kancing' : 'Finishing'} Baru
+                      ➕ Create
                     </button>
                   }
                 />
@@ -1145,9 +1157,7 @@ export default function ProductionMonitoring({ poJump, onClearPoJump, onOpenSewi
                   }
                   page={logPage}
                   onPageChange={setLogPage}
-                  // Kolom Aksi hanya ada bila role-nya berhak. Untuk role lain
-                  // `rowActions` tidak diisi sama sekali, sehingga kolomnya tidak
-                  // dirender dan tabel tampil persis seperti sebelumnya.
+                  // Selected-row tools retain the existing editor role guard.
                   rowActions={canEditLog ? (row) => (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -1181,8 +1191,6 @@ export default function ProductionMonitoring({ poJump, onClearPoJump, onOpenSewi
                       </DropdownMenuContent>
                     </DropdownMenu>
                   ) : undefined}
-                  actionsLabel="Aksi"
-                  trailingColumns={canEditLog ? 1 : 0}
                 />
               </div>
             </ResizablePanel>
@@ -1219,9 +1227,9 @@ export default function ProductionMonitoring({ poJump, onClearPoJump, onOpenSewi
               <DialogTitle className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2 text-left text-[13px]">
                 {selectedGroup && (
                   <>
-                    <span className="break-all font-mono font-bold text-slate-900">{selectedGroup.productNote}</span>
+                    <span className={`break-all font-bold text-slate-900 ${T_CODE}`}>{selectedGroup.productNote}</span>
                     {selectedGroup.clientProductionCode && (
-                      <span className="min-w-0 max-w-full break-all font-mono font-bold text-slate-900 sm:border-l sm:border-border sm:pl-4">
+                      <span className={`min-w-0 max-w-full break-all font-bold text-slate-900 sm:border-l sm:border-border sm:pl-4 ${T_CODE}`}>
                         {selectedGroup.clientProductionCode}
                       </span>
                     )}

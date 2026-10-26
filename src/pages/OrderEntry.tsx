@@ -25,7 +25,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { T_SUB_LABEL, T_WRAP } from '@/lib/tableStyles';
+import { T_WRAP } from '@/lib/tableStyles';
 import { DataTable } from '@/components/Table/DataTable';
 import {
   OrderEntryDialog,
@@ -194,12 +194,8 @@ export default function OrderEntry({ poJump, onClearPoJump }: { poJump?: PoJump 
     { key: 'brand', label: 'Client', width: '140px' },
     {
       key: 'product', label: 'Product', width: '200px',
-      // Produk dan product id ditumpuk dalam satu sel seperti tabel lama.
       render: (row: Record<string, unknown>) => (
-        <>
-          <p className="text-[13px] text-slate-700">{String(row.product)}</p>
-          <p className={T_SUB_LABEL}>{String(row.productId)}</p>
-        </>
+        <p className="text-[13px] text-slate-700">{String(row.product)}</p>
       ),
     },
     {
@@ -541,15 +537,13 @@ export default function OrderEntry({ poJump, onClearPoJump }: { poJump?: PoJump 
                 )}
                 rowActions={(row) => {
                   const order = row as unknown as OrderEntryOverview;
-                  // Kolomnya selalu ada (seperti tabel lama), isinya bisa kosong:
-                  // order yang tidak bisa diedit dan tidak berstatus DRAFT
-                  // memang tidak punya aksi apa pun.
+                  // Selection tools preserve edit and draft cancellation access.
                   return (
                     <div className="flex items-center justify-end gap-0.5">
                       {order.canEdit && (
-                        <span className="inline-flex items-center gap-1 text-[12px] text-blue-700">
+                        <Button type="button" variant="outline" size="sm" onClick={() => openDialog('edit', order.id)}>
                           <Pencil className="h-3.5 w-3.5" /> Edit
-                        </span>
+                        </Button>
                       )}
                       {order.status === 'DRAFT' && (
                         <Button

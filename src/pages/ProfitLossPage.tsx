@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Calendar as CalendarIcon, ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
 import { Bar, BarChart, CartesianGrid, ReferenceLine, XAxis, YAxis } from 'recharts';
 import { cn, formatCurrency } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
 import { formatRupiahRingkas } from '@/lib/targetJahitReport';
 import { formatMonthYearFromYm } from '@/lib/monthYear';
 import {
@@ -529,13 +530,12 @@ function CategoryTable({
             <th className={cn(T_TH, 'text-right')}>Pengeluaran</th>
             <th className={cn(T_TH, 'text-right')}>Profit</th>
             <th className={cn(T_TH, 'text-right')}>Margin</th>
-            <th className={cn(T_TH, 'w-10')} aria-label="Buka rincian" />
           </tr>
         </thead>
         <tbody>
           {rows.length === 0 && (
             <tr>
-              <td colSpan={6} className="py-10 text-center text-[13px] text-slate-400">
+              <td colSpan={5} className="py-10 text-center text-[13px] text-slate-400">
                 Belum ada pengeluaran pada periode ini
               </td>
             </tr>
@@ -545,22 +545,16 @@ function CategoryTable({
             const isOpen = expanded.has(row.name);
             return [
               <tr key={row.name} className="border-b border-slate-100">
-                <td className={cn(T_TD, 'text-left font-semibold text-slate-900')}>{row.name}</td>
+                <td className={cn(T_TD, 'text-left font-semibold text-slate-900')}>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => onToggle(row.name)} aria-expanded={isOpen} className="h-auto gap-2 p-0 text-inherit">
+                    <ChevronRight className={cn('h-3.5 w-3.5 transition-transform', isOpen && 'rotate-90')} />
+                    {row.name}
+                  </Button>
+                </td>
                 <td className={cn(NUM_CELL, 'text-slate-700')}>{formatTableNumber(row.income)}</td>
                 <td className={cn(NUM_CELL, 'text-slate-700')}>{formatTableNumber(row.expense)}</td>
                 <td className={cn(NUM_CELL, 'text-slate-900')}>{formatTableNumber(row.profit)}</td>
                 <td className={cn(NUM_CELL, 'text-slate-700')}>{formatPercent(row.margin)}</td>
-                <td className={cn(T_TD, 'text-right')}>
-                  <button
-                    type="button"
-                    onClick={() => onToggle(row.name)}
-                    aria-expanded={isOpen}
-                    aria-label={isOpen ? `Tutup rincian ${row.name}` : `Buka rincian ${row.name}`}
-                    className="inline-flex h-6 w-6 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-                  >
-                    <ChevronRight className={cn('h-3.5 w-3.5 transition-transform', isOpen && 'rotate-90')} />
-                  </button>
-                </td>
               </tr>,
               ...(isOpen
                 ? row.subs.map((sub) => (
@@ -568,7 +562,6 @@ function CategoryTable({
                       <td className={cn(T_TD, 'pl-10 text-left text-slate-600')}>{sub.name}</td>
                       <td className={NUM_CELL} />
                       <td className={cn(NUM_CELL, 'text-slate-600')}>{formatTableNumber(sub.total)}</td>
-                      <td className={NUM_CELL} />
                       <td className={NUM_CELL} />
                       <td className={NUM_CELL} />
                     </tr>
@@ -584,7 +577,6 @@ function CategoryTable({
               <td className={cn(NUM_CELL, 'font-bold text-slate-900')}>{formatTableNumber(totals.expense)}</td>
               <td className={cn(NUM_CELL, 'font-bold text-slate-900')}>{formatTableNumber(totals.profit)}</td>
               <td className={cn(NUM_CELL, 'font-bold text-slate-900')}>{formatPercent(totals.margin)}</td>
-              <td className={NUM_CELL} />
             </tr>
           )}
         </tbody>

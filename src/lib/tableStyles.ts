@@ -11,18 +11,9 @@ import { cn } from '@/lib/utils';
 // tampilannya tidak bergeser.
 export const T_WRAP = 'bg-card border border-border rounded-lg overflow-auto max-h-[calc(100vh-250px)]';
 export const T_TABLE = 'w-full text-[13px] leading-[1.45] border-collapse';
-export const T_HEAD_ROW = 'bg-card border-b-2 border-[#D1D5DB] sticky top-0 z-10';
-// Header sel: hitam pekat + bold atas permintaan user ("warnanya harus hitam
-// pekat di bold, tapi sizenya tetap sama"). Hanya warna dan berat yang berubah —
-// `text-[12px]` sengaja dibiarkan.
-//
-// `text-black`, bukan token `text-foreground`: token tema itu near-black kebiruan
-// (`hsl(240 10% 3.9%)` = rgb(9, 9, 11)) sehingga di ukuran header terbaca abu
-// gelap, bukan hitam pekat. `#000` adalah nilai tergelap dan tanpa hue. Catatan:
-// header jadi tidak ikut terbalik di tema gelap — tetapi kelas `.dark` tidak
-// pernah dipasang di aplikasi ini (tidak ada ThemeProvider), jadi hanya tema
-// terang yang benar-benar dirender.
-export const T_TH = 'py-2.5 px-4 text-[12px] font-bold text-black whitespace-nowrap';
+export const T_HEAD_ROW = 'bg-card border-b-2 border-[#D1D5DB] dark:border-border sticky top-0 z-10';
+// Softer semibold headers; preserve size/spacing and readable dark-mode text.
+export const T_TH = 'py-2.5 px-4 text-[12px] font-semibold text-slate-700 dark:text-foreground whitespace-nowrap';
 export const T_TD = 'py-1.5 px-3 align-middle';
 
 /**
@@ -42,6 +33,27 @@ export const T_CHECKBOX =
 // Sengaja satu token bersama: sebelumnya tiap tabel menulis sendiri
 // text-[11px] text-gray-400, jadi ukurannya berbeda-beda antar tab.
 export const T_SUB_LABEL = 'text-[11px] text-muted-foreground';
+
+/**
+ * Tipografi untuk **Kode Produksi Konveksi** (`product_note`) dan **Kode
+ * Produksi Client** — dua kode yang selalu ditampilkan berpasangan.
+ *
+ * Permintaan user (verbatim): *"Kode produksi dan Kode produksi client font
+ * angkanya disamain yah, 0 yang normal aja gt"*.
+ *
+ * Sebelumnya keduanya memakai `font-mono`, yang di Windows jatuh ke **Consolas**
+ * — font itu menggambar nol dengan garis miring (slashed zero) sehingga `0`
+ * terbaca seperti huruf Ø/φ dan sulit dibedakan dari `O` pada kode yang penuh
+ * angka seperti `PDFF_LVU-PNT-02_B-00_PRDN`.
+ *
+ * Solusinya bukan memilih font mono lain: Cascadia Mono memakai nol bertitik,
+ * dan font mono lain di sistem belum tentu ada. Cocok-lebar karakternya juga
+ * tidak dibutuhkan di sini (kode tidak disejajarkan per kolom). Jadi kode ikut
+ * font aplikasi (Inter, via pewarisan) yang nol-nya lonjong biasa, dan
+ * `tabular-nums` menjaga lebar angka tetap seragam supaya kode tidak "bergoyang"
+ * saat kolom dirender ulang.
+ */
+export const T_CODE = 'tabular-nums';
 
 // ===== Toolbar buttons (Filter/Sort/Kolom/Export dll.) =====
 // Efek hover sama dengan tab bar Production Monitoring: lift + shadow biru.
@@ -94,13 +106,13 @@ export const T_ROW_BTN =
   'w-[19px] h-[19px] rounded-md flex items-center justify-center transition-colors';
 
 export const T_SOFT_BADGE_TONE: Record<string, string> = {
-  emerald: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-  amber: 'border-amber-200 bg-amber-50 text-amber-700',
-  rose: 'border-rose-200 bg-rose-50 text-rose-700',
-  red: 'border-red-200 bg-red-50 text-red-700',
-  blue: 'border-blue-200 bg-blue-50 text-blue-700',
-  violet: 'border-violet-200 bg-violet-50 text-violet-700',
-  slate: 'border-slate-200 bg-slate-50 text-slate-700',
+  emerald: 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-400/30 dark:bg-emerald-400/10 dark:text-emerald-300',
+  amber: 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-300',
+  rose: 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-400/30 dark:bg-rose-400/10 dark:text-rose-300',
+  red: 'border-red-200 bg-red-50 text-red-700 dark:border-red-400/30 dark:bg-red-400/10 dark:text-red-300',
+  blue: 'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-400/30 dark:bg-blue-400/10 dark:text-blue-300',
+  violet: 'border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-400/30 dark:bg-violet-400/10 dark:text-violet-300',
+  slate: 'border-slate-200 bg-slate-50 text-slate-700 dark:border-border dark:bg-muted dark:text-muted-foreground',
 };
 
 /**
@@ -115,9 +127,9 @@ export function softBadgeClass(tone: string): string {
 }
 
 export function rowClass(i: number, selected?: boolean) {
-  if (selected) return 'bg-[#EFF6FF] hover:bg-[#E4EDFB] border-b border-[#E5E7EB] transition-colors';
+  if (selected) return 'bg-[#EFF6FF] hover:bg-[#E4EDFB] border-b border-[#E5E7EB] dark:bg-accent dark:hover:bg-accent/80 dark:border-border transition-colors';
   return cn(
-    'border-b border-[#E5E7EB] hover:bg-[#F0F1F3] transition-colors',
-    i % 2 === 1 ? 'bg-[#F9FAFB]' : 'bg-card',
+    'border-b border-[#E5E7EB] hover:bg-[#F0F1F3] dark:border-border dark:hover:bg-muted transition-colors',
+    i % 2 === 1 ? 'bg-[#F9FAFB] dark:bg-muted/30' : 'bg-card',
   );
 }

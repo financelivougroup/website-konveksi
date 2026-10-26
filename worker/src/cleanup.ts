@@ -53,7 +53,9 @@ async function rpc(env: Env, name: string, body: Record<string, unknown>): Promi
   try {
     response = await fetch(`${base}/rest/v1/rpc/${name}`, {
       method: 'POST',
-      redirect: 'error',
+      // Workers tidak mendukung `redirect: 'error'`; `manual` menahan redirect
+      // agar respons 3xx tidak diikuti ke host lain lalu terbaca sebagai sukses.
+      redirect: 'manual',
       headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
@@ -122,7 +124,7 @@ async function deleteLegacyObject(env: Env, file: CleanupFile): Promise<void> {
   const { base, key } = serverConfig(env);
   // Storage remove API accepts prefixes in JSON, not a caller-controlled fetch URL.
   const response = await fetch(`${base}/storage/v1/object/${encodeURIComponent(file.bucket)}`, {
-    method: 'DELETE', redirect: 'error',
+    method: 'DELETE', redirect: 'manual',
     headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ prefixes: [file.path] }),
   });

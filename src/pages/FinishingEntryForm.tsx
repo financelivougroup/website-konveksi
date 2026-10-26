@@ -17,6 +17,7 @@ import * as finishingRecordSvc from '@/services/finishingRecords';
 import { syncWorkOrderStatus } from '@/services/autoInvoice';
 import * as upstreamRecordSvc from '@/services/kancingRecords';
 import * as workOrderSvc from '@/services/workOrders';
+import { fetchAll as fetchAllKaryawan, activeFinishingNames } from '@/services/registerPenjahit';
 import type { WorkOrder, FinishingRecord, KancingRecord } from '@/types/pipeline';
 
 interface FinishingEntryFormProps {
@@ -25,8 +26,6 @@ interface FinishingEntryFormProps {
   existingFinishingRecords?: FinishingRecord[];
   existingKancingRecords?: KancingRecord[];
 }
-
-const penjahitList = ['Budi Santoso', 'Ani Wulandari', 'Caca', 'Dedi Kurniawan', 'Eka Prasetya', 'Fitri Handayani'];
 
 export default function FinishingEntryForm({ onBack, workOrders: externalWorkOrders, existingFinishingRecords: externalFinishingRecords, existingKancingRecords: externalUpstreamRecords }: FinishingEntryFormProps) {
   const { profile } = useAuth();
@@ -37,6 +36,7 @@ export default function FinishingEntryForm({ onBack, workOrders: externalWorkOrd
   const [selection, setSelection] = useState(EMPTY_ENTRY_SELECTION);
   const { woId } = selection;
   const [pic, setPic] = useState('');
+  const [picOptions, setPicOptions] = useState<string[]>([]);
   const [qty, setQty] = useState('');
   const [tanggal, setTanggal] = useState(() => format(new Date(), 'yyyy-MM-dd'));
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -55,13 +55,19 @@ export default function FinishingEntryForm({ onBack, workOrders: externalWorkOrd
       externalWorkOrders !== undefined ? { data: externalWorkOrders, error: null } : workOrderSvc.fetchAll(),
       externalFinishingRecords !== undefined ? { data: externalFinishingRecords, error: null } : finishingRecordSvc.fetchAll(),
       externalUpstreamRecords !== undefined ? { data: externalUpstreamRecords, error: null } : upstreamRecordSvc.fetchAll(),
+      fetchAllKaryawan(),
     ])
-      .then(([orders, records, upstream]) => {
+      .then(([orders, records, upstream, people]) => {
         if (!active) return;
         if (orders.error || records.error || upstream.error || !orders.data || !records.data || !upstream.data) {
           setLoadError('Data produksi belum dapat dimuat. Coba lagi.');
           return;
         }
+        if (people.error || !people.data) {
+          setLoadError('Daftar PIC belum dapat dimuat dari Contact. Coba lagi.');
+          return;
+        }
+        setPicOptions(activeFinishingNames(people.data));
         setWorkOrders(orders.data);
         setExistingFinishingRecords(records.data);
         setUpstreamRecords(upstream.data);
@@ -98,7 +104,7 @@ export default function FinishingEntryForm({ onBack, workOrders: externalWorkOrd
     : 0;
   const sisaFinishing = selectedWO ? selectedWO.quantity - sudahFinishing : 0;
   const isQtyValid = isEntryQuantityValid(qty);
-  const isFormValid = Boolean(selectedWO && pic && isQtyValid && tanggal);
+  const isFormValid = Boolean(selectedWO && picOptions.includes(pic) && isQtyValid && tanggal);
 
   const showPic = Boolean(selectedWO && isQtyValid);
   const showDetails = Boolean(showPic && pic);
@@ -175,15 +181,16 @@ export default function FinishingEntryForm({ onBack, workOrders: externalWorkOrd
                 </dl>
               )}
               <Field data-invalid={qty !== '' && !isQtyValid}>
-                <FieldLabel htmlFor="finishing-qty">1. Jumlah Finishing (pcs) *</FieldLabel>
+                <FieldLabel htmlFor="finishing-qty">1. Jumlah Finishing (pcs)</FieldLabel>
                 <NumberField id="finishing-qty" value={qty} onChange={setQty} min={1} placeholder="Contoh: 30" />
                 {qty !== '' && !isQtyValid && <FieldDescription className="text-destructive">Jumlah harus berupa bilangan bulat positif.</FieldDescription>}
               </Field>
               <div hidden={!showPic}>
                 <Field>
-                  <FieldLabel htmlFor="finishing-pic-trigger">2. Finisher *</FieldLabel>
+                  <FieldLabel htmlFor="finishing-pic-trigger">2. Finisher</FieldLabel>
                   <AppSelect key={woId} bare id="finishing-pic" required value={pic} onValueChange={setPic} disabled={busy || !showPic}
-                    placeholder="Pilih Finisher" options={toOptions(penjahitList)} />
+                    placeholder="Pilih Finisher" options={toOptions(picOptions)} />
+                  {picOptions.length === 0 && <FieldDescription>Belum ada karyawan Aktif berposisi Finishing — daftarkan di Contact → Karyawan.</FieldDescription>}
                 </Field>
               </div>
               <div hidden={!showDetails} className={showDetails ? 'flex min-w-0 flex-col gap-5' : 'hidden'}>

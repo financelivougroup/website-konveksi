@@ -48,3 +48,17 @@ export function isActivePenjahit(row: KaryawanSelectionRow): boolean {
 export function activePenjahitNames(rows: KaryawanSelectionRow[]): string[] {
   return rows.filter(isActivePenjahit).map((r) => r.picPenjahit)
 }
+
+/** PIC Kancing: karyawan aktif berposisi Penjahit atau Finishing. */
+export function activeKancingNames(rows: KaryawanSelectionRow[]): string[] {
+  return rows.filter((row) => isActivePenjahit(row) || isActiveFinishing(row)).map((row) => row.picPenjahit)
+}
+
+function isActiveFinishing(row: KaryawanSelectionRow): boolean {
+  return (row.status ?? 'Aktif').toLowerCase() === 'aktif' && (row.posisi ?? '').toLowerCase() === 'finishing'
+}
+
+/** PIC Finishing: hanya karyawan aktif berposisi Finishing. */
+export function activeFinishingNames(rows: KaryawanSelectionRow[]): string[] {
+  return rows.filter(isActiveFinishing).map((row) => row.picPenjahit)
+}

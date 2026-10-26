@@ -47,6 +47,8 @@ export interface ExpenseEntry {
    * `src/lib/staffSalary.ts`.
    */
   staffId: number | null;
+  /** Linked settlement payments are managed only through Target Jahit. */
+  benefitPaymentId?: string | null;
   /**
    * Nama pihak yang dibayar, DISALIN saat dicatat. Untuk baris gaji berisi
    * **nama karyawan**, bukan nama vendor — alasannya sama dengan nama kategori:

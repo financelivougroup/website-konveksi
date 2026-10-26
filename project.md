@@ -8,7 +8,11 @@ The system is designed around two conceptual modules:
 1. **Production Module** (master/planning) — where inventory staff creates production orders.
 2. **Konveksi Module** (execution pipeline) — where orders flow through Cutting → Sewing → Finishing → Invoicing.
 
-Each work order carries two independent status axes: **production status** (physical progress) and **invoice status** (financial progress).
+Each work order carries two independent status axes: **production status** (physical progress) and **invoice status** (financial progress). Pasang Kancing is recorded as its own stage alongside Sewing and Finishing; stage tabs are not production-status names.
+
+## Documentation Map
+
+Current context: [CONTEXT.md](CONTEXT.md). Business vocabulary: [GLOSSARY.md](GLOSSARY.md). Decisions and trade-offs: [docs/adr/README.md](docs/adr/README.md). Document status/supersession: [docs/README.md](docs/README.md). This file's older dated progress entries remain historical evidence, not instructions to restore superseded behavior.
 
 ## Tech Stack
 
@@ -30,79 +34,29 @@ Each work order carries two independent status axes: **production status** (phys
 
 ## Database
 
-The operational pipeline uses a **local Supabase/PostgreSQL instance** for persistent storage, authentication, RLS, transactional RPCs, and production records. Persistent application data is accessed through the service layer in `src/services/`; `src/data/` is limited to static view configuration, fixtures, and shared reference data.
+The operational pipeline uses **Supabase/PostgreSQL** for persistent storage, authentication, RLS and transactional RPCs. **Verified 2026-10-22:** `.env` and `.mcp.json` target the same **cloud** project; a local Vite/Worker process is not a local database. Agent database operations remain Supabase-MCP-only regardless of deployment. Persistent application data goes through `src/services/`; `src/data/` holds static view configuration, fixtures and shared reference helpers.
 
 Order intake is normalized as one `production_orders` parent per unique Product Note, with child rows in `production_order_variations` and shared per-piece pricing in `production_order_prices` / `production_order_price_components`. Each variation fans out to one scalar `work_orders` row when production starts.
 
-## Folder Structure
+## Architecture Map
 
-```
-Website Konveksi/
-├── claude.md                          # Claude Code session instructions
-├── project.md                         # This file — project documentation
-├── index.html                         # Entry HTML
-├── package.json                       # Dependencies & scripts
-├── vite.config.ts                     # Vite configuration
-├── tailwind.config.js                 # Tailwind theme & plugins
-├── postcss.config.js                  # PostCSS config
-├── tsconfig.json                      # TypeScript config
-├── components.json                    # shadcn/ui config
-├── eslint.config.js                   # ESLint config
-├── src/
-│   ├── main.tsx                       # App entry point
-│   ├── App.tsx                        # Root component (routing, state, layout)
-│   ├── App.css                        # App-level styles
-│   ├── index.css                      # Global styles + Tailwind + CSS variables
-│   ├── pages/
-│   │   ├── Landing.tsx                # Marketing landing page
-│   │   ├── ProductionMonitoring.tsx   # Production pipeline (4 tabs + Kanban)
-│   │   ├── SewingEntryForm.tsx        # Sewing entry form
-│   │   ├── OrderEntry.tsx             # Production order entry (create/pull/cancel)
-│   │   └── Home.tsx                   # Boilerplate (unused)
-│   ├── components/
-│   │   ├── Layout/
-│   │   │   ├── Sidebar.tsx            # Navigation sidebar
-│   │   │   ├── TopBar.tsx             # Top bar with refresh/add buttons
-│   │   │   ├── Toolbar.tsx            # Toolbar (filter, sort, group, etc.)
-│   │   │   ├── SearchBar.tsx          # Search input with record count
-│   │   │   ├── ViewTabs.tsx           # View tab navigation
-│   │   │   └── ToastContainer.tsx     # Toast notification container
-│   │   ├── Modals/
-│   │   │   ├── ModalShell.tsx         # Reusable modal wrapper
-│   │   │   ├── CustomizeFieldModal.tsx # Column visibility & customization
-│   │   │   ├── FilterModal.tsx         # Filter rules editor
-│   │   │   ├── GroupByModal.tsx        # Group-by rules editor
-│   │   │   ├── SortModal.tsx           # Sort rules editor
-│   │   │   ├── RowHeightModal.tsx      # Row height selector
-│   │   │   ├── ConditionalColorModal.tsx # Conditional row coloring
-│   │   │   ├── DateRangeModal.tsx      # Date range filter
-│   │   │   └── AddViewModal.tsx        # Create new saved view
-│   │   ├── Table/
-│   │   │   ├── DataTable.tsx           # Main data table with column features
-│   │   │   └── Pagination.tsx          # Pagination controls
-│   │   ├── Panel/
-│   │   │   └── DetailPanel.tsx         # Row detail/edit panel
-│   │   └── ui/                        # 50+ shadcn/ui primitives
-│   ├── types/
-│   │   ├── index.ts                    # View config, filter/sort/group types, ModuleId
-│   │   └── pipeline.ts                # Production pipeline types (WorkOrder, etc.)
-│   ├── data/
-│   │   ├── mockData.ts                 # Table view mock data + view configs
-│   │   └── pipelineData.ts            # Pipeline mock data (orders, cutting, sewing)
-│   ├── lib/
-│   │   └── utils.ts                    # cn(), format helpers, badge utils
-│   └── hooks/
-│       ├── useToast.ts                 # Toast notification hook
-│       ├── useViewSettings.ts          # View settings state management
-│       └── use-mobile.ts              # Mobile detection hook
-└── docs/
-    └── superpowers/
-        ├── specs/
-        │   ├── 2026-06-22-konveksi-pro-5-phase-pipeline-design.md
-        │   └── 2026-07-07-kanban-view-design.md
-        └── plans/
-            └── 2026-07-07-kanban-view.md
-```
+| Location | Responsibility |
+|---|---|
+| `src/pages/` | Operational screens, order intake, production entry, Planning, Target, finance and reporting |
+| `src/components/` | Shared layout/table/dialog composition; `ui/` and `reui/` contain installed primitives |
+| `src/components/KPI/`, `src/components/TargetJahit/` | KPI views/settings and settlement detail composition |
+| `src/contexts/`, `src/lib/auth.ts` | Signed-in profile and Auth boundary |
+| `src/services/` | Persistent application IO through Supabase and media services |
+| `src/lib/` | Domain computation, identity, eligibility, permissions, formatting and shared helpers |
+| `src/types/` | View, production pipeline and KPI contracts |
+| `src/data/` | Static view configuration, fixtures and reference helpers; not mutable business storage |
+| `worker/` | Cloudflare R2 gateway and durable media cleanup |
+| `supabase/migrations/` | Migration history; live schema still requires MCP inspection |
+| `tests/`, `scripts/` | Node unit tests and scoped smoke/browser harnesses |
+| `GLOSSARY.md`, `CONTEXT.md`, `docs/adr/` | Business vocabulary, current context and decision rationale |
+| `docs/superpowers/` | Dated design specs and implementation plans, indexed by `docs/README.md` |
+
+Dependency/script versions follow `package.json` and `package-lock.json`; exact component/file inventory follows the checkout rather than this summary.
 
 ## Current Completed Features
 
@@ -117,38 +71,42 @@ Website Konveksi/
 - Toolbar with filter, sort, group-by, row-height, conditional-color, date-range, export, import controls
 
 ### Production Monitoring
-- **RAW DATA tab**: Table of all work orders with cutting/sewing/qty columns, multi-select, import action
-- **Cutting Log tab**: Cutting queue (CUTTING_PENDING) with input form (single-shot, locked), cutting history
-- **Sewing Log tab**: Sewing records table with search, sewing progress per work order with progress bars, "Entry Jahitan Baru" button
-- **Kanban tab**: 7-column read-only Kanban board grouped by production status (Cutting Pending → Invoiced), card hover animations
+- Sidebar label: **Production Order**; implementation remains `ProductionMonitoring.tsx`.
+- Tabs: **ALL · Cutting · Sewing · Kancing · Finishing**. ALL switches between Kanban and List.
+- Four production statuses: **NEW · PROGRESS · FINISHED · INVOICED**; they are separate from invoice status and variation-stage badges.
+- One Kanban card groups variations of a Kode Produksi Konveksi. The card follows the **least advanced** variation; total qty still includes all variations (ADR-0003).
+- Kanban includes drag/drop handling; it is not accurately described as a seven-column read-only board.
+- **Known discrepancy:** `deriveStatus` requires Cutting > 0 while variation COMPLETED requires all four stage totals >= qty. This audit records the difference without silently changing business logic.
 
-### Sewing Entry Form
-- Form with: work order selector (SEWING_IN_PROGRESS only), PIC penjahit selector, quantity, image upload, date
-- Order info panel showing selected WO details (product, brand, cutting status, remaining quantity)
-- Auto-updates WO status to SEWING_COMPLETE when total reaches quantity
+### Production Entry Forms
+- Sewing, Pasang Kancing and Finishing have separate forms using existing shadcn components and service boundaries.
+- Selection is based on upstream-stage balance versus already-recorded output, not legacy `SEWING_IN_PROGRESS` eligibility alone.
+- Work Order/variation context shows available quantities; source helpers and server behavior govern eligibility, not descriptive status labels.
 
 ### Order Entry
 - Operational order list with search, lifecycle filters, compact order status, and row-click editing/viewing
-- Full-screen single-page shadcn Dialog containing identity, repeatable color–size–quantity variations, and eight per-piece price components with an automatic total
-- Product Note is the required normalized-unique production code; one order can contain multiple variations
-- Atomic, idempotent Pull creates exactly one scalar Work Order per variation from Production Monitoring
-- Planning rows open in Edit mode; pulled/locked rows open read-only. Server guards still lock variation structure after Pull and make the entire order view-only once production or invoice progress exists
+- Full-screen shadcn Dialog containing identity, repeatable color/size variations and eight per-piece price components. Qty is displayed from saved detail; current save input does not provide manual per-variation qty editing.
+- **Kode Produksi Konveksi** (`product_note`) is generated/read-only in the form; **Kode Produksi Client** is separate and may be typed or selected through the client-order picker.
+- Bulk Pull is available from Order Entry and produces per-variation Work Orders through the service/RPC boundary.
+- After Pull, variation structure is locked; identity/pricing may remain editable before production/invoice progress. Use the actual `canEdit`/server guards rather than assuming every PULLED row is fully read-only.
 - Legacy production orders are retained as one variation each; incomplete pricing or variation review blocks production
 
 ### Data Modules (via sidebar)
 | Module | Status | Description |
 |---|---|---|
-| Production Monitoring | Active | Pipeline view (RAW + Cutting + Sewing + Kanban tabs) |
+| Production Order (Production Monitoring) | Active | ALL Kanban/List plus Cutting, Sewing, Kancing and Finishing tabs |
 | Master Data Product | Read-only | Product catalog (sync flag, Supabase planned) |
 | Raw Product Monitoring | Read-only | Fabric stock levels with status, priorities |
 | Master Data Import | Read-only | Supplier import log |
-| Target Jahit | Editable | Penjahit monthly targets & performance |
+| Target Jahit | Active | Target/Belum Jahit; Utang Staff/Benefit tabs open with server-scoped personal reads, Owner/Finance team reads; payment release remains gated |
 | Register Client | → pindah ke **Contact** | Menu lama dihapus; data & halaman tetap, kini jadi tab **Client** di Contact |
 | Contact | Editable | Satu menu bertab: **Karyawan · Client · Vendor**. Tiap tab punya state & dialognya sendiri (owner/finance untuk ubah) |
 | Vendor | → pindah ke **Contact** | Menu lama dihapus; kini tab **Vendor** di Contact |
 | Kategori Biaya | Editable | Taksonomi biaya 4 tingkat: Type → Main Category → Sub Category → Item. Nonaktifkan, bukan hapus (owner/finance) |
 | Expense | Editable | 16 kolom transaksi: Jumlah × Harga/Item, ongkir, diskon → Total Payment **dihitung database**. Vendor wajib, PIC dari Contact → Karyawan (owner/finance) |
-| Production Data | Combined view | Sub-tabs: Register Jahit, Daftar Libur, Register Penjahit |
+| Planning Produksi | Active | Assigns production variations and generates targets through the atomic service/RPC path |
+| Monitor Kinerja Produksi | Active, verification bounded | Team/personal KPI, history and authorized settings; see verification checkpoint |
+| Production Data | Legacy code path | Not an active sidebar entry; do not infer current navigation from the old combined-view component |
 | Invoicing | Active | Satu invoice per **Kode Produksi Konveksi**, terbit otomatis saat SEMUA variasi selesai; input pembayaran + bukti bayar, ekspor PNG, hapus massal (owner/finance) |
 
 ### Table Features
@@ -161,11 +119,11 @@ Website Konveksi/
 - Pagination (10 per page)
 - Row detail panel (view/edit/delete)
 
-### Misc
-- Role switcher (Owner, Admin, Inventory, Spv Konveksi, Finance)
-- Toast notification system
-- CSV export
-- Import (multi-select mock)
+### Authentication and reporting
+- Supabase Auth via `AuthGate`; role comes from the signed-in account profile, not a production role-switcher.
+- Current roles: Owner, Finance, Inventory, Supervisor and Staff; role is distinct from employee position.
+- Export/import behavior varies by module. KPI currently has no CSV/PDF/WhatsApp export controls; invoice PNG export is separate.
+- Toast notifications and shared table controls remain available. Module implementation and full release readiness are different claims.
 
 ## Pending Tasks
 
@@ -178,7 +136,7 @@ Website Konveksi/
 | Phase C | Production Order Module (list, create, pull, cancel) | ✅ Done |
 | Phase D | Cutting Module (queue, input form, locked submission) | ✅ Done |
 | Phase E | Sewing Module (queue, entries view, progress bar, target-jahit ref) | 🔶 Partial |
-| Phase F | Finishing Module (queue, form-based import, auto status formula) | ❌ Pending |
+| Phase F | Finishing Module | Implemented tab + entry form; do not infer every original requirement/E2E gate is complete |
 | Phase G | Invoicing Module (invoice list, generate, record payment, status flow) | ✅ Done (invoice per Kode Produksi) |
 | Phase H | Audit Log & Admin Override (audit log page, override modal) | ❌ Pending |
 | Phase I | Migration + E2E Testing | ❌ Pending |
@@ -192,19 +150,567 @@ Website Konveksi/
 | [ ] Update remaining pages to match RAW DATA styling | In Progress (InvoicingPage done) |
 | [ ] Landing page integration with auth gate | ⏸️ On hold - SaaS dashboard focus |
 | [ ] Mobile responsive improvements | ⏸️ Pending |
-| [ ] Dark mode support via next-themes | ⏸️ Pending |
+| [✅] Dark mode via next-themes | Implemented; visual coverage remains module-specific, see KPI checkpoint |
 
-### Other Pending Items
-- [ ] Supabase integration (replace mock data)
-- [ ] Real authentication (currently only role switcher) — **Note:** Supabase Auth implemented, needs migration from localStorage-based identity
-- [ ] PDF invoice generation
-- [ ] Email delivery for invoices
-- [x] Invoicing module sidebar integration — selesai (entri `invoicing` di grup Finance, `src/data/mockData.ts`)
-- [ ] Reports & analytics dashboards
-- [ ] Settings page
-- [ ] Revise user authentication flow to use `supabase.auth.getUser()` instead of local storage tracking
+### Current Open Work and Verification Boundaries
+- Supabase integration and real authentication are **implemented**, not blanket pending items. Inspect the relevant service/AuthGate for a specific defect; do not reintroduce mock persistence.
+- Payment Benefit release gate remains **false** on MCP inspection 2026-10-22. Verification of the remaining payment matrix is required before activation; read `docs/target-jahit-settlement-verification-2026-10-21.md`.
+- KPI Team/personal reports and authorized settings exist. Remaining readiness includes real login/API checks, operational reconciliation and hosting fallback verification—not recreating the feature from scratch.
+- Personal RPC scope is not a claim that all legacy table reads are private. Name-based historical identity and broad legacy read policies remain explicit limitations.
+- The settlement browser fixture still encodes the old non-privileged denial and needs updating before it can verify the new self-access UI.
+- Completion-helper thresholds differ (Cutting > 0 versus all stages >= qty); clarify before treating one universal completion invariant as settled.
+- PDF invoice generation and email delivery are not claimed implemented by this audit. Invoice PNG export is separate from the removed KPI export scope.
+- Global lint cleanliness, bundle size, module-wide mobile/visual coverage and actual deployed state require their own evidence. Historical passing tests/builds do not prove them.
+- No local server is started by documentation maintenance; request a run when real-app verification is needed.
 
 ## Latest Progress
+
+### 2026-10-26 — Persiapan commit/push dan sinkronisasi main (permintaan user)
+
+- User meminta commit seluruh perubahan proyek, push GitHub dan gabung main. Remote `origin` diverifikasi ke `financelivougroup/website-konveksi`; setelah fetch, `origin/main` dan branch awal `feat/register-client` sama-sama di70ff8fa (tidak ada commit remote yang tertinggal pada titik pemeriksaan).
+- Snapshot mencakup188file perubahan/baru: KPI/settlement dan migration mirror, perbaikan dashboard/media, dokumentasi domain, penyesuaian UI serta regresi. Scan pola credential seluruh file pending melaporkan0signal/0file>5MB; `.env`, `.env.local`, Worker `.dev.vars`, `.scratch/` dan worktree tetap di-ignore. Scan ini bukan jaminan audit keamanan menyeluruh.
+- Migration/seed yang disertakan hanya versioning source, **tidak dijalankan** oleh operasi Git. Seed demo tetap opt-in sesuai komentarnya. Tidak mengubah release gate Benefit atau data bisnis.
+- Build sebelumnya gagal karena batas heap512MB/OOM; tidak dicatat sebagai lulus dan tidak diulang tanpa kapasitas memori memadai. TypeScript/unit diperiksa kembali sebelum commit. Hasil commit/push/main baru dinyatakan setelah diverifikasi remote.
+
+### 2026-10-26 — Kolom Action semua tabel dihapus; aksi lewat seleksi, Invoicing lewat row/payment
+
+- User menetapkan **semua tabel termasuk detail/dialog**, implementasi tanpa Figma khusus tugas ini, high effort. `DataTable.tsx` tidak lagi membangun/render `__actions` atau header Actions. Callback `rowActions` existing dipakai kembali sebagai toolbar di atas tabel ketika tepat satu row data terpilih; banyak pilihan mendapat keterangan dan Bersihkan pilihan, tanpa mengeksekusi aksi per-record secara massal. Pemanggil tanpa selectedRows mendapat local checkbox selection; controlled Set/tipe ID dan aksi bulk existing tetap.
+- Builtin Lihat/Edit/Hapus tetap sesuai callback/`editable`/`canDelete`. Pemanggil Order Entry, Expense, Cutting history, Sewing/Kancing/Finishing log, Target detail, KPI settings, dan Benefit ledger memakai jalur selection-toolbar yang sama sehingga fungsi tidak hilang. Edit Order Entry pada toolbar kini button nyata (sebelumnya span indikator); Expense row-click membuka View; role/disabled/business guards tidak diubah.
+- **Invoicing:** row-click membuka PaymentModal untuk invoice tersebut; checkbox tidak membuka pembayaran. Toolbar muncul bagi pemilih tanpa bergantung hak delete, menyediakan Download Gambar per invoice terpilih (termasuk pilihan lintas halaman), Delete hanya Owner/Finance, dan clear selection. Guard data pembayaran/template tetap; ref in-flight mencegah download ganda bersamaan. Browser menguji dispatch ke helper download/PaymentModal boundary, **bukan transaksi pembayaran atau file PNG asli**.
+- Kolom Action eksplisit antrean Cutting dihapus; Simpan dipindah ke sel input Cutting (Button shadcn existing). Tabel kategori Profit/Loss tidak lagi punya kolom chevron kosong—toggle detail ada pada nama kategori. Tabel variasi Order Entry tidak lagi punya kolom aksi kosong; hapus variasi tetap tersedia di sel Size dan mempertahankan guard readOnly/structureLocked/min1.
+- Footer total diperbaiki: DataTable menambahkan spacer jika local selection otomatis digunakan; LogTable sekarang mencakup PIC+Bukti setelah Qty tanpa trailing action count. SSR actual LogTable memverifikasi colspan sama dengan jumlah body cells pada role read-only maupun editor. Detail Target dan tabel lain yang mendapat checkbox otomatis tetap sejajar.
+- **Verifikasi:** DataTable render smoke **108/108**, Log panel **41/41**, complaint selection smoke lulus, unit serial **889/889**, TypeScript lulus. Scoped ESLint **0 error**, warning form.watch existing di OrderEntryDialog tetap1. Browser disposable dengan actual DataTable/Invoicing dan service/modal/download fixture lulus internal-selection/single/multiple/clear, no action column, footer, row-payment target, checkbox-download target, pilihan banyak invoice, role delete, dan error payment disabled. Screenshot fixture diperiksa; proses browser/server milik harness ditutup. Tidak login/API/live payments/deletion/media write.
+- **Build produksi dicoba tetapi gagal** exit134: heap Node dibatasi512MB demi memori laptop, `FATAL ERROR: Reached heap limit ... JavaScript heap out of memory`. Ini **bukan build lulus**; tidak menaikkan heap otomatis. Log `.scratch/table-action-build.log`. Tidak commit/push/deploy atau DB migration/data change.
+- File aplikasi: `components/Table/DataTable.tsx`, `components/Production/LogTable.tsx`, `components/OrderEntry/OrderEntryDialog.tsx`, `pages/InvoicingPage.tsx`, `ExpensePage.tsx`, `OrderEntry.tsx`, `ProductionMonitoring.tsx`, `ProfitLossPage.tsx`. Regresi diperbarui `scripts/smoke-datatable.test.tsx`, `smoke-complain-delete-selection.mjs`; baru `smoke-table-actions.mjs`/`check-table-actions-browser.mjs`. Diff-check lulus; perubahan lain yang sudah ada tidak direset.
+
+### 2026-10-24 — Ringkasan pilihan di atas carousel dihapus
+
+- Dalam revisi desain carousel yang sama, user meminta setelah memilih kartu tidak muncul tulisan/ringkasan baru di atas, karena form sudah muncul di bawah. Blok summary produksi terpilih pada `WorkOrderCardPicker.tsx` dihapus. Penanda Terpilih/aria-pressed pada kartu, pilihan ID dan progressive form tetap; notifikasi pilihan sr-only tetap aksesibel dan warning jika selected ID benar-benar tidak tersedia tetap ada.
+- Browser9kombinasi3tahap ×320/390/1280 lulus dengan assert baru tidak ada visible selected-summary, form qty tampil; kode no-wrap, tiga kartu desktop dan body no-overflow tetap. Scoped lint/TypeScript lulus. Tidak mengklaim unit/build ulang pada edit ini; tidak DB/commit/push/deploy.
+
+### 2026-10-24 — Koreksi ukuran carousel: tiga kartu di desktop
+
+- User menilai redesign sebelumnya terlalu besar dan meminta3card. Revisi dalam tugas desain yang sama: `WorkOrderCardPicker.tsx` kembali `lg:basis-1/3` (sm2/mobile1), foto dan skeleton memakai aspect-video16:9 (lebih rendah), gap konten/separator diringkas. WO tetap dihapus, kode tetap no-wrap + internal horizontal scroll dan font normal T_CODE.
+- Browser regresi9kombinasi tahap/viewport lulus lagi, ditambah assert desktop slide <=1/3viewport+toleransi; screenshot desktop diperiksa. Kode sangat panjang tetap1textrect/nowrap, body tidak overflow, pemilihan tetap. Eligibility actual pages6/6, scoped lint/TypeScript lulus. Tidak mengklaim full unit suite diulang pada revisi ukuran ini;889/889 adalah hasil sebelum revisi.
+- Tidak Figma ulang (koreksi atas implementasi langsung yang sudah diizinkan), DB/build/commit/push/deploy.
+
+### 2026-10-24 — Carousel entry Sewing/Kancing/Finishing: kode satu baris, tanpa WO
+
+- User menyetujui implementasi langsung khusus redesign kartu. `WorkOrderCardPicker.tsx` memakai Card/Carousel shadcn existing: satu kartu penuh di mobile dan dua pada sm/desktop (tidak lagi tiga), foto tetap, nama produk + warna/size, kelompok kode berlabel pendek dan separator netral, CTA Terpilih/Pilih produksi. Baris Work Code/WO di kartu dan ringkasan pilihan dihapus; copy pemilih/count tidak lagi menyebut WO.
+- Kedua kode memakai T_CODE, `whitespace-nowrap` dan scroll horizontal internal (bukan wrap/truncate/hapus karakter). Ringkasan pilihan ikut no-wrap. Drag carousel di area kode dikecualikan agar scroll kode tidak ditangkap Embla; selection/ID/payload dan eligibility tidak berubah. Loading skeleton mengikuti jumlah kolom baru.
+- `data-work-order-id` nonvisual mempertahankan pengujian identitas variasi tanpa mengandalkan teks WO yang dihapus; harness eligibility/browser lama diperbarui menggunakan atribut itu dan copy empty-state baru. Vendor carousel/Card, theme dan backend tidak diubah.
+- Browser fixture form asli + service stub lewat `run-production-card-layout.mjs`/`check-production-card-layout.mjs`: **9 kombinasi (3 tahap ×320/390/1280px)** lulus untuk kode160+/180karakter satu text rect/nowrap, scrollLeft>0, body tanpa overflow, tidak ada Work Code, selection/field qty tetap muncul. Screenshot mobile/desktop diperiksa; data stress sengaja panjang, bukan data bisnis. Proses fixture/browser ditutup. Tidak mengklaim touch gesture kode/full form-save flow diuji ulang.
+- Eligibility SSR actual pages **6/6**, unit **889/889**, scoped ESLint, TypeScript lulus. ReUI carousel API/installed source dan checklist dibaca; penggunaan existing, tanpa install/dependency baru. Tidak Figma (waiver tugas), DB/build produksi/commit/push/deploy.
+
+### 2026-10-24 — Jarak judul ke tab Complain disamakan dengan Contact
+
+- User mengizinkan langsung tanpa preview khusus penyesuaian ini. Baris tab/aksi di `ComplainPenaltiPage.tsx` mendapat `pt-3` (12px), mengikuti tambahan padding atas pada baris tab milik Contact. Margin judul existing tetap; tab dan tombol Refresh/Tambah Complain turun bersama. Tidak mengubah fungsi atau styling lain.
+- Scoped ESLint dan diff-check lulus (exit0); belum browser visual/TypeScript/build ulang untuk perubahan satu kelas. Tidak DB/commit/push/deploy.
+
+### 2026-10-24 — Planning Produksi/Invoicing/Expense: aksi di bawah judul
+
+- User mengizinkan langsung tanpa preview khusus ketiga halaman. Header `PlanningProduksiPage.tsx`, `InvoicingPage.tsx`, `ExpensePage.tsx` menjadi flex-col/gap3: judul di atas, group tombol di baris berikutnya `justify-end`/flex-wrap. Tombol Refresh, Generate/Tambah Planning, Generate Missing Invoices dan Catat Biaya mempertahankan handler, disabled/role guard, ukuran dan warna.
+- Pemeriksaan AST JSX ketiga halaman lulus: heading dan action group terpisah/bertumpuk, actions rata kanan dengan wrapping. Scoped ESLint, `npx tsc -b` dan diff-check lulus (rangkaian exit0). Belum browser visual/build produksi; tidak DB/commit/push/deploy.
+
+### 2026-10-24 — Kategori Biaya: tombol aksi di bawah judul
+
+- User mengizinkan langsung tanpa Figma khusus perubahan ini. `KategoriBiayaPage.tsx`: judul di baris tersendiri; Refresh dan tombol tambah kategori pada baris berikutnya, rata kanan dengan flex-wrap agar tidak memaksa satu baris saat sempit. Ukuran/warna/handler/hak canManage tetap.
+- Scoped ESLint, `npx tsc -b` dan diff-check lulus. Belum browser visual/build produksi; tidak DB/commit/push/deploy.
+
+### 2026-10-23 — Contact: tab dan tombol aksi sejajar
+
+- User menyetujui implementasi langsung khusus Contact. `ContactPage.tsx` mengirim komposisi PillTabs existing sebagai slot `tabs` ke tab aktif; KaryawanTab/ClientTab/VendorTab menempatkannya pada baris flex-wrap/items-center/justify-between yang sama dengan Refresh/Tambah di kanan. Judul tetap di atas; state/data/dialog dan hak Vendor tetap milik tab masing-masing.
+- Slot juga tampil di loading branch supaya navigasi antartab tetap tersedia saat memuat. Tidak memakai portal, callback registry atau mengangkat data/handler ke shell.
+- Regresi `scripts/smoke-contact-actions.mjs` merender action-row JSX asli dan memanggil handler: **3/3 tab lulus**, nav satu kali, refresh/create callback tetap. Scoped ESLint, `npx tsc -b`, diff-check lulus. Ini bukti komposisi/handler, belum browser visual/pixel atau login API nyata.
+- File berubah: `src/pages/ContactPage.tsx`, tiga `src/components/Contact/*Tab.tsx`, script regresi dan project.md. Tidak DB/build/commit/push/deploy. Gate Figma tugas lain tetap berlaku.
+
+### 2026-10-23 — Aksi Complain sejajar tab; permintaan Contact diterima
+
+- Setelah user mengizinkan perubahan langsung untuk Complain & Penalti, tombol Refresh/Tambah Complain dipindahkan ke baris tab Complain/Summary: tab kiri, aksi kanan, items-center dan flex-wrap untuk ruang sempit. Judul tetap di atas; handler, warna dan ukuran tombol tetap.
+- Scoped ESLint, TypeScript dan diff-check Complain lulus. Tidak browser visual/build produksi/DB/commit/push/deploy.
+- User juga meminta pola sama di Contact (tab Karyawan/Client/Vendor). Struktur diperiksa: tombol dimiliki masing-masing komponen tab; kode Contact belum diubah, perlu konfirmasi pengecualian Figma khusus permintaan ini sebelum implementasi.
+
+### 2026-10-23 — Footer dialog Order Entry diringkas
+
+- User mengizinkan langsung tanpa Figma khusus tugas ini. Ringkasan teks footer (Buyer, kode produksi/client, Article, variasi, qty, harga/pcs, nilai order) di `OrderEntryDialog.tsx` dihapus; tombol tetap rata kanan. Label create menjadi **Simpan Order** (O kapital); Batal/Tutup, submit handler dan disabled guards tetap.
+- Helper SummaryItem, watcher/perhitungan dan import yang hanya dipakai ringkasan dihapus agar tidak menjadi kode mati. Validasi harga `totalOrderPrice` dan field form yang masih dipakai tetap ada.
+- Scoped ESLint **0 error/1 warning existing form.watch**, TypeScript dan diff-check lulus. Tidak browser/build ulang, DB/commit/push/deploy.
+
+### 2026-10-23 — Header tabel lebih ringan diterapkan langsung
+
+- User mengizinkan implementasi langsung khusus tugas ini setelah Figma MCP terblokir quota. Dua jalur shared diubah: `T_TH` pada `src/lib/tableStyles.ts` dan `headerRowClass` plain/app pada `src/components/Table/DataTable.tsx`: **font-bold700/text-black → font-semibold600/text-slate-700**. Dark foreground tetap; plain12px dan app11px/uppercase/tracking, padding/tinggi/layout tidak diubah. Tidak menyentuh judul halaman/isi tabel/invoice print.
+- Smoke render header diperbarui untuk kontrak baru: **merah sebelum5 check**, sesudah **90/90** lulus. Unit pertama888/889 karena ekspektasi lama black pada `tests/kpiTheme.test.ts`; sesudah diselaraskan **889/889**. Browser theme checker juga diperbarui ekspektasi light slate700 (belum menjalankan ulang checker tema lengkap).
+- Browser dengan CSS terkompilasi pada App/sidebar/DataTable asli + page body fixture: **18/18** geometri/header checks lulus, computed header **600 / rgb(51,65,85) /12px**, tiga lebar expanded/collapsed/re-expanded; screenshot1280 diperiksa. Tidak ada runtime error, body overflow tidak kembali; proses fixture ditutup. Ini bukan visual semua halaman live atau dark theme browser terbaru.
+- Scoped ESLint, TypeScript dan diff-check lulus. Tabel manual memakai T_TH ikut berubah; search tidak menemukan override bold-black langsung pada th di checkout utama. Pure shadcn TableHead yang sudah font-medium tidak dibuat lebih tebal, dan vendor ReUI internals tidak diubah.
+- File pendukung verifikasi: `scripts/smoke-datatable.test.tsx`, `tests/kpiTheme.test.ts`, `scripts/check-kpi-theme-browser.mjs`, `scripts/check-root-layout-browser.mjs`. Tidak DB/build produksi/commit/push/deploy. Pengecualian Figma tidak berlaku otomatis ke tugas berikutnya.
+
+### 2026-10-23 — Preview header semua tabel lebih ringan — terblokir limit Figma
+
+- User meminta ketebalan/warna header tabel dikurangi dan **preview Figma dulu**. Token shared saat ini `T_TH` memakai12px/font-bold/text-black. Arah preview yang diusulkan: ukuran tetap12px, bobot600/semibold dan warna slate700 lebih lembut; ini belum keputusan final atau implementasi.
+- Figma file tujuan sama; session d332feee-f1b7-4139-b296-e33e96846259 dibuat, metadata header existing ditolak **Starter MCP tool call limit**. whoami mengonfirmasi tier Starter. Tidak mencoba bypass/menulis via jalur lain, tidak membuat preview atau mengubah kode/header tabel.
+- Menunggu akses Figma pulih/ditingkatkan untuk membuat perbandingan dan meminta approval. Pengecualian preview pada tugas font sebelumnya tidak dianggap berlaku untuk permintaan ini.
+
+### 2026-10-23 — Font Product ID Register Harga disamakan
+
+- User menyetujui perubahan langsung tanpa preview khusus tugas ini. Renderer Product ID di `src/pages/RegisterHargaPage.tsx` memakai `T_CODE` menggantikan `font-mono`, sama dengan kode produksi pada tabel tersebut. Isi, warna, lebar kolom dan perilaku tetap.
+- Scoped ESLint dan diff-check lulus (peringatan normalisasi LF/CRLF bukan error). Tidak TypeScript/build/browser ulang untuk edit satu kelas; tidak DB/commit/push/deploy.
+
+### 2026-10-23 — Font Type Kategori Biaya disamakan
+
+- User mengizinkan perubahan langsung tanpa Figma khusus tugas ini. `font-mono` pada renderer kolom Type di `src/pages/KategoriBiayaPage.tsx` dihapus agar mewarisi font normal tabel, sama dengan kolom sebelahnya. Warna, isi, lebar kolom dan perilaku tidak berubah.
+- Scoped ESLint dan diff-check lulus. Tidak TypeScript/build/browser ulang untuk edit satu kelas; tidak DB/commit/push/deploy.
+
+### 2026-10-23 — Bukti foto Complain dapat dibuka; Status dirapikan
+
+- User mengonfirmasi thumbnail tampil tetapi tidak bisa dibuka, dan mengizinkan rapikan dropdown langsung tanpa Figma khusus tugas ini. Tidak perlu mengubah penyimpanan/upload/schema: sumber masalah yang direproduksi adalah `<img>` pada foto existing/pending tanpa link/aksi buka.
+- `src/pages/ComplainPenaltiPage.tsx`: kedua thumbnail dibungkus Button shadcn `asChild` + link URL asli `target=_blank`/`noopener noreferrer`, sehingga dapat dibuka lewat klik/keyboard di tab baru. Tombol hapus/batalkan tetap sibling terpisah; ukuran thumbnail tidak diubah.
+- Label Status menjadi **Need Proceed / Solved**, nilai database tetap **NEED PROCEED / SOLVED**. Status memakai padding/line-height/font shared soft badge seperti Tingkat, `inline-flex`/align-middle konsisten; fixed height19px dan override font-semibold dibuang. Unknown legacy status tetap ditampilkan tanpa mengubah nilai.
+- Regresi baru `scripts/smoke-complain-photos-status.mjs` merender map foto dan callback kolom asli: **merah sebelum** karena link existing tidak ada, **hijau sesudah** untuk existing/pending URL,label status,nilai tersimpan,komposisi alignment dan delete-action terpisah. Primitive test boundary tidak membuktikan pixel alignment atau interaksi Radix browser; belum klaim visual browser/login/upload nyata lulus.
+- Smoke delete selection existing tetap lulus; scoped ESLint, `npx tsc -b`, diff-check dan unit serial **889/889** lulus. Tidak menyentuh data bisnis/backend/DB, tidak build/commit/push/deploy.
+
+### 2026-10-23 — Paragraf penjelas Utang Staff/Benefit Target Jahit dihapus
+
+- User menyetujui penghapusan langsung tanpa preview Figma khusus tugas ini. Paragraf mulai “Akumulasi seluruh riwayat sampai hari ini…” di `src/pages/TargetJahitPage.tsx` dihapus dari tab Utang Staff dan Benefit. Rumus, filter, akses dan dialog detail tidak diubah.
+- Scoped ESLint dan diff-check lulus. Tidak menjalankan ulang TypeScript/build/browser untuk penghapusan satu elemen teks; tidak DB/commit/push/deploy.
+
+### 2026-10-23 — Kartu kiri log produksi: produk, client dan Batch Produksi
+
+- User meminta nama produk/client/batch pada daftar kiri Sewing/Kancing/Finishing. User menegaskan **B-00 = batch pertama, B-01 = batch kedua** dan mengizinkan implementasi langsung khusus tugas ini (gate Figma global tetap berlaku untuk tugas lain).
+- MCP read-only memverifikasi `production_orders`/`work_orders` memiliki product/brand/client_production_code, tanpa field batch/repeat terpisah. `KodeProduksiList` existing kini menampilkan produk dari `group.product`, Client dari `group.brand`, serta Batch Produksi dari segmen B kode client. Kode/foto/status/jumlah log/pilihan/filter tetap dipertahankan; komponen shared mencakup ketiga tab.
+- Helper murni `src/lib/productionBatch.ts` mengonversi repeat ke nomor batch +1; kode tanpa segmen B valid, ambigu atau angka di luar safe integer menghasilkan null (UI —), tidak ditebak dari jumlah order. Definisi bisnis dicatat di GLOSSARY.md.
+- `tests/productionBatch.test.ts`3 tes lulus; seluruh suite **889/889**. Render komponen asli dengan IO DB diblokir lulus untuk nama produk/client,batch1/batch2/kode tanpa batch dan kode lama tetap ada. Scoped ESLint dan `npx tsc -b` lulus. Percobaan render awal gagal karena import env Supabase, lalu boundary IO diisolasi—bukan bug aplikasi.
+- Belum browser visual/build produksi; tidak mengubah schema/data/backend/commit/push/deploy. File aplikasi yang diubah: `KodeProduksiList.tsx`, helper `productionBatch.ts`; ditambah tes dan dokumentasi.
+
+### 2026-10-23 — Complain & Penalti: seleksi hapus permanen diperbaiki
+
+- User melaporkan tidak bisa Hapus Permanen. MCP memeriksa schema `complain_penalti`/files/profiles dan RPC preview/execute/allowed/modules. Preview read-only dengan scope authenticated Finance untuk komplain existing1 **berhasil**,1root/0blocked; tidak mengeksekusi DELETE/DB write atau mengubah migration/RLS.
+- **Akar masalah reproduktif frontend:** DataTable shared mempertahankan tipe ID asli (angka dari `ComplainPenaltiRow.id`), tetapi halaman memakai `Set<string>` dan membandingkan `String(item.id)` saat membentuk deleteIds. Checkbox tercentang/selection.size1 namun `deleteIds=[]`, sehingga dialog preview tidak punya ID valid.
+- `src/pages/ComplainPenaltiPage.tsx`: selection menjadi **Set<number>**, toggle menerima angka, membership memakai `item.id`; konversi string tetap dilakukan hanya untuk payload RPC. Tidak mengubah styling, hak Owner/Finance atau pengaman backend.
+- Regresi `scripts/smoke-complain-delete-selection.mjs` mengeksekusi handler selection DataTable dan handler halaman asli melalui AST extraction: **merah sebelum** (`ids:[]` vs `['1']`), **hijau sesudah** untuk single/multiple/uncheck. Percobaan normalisasi hanya di toggle ditemukan gagal pada multiple, lalu diganti konsistensi tipe numerik end-to-end sebelum payload.
+- Scoped ESLint, `npx tsc -b`, diff-check dan unit serial **886/886** lulus. Tidak mengklaim execute hapus nyata/browser login lulus: data komplain asli tidak dihapus; server yang dibuktikan adalah preview. Tidak Figma/redesign karena ini koreksi logika, bukan perubahan visual. Tidak build/commit/push/deploy.
+
+### 2026-10-23 — Font Kode Invoice disamakan dengan Kode Produksi Konveksi
+
+- User meminta Kode Invoice tidak beda font. Figma MCP masih menolak karena call limit Starter; user memilih **Langsung samakan font**, pengecualian preview khusus tugas ini, bukan penghapusan gate Figma global.
+- `src/pages/InvoicingPage.tsx` renderer kolom `invoiceCode` memakai **T_CODE** menggantikan `font-mono`, sama persis dengan kolom Kode Produksi Konveksi/Client. Nilai/format kode, ukuran kolom dan ekspor invoice tidak diubah.
+- Scoped ESLint, `npx tsc -b`, diff-check lulus. Tidak browser visual/build produksi/DB/commit/push/deploy. Tidak membuat preview Figma karena quota gate.
+
+### 2026-10-23 — Root SidebarInset overflow diperbaiki setelah approval Figma
+
+- User menyetujui frame Figma16:2 ("iya sesuai, terapkan saja"). Perubahan aplikasi **satu baris** di `src/components/ui/sidebar.tsx:333`: tambah `min-w-0` pada SidebarInset. Tidak mengubah lebar sidebar, spacer/collapse, padding/warna/font, App/page lain, atau menyembunyikan body overflow.
+- **Akar masalah terukur:** `min-width:auto` pada flex item utama mempertahankan min-content tabel sehingga main/body melebar melampaui viewport; pada1280 sebelumnya main right1530 expanded/1322 collapsed. Reserve sidebar256/48 sudah benar; `shrink-0` sidebar saja terbukti tidak memperbaiki overflow. Tidak menambah margin/offset kiri manual.
+- **Browser sesudah source patch, tanpa probe:** bundle fixture dibangun ulang, `node scripts/run-root-layout-browser.mjs` **exit0**,18 pengukuran **0 failure / 0 runtime error** untuk1280/1440/1920 × narrow/wide × expanded/collapsed/expanded. Main/body right tepat1280/1440/1920; main left256/48; tabel lebar scroll internal dan body scrollX0. Enam screenshot dasar diperiksa, header/konten tidak tertutup sidebar. Browser/server fixture milik harness ditutup otomatis; tidak ada Vite/backend dihidupkan.
+- **Batas cakupan:** App/Provider/AppSidebar/Inset/DataTable adalah komponen asli, tetapi isi halaman dan auth/service boundary fixture. Ini membuktikan shared root, **bukan login/API live atau pemeriksaan setiap halaman asli**. Gejala overlap kiri awal tidak muncul dalam repro; overflow ke kanan yang terbukti diperbaiki. Belum menjalankan build produksi karena memori rendah; tidak mengklaim full-page/global lint bersih.
+- `npx tsc -b` lulus; unit serial **886/886** lulus; lint ketiga script harness serta diff-check lulus. ESLint `sidebar.tsx` masih2 error existing (`Math.random` purity:663 dan mixed exports:770); `git show HEAD:... | eslint --stdin` membuktikan baseline identik. Tidak mengubah keduanya di luar scope.
+- File pendukung regresi: `scripts/smoke-root-layout.mjs`, `scripts/check-root-layout-browser.mjs`, `scripts/run-root-layout-browser.mjs`; hasil baseline/probe/final di `.scratch/root-layout-preview/`. Tidak DB/commit/push/deploy.
+
+### 2026-10-23 — Root overflow direproduksi; koreksi Inset teruji sebagai probe, menunggu Figma approval
+
+- Setelah user meminta lanjut, fixture dibundle dengan heap 256 MB lalu Chrome headless disposable dijalankan serial lewat `scripts/run-root-layout-browser.mjs`; proses milik harness ditutup otomatis, tidak menghidupkan Vite/backend atau memakai sesi user.
+- **Red nyata pada root App/sidebar asli** dengan body halaman fixture dan DataTable asli: pada viewport 1280, Inset/main right **1530** expanded dan **1322** collapsed; 1440 menjadi1690/1482;1920 menjadi2129.75/1921.75. Sidebar reserve/panel tetap256/48; tidak ada overlap kiri dalam fixture ini, jadi gejala kiri semua halaman asli belum dibuktikan. Masalah terbukti: min-content Inset memperlebar main/body keluar viewport.
+- Probe browser (bukan source aplikasi): `ROOT_LAYOUT_PROBE=inset` memberi `min-width:0` hanya pada main/SidebarInset → **18 pengukuran lulus,0 failure,0 runtime error**, mencakup1280/1440/1920 × narrow/wide × expanded/collapsed/expanded. Probe `reserve` (`flex-shrink:0` saja) masih **21 failure**. Jadi patch minimum yang didukung bukti adalah `min-w-0` di SidebarInset, bukan margin kiri/per-page patch/overflow hide.
+- Baseline/probe JSON dan screenshot ada di `.scratch/root-layout-preview/`; checker diperbaiki agar label scenario tidak tertimpa objek rect content. Fixture IO writes kini throw eksplisit. **Ini belum verifikasi semua halaman asli**, belum patch produksi.
+- Preview Figma **16:2** dibuat: https://www.figma.com/design/LmXliDj2j6IPBSpHCzRxZJ/Konveksi-Dashboard?node-id=16-2 . Enam skema geometri editable expanded/collapsed pada tiga lebar,26 text/24 frame,font Inter,tanpa raster. Mockup lain tidak diubah. Screenshot Figma gagal karena **Starter MCP call limit**; whoami mengonfirmasi tier Starter. Tidak mencoba bypass limit; preview belum diperiksa visual oleh agent.
+- **Kode layout aplikasi belum diubah**, menunggu review/persetujuan user atas frame. File produksi target nanti `src/components/ui/sidebar.tsx` pada SidebarInset. Tidak DB/commit/push/deploy; build/lint source belum diulang karena belum dipatch.
+
+### 2026-10-23 — Diagnosis overlap sidebar root — belum diperbaiki, terkendala memori
+
+- User meminta koreksi shared root (bukan per halaman), matrix expanded/collapsed pada 1280/1440/1920, tanpa restyling. Rencana disetujui; persetujuan frame Figma masih checkpoint terpisah sebelum implementasi UI.
+- Inspeksi mengonfirmasi `App` sudah memakai SidebarProvider/AppSidebar/SidebarInset. Kandidat statis: outer reserve sidebar belum `shrink-0`, Inset dan content wrapper belum `min-w-0`. Ini **belum akar masalah terbukti**; tidak menambah offset manual atau mengubah source layout sebelum repro/probe.
+- Ditambahkan `scripts/smoke-root-layout.mjs` (App/sidebar asli, page body/auth/services boundary fixture, guard IO) dan `scripts/check-root-layout-browser.mjs` (CDP geometry matrix, overlap/reserve/body/internal table scroll, hasil JSON/screenshot). **Syntax check kedua script lulus; bundle/harness/browser belum dijalankan**. Fixture ini belum membuktikan seluruh halaman asli.
+- Memori bebas saat pemeriksaan berturut sekitar 61/192/111 MB dari 7886 MB; tidak membuka Chrome/Vite/build berat atau menghentikan proses user. Perlu memori tersedia sebelum menjalankan reproduksi, menguji hipotesis, preview Figma dan implementasi. Kode aplikasi/styling/database tidak diubah. Tidak commit/push/deploy.
+
+### 2026-10-23 — Tombol entry Sewing/Kancing/Finishing menjadi Create — selesai lokal
+
+- User menyetujui preview Figma frame **13:2** ("iya sesuai"); design context dan screenshot dibaca ulang sebelum implementasi.
+- Label tombol shared pada `src/pages/ProductionMonitoring.tsx` diganti menjadi **➕ Create**, berlaku untuk Sewing, Kancing dan Finishing. Handler masing-masing form, warna, ikon dan styling existing tidak diubah.
+- Scoped ESLint, `npx tsc -b` dan `git diff --check` lulus. Tidak menjalankan browser/build produksi atau menyalakan ulang server. Tidak database/commit/push/deploy.
+
+### 2026-10-23 — Preview tombol entry Production Order menjadi Create — menunggu approval
+
+- Permintaan user: rename tombol entry baru pada tab Sewing/Kancing/Finishing menjadi **Create**, tanpa mengganti alur entry atau warna masing-masing tab.
+- Preview editable di file Figma tujuan yang sama, frame **13:2**: https://www.figma.com/design/LmXliDj2j6IPBSpHCzRxZJ/Konveksi-Dashboard?node-id=13-2 . Ketiganya memakai `➕ Create`; ikon plus lama dipertahankan. Font Inter dan warna existing; screenshot sesudah koreksi fill Sewing diperiksa. Frame mockup lain tidak diubah.
+- Lokasi kode yang dituju adalah label tombol shared di `src/pages/ProductionMonitoring.tsx` (sebelumnya `➕ Entry … Baru`). **Belum diubah**; menunggu persetujuan user atas preview. Tidak database/build/test/commit/push/deploy.
+
+### 2026-10-22 — Order Entry Product mengikuti revisi Figma user
+
+- User meminta mengikuti revisi mereka ("kaya yg udh saya benerin"). Frame Figma **11:5** dibaca ulang lewat design context beserta screenshot: kolom Product berisi contoh **Mira Top**, tanpa Product ID. Contoh tidak di-hardcode ke data aplikasi.
+- Renderer Product di `src/pages/OrderEntry.tsx` kini hanya menampilkan `row.product`; sublabel `row.productId`, fragment pembungkus, komentar lama dan import `T_SUB_LABEL` yang tidak terpakai dihapus. Nama produk tetap dinamis; ID, pencarian, payload, database dan kolom lain tidak diubah.
+- Smoke renderer Product asli lulus untuk **Mira Top** dan nama lain: satu paragraf, nama dinamis tetap tampil, Product ID tidak dirender. Scoped ESLint dan `npx tsc -b` lulus (rangkaian pemeriksaan exit 0). `git diff --check` lulus; diff kode hanya 2 baris ditambah/6 dihapus. Tidak menyalakan ulang server atau mengklaim browser aplikasi telah diuji. Tidak commit/push/deploy.
+
+### 2026-10-22 — Preview Figma Order Entry: Product tanpa Product ID — menunggu persetujuan
+
+- Figma terotorisasi dan file tujuan user `LmXliDj2j6IPBSpHCzRxZJ` berhasil dibaca/ditulis. File semula berisi frame Planning Produksi; frame tersebut tidak diubah.
+- Ditambahkan preview fokus kolom **Product**, nama produk saja tanpa subbaris Product ID, frame **11:2**: https://www.figma.com/design/LmXliDj2j6IPBSpHCzRxZJ/Konveksi-Dashboard?node-id=11-2 . Menggunakan contoh Dress/Shirt/Jaket (bukan data produksi), teks/layer editable, font Inter dan token warna Konveksi existing. Screenshot diperiksa; tidak ada raster UI di frame preview.
+- Sumber implementasi yang akan diubah setelah approval adalah renderer Product di `src/pages/OrderEntry.tsx` yang masih menampilkan `row.productId` sebagai sublabel. **Belum mengubah kode/data/database**; menunggu persetujuan eksplisit user atas preview.
+
+### 2026-10-22 — Desain harus direview di Figma sebelum implementasi UI
+
+- Atas permintaan user, `CLAUDE.md` bagian Product Design Direction kini mewajibkan alur **desain di Figma → bagikan link file/frame → tunggu persetujuan eksplisit → implementasi UI**. Berlaku juga untuk layout, dialog, tipografi, warna dan presentasi komponen; persetujuan desain tugas lain tidak berlaku otomatis.
+- Gunakan file Figma yang ditentukan user; bila belum diketahui, tanyakan tujuan sebelum menulis. Jika koneksi/otorisasi Figma tidak tersedia, berhenti dan minta koneksi—bukan mengganti preview dengan implementasi langsung. User dapat mengecualikan gate ini secara eksplisit untuk tugas tertentu.
+- Ini pembaruan instruksi kerja, bukan membuat desain baru atau memverifikasi koneksi Figma. Tidak ada kode aplikasi/database/settings/plugin/commit/push/deploy yang diubah pada tugas ini.
+
+### 2026-10-22 — Matt Pocock skill diperiksa terbaru; dokumen domain diselaraskan
+
+- Katalog `claude-plugins-official` diperbarui dengan CLI, lalu `claude plugin update mattpocock-skills@claude-plugins-official --scope user --json` melaporkan **up_to_date, 1.3.1 → 1.3.1**. Ini versi terbaru di katalog resmi yang terkonfigurasi, bukan klaim ada versi lain yang diunduh. Plugin lain tidak di-update/reinstall.
+- Menggunakan skill `domain-modeling` dan format glossary/ADR terpasang, ditambah `writing-for-agents` untuk instruksi baca. Ditambahkan **GLOSSARY.md** (bahasa bisnis saja), **CONTEXT.md** (pemetaan implementasi dan batas), **docs/README.md** (indeks/supersession), serta **5 ADR retrospektif + indeks**. Satu konteks dipertahankan; tidak membuat context-map/glossary per menu.
+- README template dan info scaffold diganti pointer/petunjuk proyek; `docs/agents/domain.md` kini membedakan konteks, glossary, ADR dan catatan historis. `CLAUDE.md` tetap mewajibkan Supabase MCP tetapi klaim backend lokal yang usang dikoreksi: `.env` dan `.mcp.json` saat audit menunjuk project cloud yang sama. Tidak mengubah environment, settings, backend, credential, kode aplikasi atau database.
+- Ringkasan aktif di atas dikoreksi untuk Auth Supabase, service persistence, struktur Order/Variasi, kode internal/client, empat status, tab ALL/Cutting/Sewing/Kancing/Finishing, Kanban/List, editability setelah Pull, Finishing/KPI/settings/tema yang sudah ada, dan backlog verifikasi yang masih terbuka. Spec/plan lama serta hasil pengujian bertanggal dipertahankan sebagai riwayat, bukan ditulis ulang menjadi seolah pengujian terbaru.
+- MCP **read-only** memeriksa kolom identitas/order/variasi/WO/invoice, fungsi scope KPI/settlement/pembayaran, policy baca terkait dan release gate. **Payment Benefit masih false**. Tidak menjalankan migration, fixture bisnis, finalisasi atau pembayaran selama audit ini.
+- **Koreksi log/penjelasan sebelumnya:** probe cross-ID yang benar adalah **Azrul meminta staffId 7 (Arief)**, bukan Arief meminta ID dirinya lalu dianggap orang lain. Delapan tes `canViewAllStaffMoney` ditambahkan sebelumnya (30 total), bukan sebelas. `AppSelect` memang meneruskan atribut `required`/`aria-required`; penggantian tanda visual `*` tidak berarti validasi HTML seluruhnya tidak ada. Klaim font nol normal belum diperiksa visual.
+- **Batas domain yang kini dicatat eksplisit:** settlement masih berbasis sewing/tarif Penjahit, bukan perhitungan Finishing. Eligibility read bukan sekadar semua akun tertaut; gaji saja tidak otomatis memasukkan posisi non-Penjahit. Scope RPC bukan pembatasan semua SELECT legacy. `deriveStatus` dan badge variasi berbeda dalam ambang Cutting; tidak diperbaiki sebagai efek samping dokumentasi. Fixture browser settlement masih memakai gate role lama.
+- Verifikasi tugas ini: **16 dokumen aktif**, **68 tautan lokal** valid, **41 istilah glossary** tanpa marker implementasi, **5 ADR** bernomor berurutan; validator melaporkan **0 error**. `git diff --check` untuk dokumen tracked yang disentuh lulus (peringatan normalisasi LF/CRLF terpisah). Tidak menjalankan ulang build/unit/browser/concurrency untuk edit dokumentasi; bukti tugas kode sebelumnya tetap historis.
+- Tidak commit/push/deploy dan tidak menyalakan server yang dihentikan karena memori.
+
+### 2026-10-22 — Font Kode Produksi & Kode Produksi Client: nol tidak lagi bergaris — **SELESAI LOKAL**
+
+- **Permintaan user (verbatim):** *"Kode produksi dan Kode produksi client font angkanya disamain yah, 0 yang normal aja gt"*.
+- **Penyebab:** kedua kode dirender dengan `font-mono`. Stack `font-mono` Tailwind di Windows mengarah ke **Consolas**, yang menggambar nol **bergaris miring (slashed zero)** — `0` pada `PDFF_LVU-PNT-02_B-00_PRDN` terbaca seperti Ø/φ dan sulit dibedakan dari `O`.
+- **Perbaikan:** token baru **`T_CODE` di `src/lib/tableStyles.ts`** (isinya `tabular-nums`, mewarisi font aplikasi Inter yang nol-nya lonjong normal). Kedua kode kini memakai token itu di **9 berkas**: Planning Produksi (kolom tabel), Order Entry (Kode Produksi Konveksi read-only + Kode Produksi Client), ClientProductionCodePicker, Production Monitoring (kolom RAW, kartu Kanban, judul dialog), KodeProduksiList, Complain & Penalti (kolom + kotak read-only), Invoicing, Register Harga (termasuk trigger dropdown PO), PoFilterBanner.
+- **Kenapa bukan font mono lain:** Consolas = nol bergaris; Cascadia Mono = nol bertitik; font mono lain belum tentu terpasang. Lebar seragam juga tidak dibutuhkan karena kode tidak disejajarkan per kolom. `tabular-nums` tetap dipakai supaya lebar angka tidak berubah-ubah saat render ulang, sehingga kode masih mudah dipindai.
+- **SENGAJA tidak diubah** (di luar permintaan; bukan pasangan kode produksi): path kategori di AddCategoryDialog/ExpenseDialog (tidak memuat angka kode), `Product ID` dan `Kode Invoice` di Register Harga/Invoicing, tipe di KategoriBiayaPage, serta angka kode di `chart.tsx`/data-grid. Akan diberlakukan sama bila user memintanya.
+- **Catatan teknis:** `DataTable.tsx:209` menjelaskan bahwa tinggi baris sempat dipatok karena `font-mono` punya line-height berbeda. Karena `T_CODE` tidak lagi mono, tinggi baris kembali seragam dengan sel teks biasa — pin tinggi itu tetap benar dan tidak perlu diubah.
+- **Verifikasi:** `npx tsc -b` **exit 0**; ESLint 10 berkas **0 error** (1 warning `form.watch` yang sudah ada); seluruh suite `node --test` **886/886 lulus**. **Belum diuji secara visual di browser** — perubahan ini murni kelas CSS, dan klaim "nol tidak bergaris" bergantung pada font Inter yang benar-benar termuat; user perlu memeriksa satu tabel untuk memastikan.
+- Tidak ada perubahan database, commit, atau push.
+
+### 2026-10-22 — Utang Staff & Benefit terbuka untuk semua akun (hanya baris sendiri) — **SELESAI LOKAL**
+
+- **Permintaan user (verbatim):** *"semua penjahit bisa akses Utang Staf dan Benefit (jangan di lock). tapi mereka cuma bisa liat nama mereka sendiri (berdasarkan akun login). tapi kalau finance dan owner ya bisa liat semua fitur. gada yg di lock. btw tulisan Utang Staf revisi jadi Utang Staff"*. Saat ditanya cakupan "semua penjahit", user memilih **semua akun yang terhubung ke data karyawan** (`profiles.orang_id` terisi) — jadi termasuk Iman (supervisor/Leader) dan Azrul & Ince (Finishing).
+- **Database (MCP, sudah diterapkan):** `staff_settlement_read(p_staff)` ditulis ulang di `supabase/migrations/2026-10-22-staff-settlement-self-access.sql`. Sebelumnya menolak semua akun selain owner/finance (`SETTLEMENT_FORBIDDEN`); sekarang owner/finance tetap menerima seluruh staf, akun lain hanya baris dengan `register_penjahit.id = profiles.orang_id` miliknya, dan akun tanpa `orang_id` menerima `[]` (bukan error). Penghubung memakai **`orang_id`**, bukan `my_staff_id()` lama yang mencocokkan `display_name` ke `pic_penjahit` — nama bisa berubah. Meminta staf lain lewat parameter tetap ditolak tegas.
+- **Diuji dengan impersonasi nyata lewat MCP** (`set_config('request.jwt.claims', …)` + `set local role authenticated`, tiap blok `rollback`): owner **6 baris**, finance **6 baris**, Arief **1 baris (dirinya, staffId 7)**, Azrul **0 baris**, inventory/Esteria **0 baris** (`[]`). Arief memanggil `read(7)` untuk staf lain → `SETTLEMENT_FORBIDDEN`. Arief memanggil `staff_benefit_pay` → **tetap** `SETTLEMENT_FORBIDDEN` (pembayaran tidak ikut dibuka).
+- **Temuan yang perlu diketahui:** **Azrul dan Ince (Finishing) tidak punya data settlement sama sekali** — nol baris `target_jahit`, nol `sewing_records`, nol gaji. Jadi 0 baris itu bukan akibat perubahan ini dan bukan bug; aturan lama pun tidak pernah menampilkan mereka. Akun Finishing baru akan punya isi kalau kelak ada target/gaji untuk mereka.
+- **Frontend:** `Profile` kini membawa `orangId` (dibaca dari `profiles.orang_id`; kolom ini sudah ada sejak 2026-10-19 untuk KPI). Aturan baru ada di **`src/lib/permissions.ts` → `canViewAllStaffMoney()`** sebagai satu-satunya sumber kebenaran, berdampingan dengan `canEditProductionLog`/`canEditSalary`. `TargetJahitPage` memakai fungsi itu: tab Utang Staff & Benefit **selalu bisa diklik** (tombol 🔒 dihapus), daftar staf disaring ke `profile.orangId` untuk akun non-owner/finance, dan empty-state serta spinner per-tab diperbaiki (sebelumnya tab Benefit menampilkan "belum ada yang melebihi target" saat data masih dimuat).
+- **Yang SENGAJA tidak dibuka:** tombol Bayar/Batalkan benefit tetap hanya dirender untuk owner/finance (`canPay` di `StaffSettlementDialog`), dan RPC-nya tetap menolak. Kolom gaji/biaya di **tab Target** juga tetap owner/finance (`canSeeDebt` dipertahankan) — yang dibuka user hanyalah tab Utang Staff & Benefit beserta baris sendiri, bukan gaji orang lain.
+- **Revisi tulisan:** "Utang Staf" → **"Utang Staff"** di label tab serta komentar/tiket terkait.
+- **Verifikasi:** `npx tsc -b` **exit 0**; `tests/permissions.test.ts` **30/30** (11 tes baru untuk `canViewAllStaffMoney`); seluruh suite `node --test tests/*.test.ts` **886/886 lulus**; ESLint berkas yang diubah **bersih**; `npm run build` **exit 0** (2m 8s, 3858 modul). **Belum diuji**: klik nyata di browser dengan akun staff (tidak ada password login di repo) — perilaku server sudah dibuktikan lewat MCP, tetapi tampilan tab untuk akun staff belum dilihat mata.
+- Tidak ada commit/push/deploy.
+
+### 2026-10-22 — Simbol `*` dihapus dari seluruh UI
+
+- Atas permintaan user ("hapus simb0l * dimanapun"), 15 berkas dibersihkan: label form di Planning/Sewing/Finishing/Kancing, span `<span className="text-rose-600">*</span>` di KaryawanTab, AddCategory/AddClient/AddVendor/AddView/Expense/LogEntry dialog, dan ComplainPenaltiPage.
+- **Keputusan yang perlu diketahui:** pada tiga renderer `required` (`AppSelect`, `DetailPanel`, `OrderEntryDialog`) tanda `*` diganti **`<span class="sr-only"> (wajib diisi)</span>`**, bukan dihapus total. `required` di komponen-komponen itu tidak memasang atribut HTML `required`, jadi tanpa pengganti penanda wajib hilang sama sekali — termasuk untuk screen reader. Bila user ingin benar-benar kosong, cukup hapus tiga span tersebut.
+- `accept="image/*"`, `select('*')` Supabase, dan komentar kode tidak disentuh — bukan UI.
+- **Verifikasi:** `npx tsc -b` exit 0; ESLint 15 berkas 0 error (1 warning `form.watch` yang sudah ada sebelumnya); `node --test` 886/886; sapuan ulang tidak menemukan `*` yang dirender.
+
+### 2026-10-22 — Placeholder Penjahit Planning: em-dash dihapus
+
+- Atas permintaan user ("garis - di tulisan - Pilih Penjahit - hapus"), placeholder Select di dialog Planning diubah dari `— Pilih Penjahit —` menjadi **`Pilih Penjahit`** (`PlanningProduksiPage.tsx:652`). Hanya placeholder; nilai, opsi, dan payload tidak berubah.
+- Placeholder Warna dan Size di dialog yang sama **sengaja dibiarkan** memakai em-dash karena permintaan spesifik ke Penjahit.
+- Verifikasi: `npx tsc -b` **exit 0**; ESLint berkas **0 masalah**; modul yang disajikan dev server memuat `Pilih Penjahit` **1×** dan `— Pilih Penjahit —` **0×** (HMR sudah masuk). Tidak ada perubahan database, commit, atau push.
+
+### 2026-10-22 — Dev server lokal dinyalakan kembali (permintaan user "aktifin lokal saya")
+
+- `npm run dev` dijalankan di background; Vite v7.3.0 siap dalam 57 detik dan menyaji di **http://localhost:3000** (port dari `vite.config.ts`, bukan 5173). Diverifikasi: port 3000 LISTENING (PID 19764), `GET /` → **HTTP 200**, HTML tersaji berjudul **“Konveksi Pro”** lengkap dengan `@vite/client` + React Refresh.
+- **Tidak ada Supabase lokal yang dinyalakan** — memang tidak mungkin di mesin ini: Docker/Podman tidak terpasang, WSL tidak ada, `supabase/config.toml` tidak ada (isi `supabase/` hanya `migrations/` + `seed/`), dan port 54321–54323 tertutup. Ini konsisten dengan keputusan cloud di entri 2026-09-19. Data aplikasi tetap ke project cloud `ihmhxacmvvsqtnylnwrs` (health check `/auth/v1/health` → 200).
+- **Worker R2 port 8787 sudah hidup sebelumnya** (tidak saya jalankan ulang): `GET /` → 404, yang normal karena Worker hanya melayani `/sign`, `/media/...`, `/delete`.
+- Tidak ada perubahan kode, konfigurasi, database, commit, atau push.
+- **Tindak lanjut:** dev server itu **dihentikan lagi oleh sistem** sesaat setelahnya karena memori kritis (task `btks5teob`, bukan crash aplikasi). Tidak direstart otomatis — nyalakan lagi dengan `npm run dev` kapan pun diperlukan.
+
+### 2026-10-22 — Vite dihentikan sistem karena memori kritis
+
+- Background Vite port3000 task `bzcgetne3` dihentikan otomatis karena tekanan memori saat idle; bukan error aplikasi. Tidak direstart tanpa permintaan user. Perubahan kode tetap tersimpan; status Worker8787 tidak dicek ulang pada notifikasi ini.
+
+### 2026-10-22 — Placeholder dropdown kode client Planning diringkas — **SELESAI LOKAL**
+
+- Placeholder menjadi **“Pilih Kode Produksi Client”** tanpa garis kedua sisi; placeholder tidak ditawarkan sebagai menu item; bila kosong dropdown menampilkan **“No Data”**. `AppSelect` mendapat prop optional `showPlaceholderOption` defaulttrue agar dropdown lain tetap punya clear-option seperti sebelumnya; hanya field kode client Planning memakai false.
+- Smoke komposisi AppSelect asli dengan boundary primitive nonportal lulus untuk mode normal/bare, no-data, pilihan real, saved-unlisted dan default dropdown lain. TypeScript serta scoped lint lulus. Tidak mengubah data/database, approval/generation, commit/push/deploy.
+
+### 2026-10-22 — Tipografi field dialog Planning diseragamkan — **SELESAI LOKAL**
+
+- User meminta placeholder “e.g. Dress” dan “Terisi otomatis” sama seperti “Pilih Kode Produksi Client dulu”. Font mono pada kode Konveksi read-only dihapus; teks input Produk/Qty/Bulan serta dropdown Penjahit disamakan12px mengikuti AppSelect existing. Placeholder Produk/Qty memakai slate400; tidak mengganti komponen shared atau perilaku/payload.
+- ESLint halaman dan frontend TypeScript lulus. Tidak browser visual/build ulang, DB, commit/push/deploy.
+
+### 2026-10-22 — Teks petunjuk kode kosong Planning dihapus — **SELESAI LOKAL**
+
+- Atas permintaan user, paragraf “Belum ada kode produksi — buat order dulu di Order Entry supaya pasangan kodenya tersedia.” di dialog Planning dihapus. Empty message dropdown dan perilaku pilihan tidak diubah. Scoped ESLint halaman lulus; tidak DB/commit/push/deploy.
+
+### 2026-10-22 — Planning mengecualikan kode/variasi yang sudah selesai — **SELESAI LOKAL**
+
+- Permintaan user: kode produksi berstatus FINISHED/INVOICED tidak ditawarkan lagi di Planning Produksi. Loader `fetchProductionCodeData` kini mengecualikan WO dengan kedua status tersebut sebelum membentuk pilihan kode dan variasi warna/size; jika satu kode masih punya variasi unfinished, hanya variasi unfinished yang ditawarkan. Planning lama tidak dihapus atau diubah.
+- `fetchProductionCodeRows` default tetap menyertakan completed untuk Complain & Penalti (complain dapat terjadi setelah invoice); filter berlaku khusus loader Planning. MCP read-only mengonfirmasi kolom `work_orders.prod_status`; tidak schema/data write.
+- Smoke service asli dengan boundary query terisolasi **lulus**: PROGRESS ditawarkan, FINISHED/INVOICED tidak muncul pada code/variants, Complain tetap melihat ketiganya. TypeScript dan scoped ESLint lulus. Belum tes browser ber-login/build produksi ulang; tidak commit/push/deploy.
+
+### 2026-10-22 — Lokal dinyalakan atas permintaan user — **AKTIF**
+
+- User meminta “nyalain l0kal saya”. RAM bebas97MB; Vite dimulai background capped heap512MB, **http://127.0.0.1:3000/ HTTP200** dan HTML Vite valid. Worker8787 existing tidak direstart. Tidak membuka browser tambahan atau menghentikan aplikasi user. Fitur Planning multi-rincian/group orang-bulan baru disepakati dalam diskusi, **belum diimplementasikan**; approval disepakati per rincian dengan campuran Approved/Draft.
+
+### 2026-10-21 — Riwayat laporan: tanggal terbaru paling bawah — **SELESAI LOKAL**
+
+- User melaporkan urutan riwayat terbalik: permintaannya **tanggal terbaru semakin ke bawah**. `filterStageRows` (`src/lib/productionTimeline.ts`) sebelumnya mengurutkan menurun lewat `compareDesc`; kini memakai `compareAsc` khusus tabel riwayat. `buildStageRows` dan `buildDayPoints` **tidak diubah** — grafik tetap memakai urutan menaik (kiri = paling lama).
+- Tanggal kosong ditempatkan paling atas karena tidak punya posisi kronologis; seri tetap dipecah urutan lini lalu id. Tes lama “baris diurut menurun” (untuk `buildStageRows`) dan tes baru `filterStageRows` menaik + penempatan tanggal kosong menetapkan perilaku ini.
+- Verifikasi: `tests/productionTimeline.test.ts` **19/19**, seluruh unit **878/878**, TypeScript dan scoped ESLint lulus. Tidak DB/build/commit/push/deploy.
+
+### 2026-10-21 — Grafik Pergerakan Harian jadi area chart — **SELESAI LOKAL**
+
+- Permintaan user: line chart pada **Pergerakan Harian** (dialog kartu Kanban) diganti area chart seperti referensi. `KanbanCardDetail.tsx` kini memakai `AreaChart` + `Area` (sebelumnya `LineChart`/`Line`); garis tetap 2px rounded dengan dot/activeDot, ditambah isian warna tahap `fillOpacity 0.14` agar empat tahap yang bertumpuk tetap terbaca. Tooltip, legend kondisional (>=2 seri), sumbu dan warna per tahap tidak berubah.
+- Verifikasi: TypeScript, scoped ESLint, unit **877/877** lulus; dev server lokal HTTP200 menyajikan `AreaChart` dan tidak lagi memuat `<LineChart`. Belum ada screenshot visual dialog (di balik login) dan build produksi belum diulang. Tidak DB/commit/push/deploy.
+
+### 2026-10-21 — Ukuran angka vs header kartu log diatur ulang — **SELESAI LOKAL**
+
+- Permintaan user berurutan: angka kartu Total Qty/Produk/Rata-rata per Hari diperbesar, header disesuaikan; lalu “kotak jangan ditinggikan”, lalu “kotak dipendekkan sedikit, header dikecilkan sedikit, angka dibesarkan sedikit”.
+- Hasil akhir mode log: nilai `text-[3rem]` (48px) `leading-none tracking-tight`, header `text-xs` (12px), tinggi minimum kartu **160px** (turun dari 184px; terukur kartu 162px). Kartu laporan non-log tetap `text-2xl` + `text-xs` seperti sebelumnya.
+- Verifikasi: screenshot dari komponen asli (SSR) + Tailwind hasil kompilasi diperiksa — angka dominan, header kecil, kotak lebih pendek, gauge dan gradient tetap benar. ESLint kartu lulus, unit **877/877**. Tidak DB/build/commit/push/deploy.
+
+### 2026-10-21 — Vite lokal dinyalakan lagi untuk inspeksi gauge — **AKTIF**
+
+- User meminta membuka lokal. RAM bebas437MB; Vite dijalankan ulang dengan heap capped512MB. **http://127.0.0.1:3000/ → HTTP200** (HTML Vite valid) dan `LaporanKpiCards.tsx` **HTTP200** memuat `ProgressGauge` serta `min-h-[184px]`. Worker foto 8787 tidak disentuh. Tidak membuka browser tambahan. Server laten; OS dapat menghentikannya lagi bila memori kritis.
+
+### 2026-10-21 — Gauge semi-donut pada kartu Realisasi vs Target — **SELESAI LOKAL, VISUAL DIPERIKSA**
+
+- Kartu **Realisasi vs Target** kini memakai visualisasi seperti referensi user: busur setengah lingkaran tebal (`stroke-width` 24, ujung rounded), angka persen besar di tengah (34px/600, tabular), plus sparkle putih di ujung progres. Empat kartu disamakan tinggi `min-h-[184px]`.
+- Gradient memakai **hue tema sebagai dominan**: Sewing biru→violet, Kancing violet→biru, Finishing emerald→biru; nilai dark dipilih terpisah (bukan pembalikan otomatis). Kelas `[stop-color:#…]` ditulis literal agar pemindai Tailwind benar-benar menghasilkan aturan light/dark; palet dua warna per tahap divalidasi validator dataviz (light `#FFFFFF`, dark `#1F2430`) — semua pair lulus CVD, normal-vision, lightness, chroma dan kontras.
+- Label bawah: **“Kurang N pcs”**, **“Extra N pcs”** saat melewati target, kosong saat tepat100%, dan “Target belum tersedia” bila target hilang/0. Persen tidak di-clamp dan diberi awalan `+` saat >100%.
+- **Dua bug geometri ditemukan lewat render nyata dan diperbaiki:** (1) lebar SVG melebihi kolom sehingga gauge menutupi kartu tetangga — dibatasi 172px/96px; (2) posisi titik akhir busur memakai rumus chord yang salah (radius efektif ≠ radius busur) sehingga busur >50% patah — kini memakai parametrisasi lingkaran `x=100−80·cos(πt)`, `y=110−80·sin(πt)` dan hanya `sweep-flag=1` (busur selalu ≤180°, jadi `large-arc-flag` tetap 0).
+- Verifikasi: SSR dari komponen asli + Tailwind hasil kompilasi → screenshot desktop diperiksa (50% dan +148% benar, warna gradasi sesuai tema, tidak ada overflow). Smoke logpanel **41/41** (termasuk surplus/tepat target/busur hanya satu thick arc dan tidak memakai chart library), unit **877/877**, TypeScript dan scoped ESLint lulus. Preview/harness hanya membaca komponen; tidak ada DB, credential, chart dependency baru, commit/push/deploy.
+- Batas: dark-mode gauge belum difoto (nilai dark hanya divalidasi secara palet + kelas), HP belum dicek ulang untuk kartu tinggi ini, dan build produksi belum diulang setelah perubahan visual.
+
+### 2026-10-21 — Suffix satuan Rata-rata per Hari diringkas — **SELESAI LOKAL**
+
+- Atas permintaan user, angka kartu **Rata-rata per Hari** menghapus suffix `/hari`, sekarang menampilkan pcs saja karena periodenya sudah tercantum di judul kartu. Perhitungan rata-rata tetap dibagi hari kerja seperti disepakati.
+- Perubahan satu literal di `LaporanKpiCards.tsx`. Pemeriksaan ESLint dan TypeScript selesai **exit0** setelah melampaui timeout foreground180s dan dijalankan background.
+
+### 2026-10-21 — Spacing kartu log dipadatkan — **SELESAI LOKAL**
+
+- Atas permintaan user, jarak judul ke nilai dan ruang kosong bawah kartu dirapatkan: padding 16→12, `gap-0.5`, label `leading-4`, layout value tidak lagi `flex-1`; tinggi minimum kartu log 72px. Hanya mode log; kartu laporan bersama tidak terpengaruh.
+- Scoped ESLint, TypeScript, smoke-logpanel **33/33** lulus. Belum browser screenshot setelah perubahan visual kecil atau build; tidak DB/deploy/commit. Local server dapat dihentikan sistem saat memori rendah.
+
+### 2026-10-21 — Warna empat kartu log diseragamkan per tab — **SELESAI LOKAL**
+
+- Permintaan user: semua angka pada empat card memakai warna tema stage yang sama; Sewing biru, Kancing violet, Finishing emerald. `LaporanKpiCards.tsx` kini menerapkan accent stage ke semua value pada mode log, bukan hanya Total Qty; struktur/label/hint lain tidak berubah. Tampilan shared report non-log tetap sama.
+- Scoped ESLint lulus, smoke-logpanel **33/33**, local Vite `LaporanKpiCards.tsx` HTTP200 memuat class accent biru. `git diff --check` tidak menemukan whitespace error; warning yang terlihat hanya konversi LF→CRLF Git pada files yang sudah diubah.
+- Tidak rebuild (perubahan satu class rendering), tidak browser login nyata/commit/push/deploy.
+
+### 2026-10-21 — Vite lokal dinyalakan untuk user melihat kartu log — **AKTIF**
+
+- User meminta “nyalakan dulu ya mau liat”. RAM bebas185MB; Vite dijalankan dengan Node heap capped512MB pada `127.0.0.1:3000`. Root **HTTP200**, HTML Vite valid; `LogDashboardPanel.tsx` **HTTP200** dan memuat `logCardMetrics`. Tidak membuka browser tambahan/menghentikan proses lain. Worker8787 tidak diubah. Server dibiarkan hidup tetapi OS dapat kembali menghentikannya jika memori kritis.
+
+### 2026-10-21 — Kartu KPI log Sewing/Kancing/Finishing direvisi — **IMPLEMENTASI & BROWSER FIXTURE LULUS**
+
+- User meminta hapus subtitle **“pcs dikerjakan”** / **“N work order”**; kartu jumlah Penjahit/Pemasang/Finisher diganti **Realisasi vs Target** + kurang pcs, kartu Bukti Barang diganti **Rata-rata per Hari**. Dua kartu Total Qty/Produk tetap. Shared kartu halaman Laporan lain tidak berubah (opt-in log metrics).
+- **Klarifikasi terakhir menggantikan jawaban upstream:** target berasal **Target Jahit yang di-generate Planning**, PIC dipilih→target PIC, tidak dipilih→semua target tercatat (termasuk orang tanpa setoran), bulan dipilih→bulan itu, kosong→akumulasi sampai bulan berjalan. Target tetap penuh ketika kode/produk menyaring realisasi, bukan prorata/rincian desain dan tidak otomatis difilter posisi tahap. Label menjelaskan target bulanan/akumulasi penuh; missing/zero/error berbeda, tidakNaN/Infinity; surplus persen boleh>100%, kurang min0.
+- Rata-rata: pcs bertanggal valid dalam periode ÷ hari kerja Senin–Sabtu minus nasional/manual (dedupe). Current month1..today, past full month, semua bulan first scoped report..today; hari tanpa laporan tetap dihitung, future/invalid/undated bukan numerator average. Helper pure `logCardMetrics` + reuse kalender `hariKerjaRentang` pada kpi.ts; source target/libur service existing dimuat terpisah dengan error/retry tanpa menyembunyikan log/Entry.
+- **UI susulan:** kartu Realisasi vs Target dipadatkan agar “Kurang N pcs” sejajar di kanan persentase, bukan baris baru; semua card log diseragamkan `min-h-[104px]`. Kartu Rata-rata per Hari hanya angka pcs/hari tanpa hint. Average tetap mengikuti semua filter aktif.
+- **Verifikasi final:** unit **877/877**, TypeScript/scoped lint lulus; SSR logpanel **33/33** (3 tahap, subtitle hilang, metrics, report-default tidak berubah, retry/search/Entry empty-state terjaga). Chrome komponen panel/kartu asli+fixture service-free lulus filter PIC/bulan/akumulasi, target penuh, error/retry, HP390 tanpa overflow; screenshot diperiksa. Fixture awal gagal import Supabase env lalu diberi stub fail-closed, bukan memakai credential. Modul Vite lokal sebelumnya HTTP200 memuat metrics baru. Build produksi **exit0**,3858 modul/main2511.79kB/gzip670.27kB; warning existing Browserslist/import invoiceCode/chunk besar. Build sebelumnya sebelum penyederhanaan label terakhir; final edit teks/kunci anchor sudah diuji unit/SSR/type/lint, tetapi build perlu diulang bila nanti rilis.
+- Tidak schema/migration/DB write (MCP hanya read-only inspeksi target/libur), tidak mengganti filter search panel kiri/perhitungan tabel/laporan keuangan, tidak commit/push/deploy. Browser/server fixture khusus ditutup; server lokal user tidak dihentikan. Belum login/API browser nyata.
+
+### 2026-10-21 — Done Up POS saat Qty Client sama dengan finishing — **SELESAI LOKAL**
+
+- Permintaan user: Qty Diterima Client terisi dan sama persis dengan finishing → **`Done Up POS`**, kapitalisasi mengikuti label existing **`Need Up POS`**. Qty>0 wajib:0=0 tidak berarti done. Finishing>Qty tetap Need Up POS; finishing<Qty tetap kosong. Status produksi/INVOICED terpisah, tidak diubah.
+- Helper `posUpdateLabel`/`DONE_UP_POS_LABEL` di `src/lib/productionStatus.ts` dipakai decorated/flat rows ProductionMonitoring; badge Done emerald, Need rose dengan token existing. Badge/filter/sort/export memakai label yang sama; judul/key kolom existing dipertahankan agar pengaturan kolom tidak reset. Tidak menambah kolom popup Kanban yang sebelumnya memang dihapus atas instruksi user.
+- Tes equality positif, missing/zero, need, under-target, NaN/Infinity ditambahkan. Unit **871/871**, TypeScript dan scoped ESLint lulus. Tidak browser ber-login/build produksi ulang atau DB write/migration; tidak commit/push/deploy.
+
+### 2026-10-21 — Monitoring stuck FINISHED setelah invoice terbit — **DIPERBAIKI LOKAL**
+
+- User melaporkan generate invoice berhasil tetapi status masih FINISHED. MCP read-only membuktikan invoice **`INV/MP/001-LVU/211026/002`** Rp2.400.000 ada, WO Mira Top **prod_status INVOICED / invoice_status PAID**. Tidak ada kegagalan penyimpanan status atau kebutuhan membuat invoice lagi; tidak mengubah DB/status pembayaran.
+- Akar masalah `ProductionMonitoring.tsx` decoratedWO selalu memanggil physical-only `deriveStatus`, yang tidak dapat menghasilkan INVOICED; angka100 semua tahap membuat status tampilan kembali FINISHED. Helper murni `monitoringProductionStatus` kini mempertahankan persisted INVOICED atau invoice issued/partial-paid/paid; WAITING_INVOICE tidak dianggap sudah terbit. Status fisik order belum diinvoice tetap dihitung dari laporan seperti sebelumnya. Tabel/kanban/filter/detail berbagi decorated status yang diperbaiki.
+- Tes regresi baru untuk issued/partial/paid/waiting dan grouping Kanban. **869/869 unit**, targeted status+kanban105/105, frontend TypeScript, scoped lint4 file dan diff-check lulus. Modul Vite lokal HTTP200 memuat fix. Tidak menjalankan browser ber-login atau build produksi ulang pada patch kecil ini; jangan klaim verifikasi visual. Tidak DB write/migration, invoice duplikat, commit/push/deploy.
+
+### 2026-10-21 — Klarifikasi kolom Qty Diterima Client untuk testing Supabase
+
+- User ingin input testing langsung melalui Supabase karena POS belum terintegrasi. Inspeksi MCP mengonfirmasi belum ada kolom khusus bernama qty_client/qty_diterima_client: label UI memakai **`work_orders.quantity`** dan nilai sumber **`production_order_variations.quantity`**, integer default0. Nama quantity dipertahankan saat penghapusan input manual/rename UI terdahulu, bukan ada kolom POS tersembunyi.
+- MCP terkini Mira Top Black/M: kedua quantity100, WO FINISHED, invoice0. Disarankan edit kedua nilai yang berelasi saat testing (jangan hanya salah satu), hindari ubah Qty order yang sudah diinvoice/final, dan ingat perubahan Table Editor tidak memanggil `syncWorkOrderStatus`/autoInvoice frontend. Tidak menambah/rename kolom, trigger atau UI, tidak DB write atau menganggap integrasi POS selesai.
+
+### 2026-10-21 — Invoice Mira Top terblokir Qty Client0 — **QTY DIKOREKSI SESUAI KONFIRMASI USER; INVOICE BELUM DITERBITKAN**
+
+- User melaporkan FINISHED tetapi generate invoice gagal. MCP read-only menunjukkan satu WO `WO-fda9d0de`, Mira Top `PO/001-LVU/2026/10/002`, semua tahap100 tetapi **Qty Client0** dan persisted **PROGRESS/NONE**; variasi sumber juga0. Harga lengkap8 komponen @3000=24000/pcs, invoice0. Qty0 terbukti memblokir readiness/backend guard, bukan dugaan harga kosong. Source UI terbaru mestinya derive PROGRESS untuk qty0; screenshot FINISHED user belum diperoleh, jadi penyebab tampilan FINISHED tidak diklaim terjelaskan.
+- User memilih **Qty Client100 pcs** setelah diberi nominal100×24000=Rp2.400.000. Sesudah inspeksi trigger/current state, satu transaksi MCP memakai gate/recheck tanpa invoice existing/total tahap mencukupi mengubah **variasi `a27664f7-185d-4c31-934c-d0a16a2c5a03` qty0→100** dan **WO qty0→100, statusPROGRESS→FINISHED**. Affected-row guard1/1 dan atomic commit; tidak menulis invoice atau mengubah harga/qty laporan.
+- Verifikasi MCP: WO & variasi100, FINISHED/NONE, harga24000, expected invoice2400000, matching client1, invoice existing0. Helper aplikasi `checkGroupInvoiceReadiness` dengan nilai terverifikasi menghasilkan readytrue/100pcs/blockernull; unit invoiceGrouping+productionStatus **101/101 lulus**. Belum mengeksekusi generate dengan akun user/menyatakan invoice telah dibuat. User perlu refresh lalu Generate Missing Invoices dari aplikasi.
+- Tidak mengubah kode atau melonggarkan guard qty0, tidak mengisi Qty Client otomatis dari finishing untuk order lain, tidak commit/push/deploy. Integrasi POS tetap belum diimplementasikan; qty0 order baru tetap memerlukan data client sebenarnya.
+
+### 2026-10-21 — Server lokal dinyalakan ulang atas permintaan eksplisit user — **AKTIF**
+
+- Setelah low-memory stop, user meminta “AKTIFKAN L0KAL LAGI”. RAM bebas346MB; menjalankan Vite background `npm run dev -- --host 127.0.0.1 --strictPort`, **http://127.0.0.1:3000/ → HTTP200**, HTML Vite valid. Worker existing **8787/health →200 {ok:true}** tanpa restart. Tidak membuka browser tambahan atau menutup proses user. Server dibiarkan hidup; notifikasi stop lama tidak mencerminkan status setelah restart ini.
+
+### 2026-10-21 — Server lokal dihentikan otomatis karena memori kritis
+
+- Sistem Claude Code menghentikan background Vite port3000 (task `bexjv1xmn`) saat idle karena RAM kritis. Ini bukan error aplikasi; status HTTP200 pada catatan sebelumnya adalah hasil sebelum penghentian, bukan keadaan terkini. Tidak direstart tanpa permintaan user; perubahan kode tetap tersimpan. Status Worker8787 tidak diperiksa ulang pada notifikasi ini.
+
+### 2026-10-21 — Benefit langsung dipotong ke utang — **RUMUS BARU TERPASANG; CASH PAYMENT TETAP DIGATE**
+
+- User mengonfirmasi secara eksplisit **utang460rb − benefit240rb = sisa utang220rb** untuk Arief, walau extra sudah termasuk Realisasi Cost. Keputusan baru menggantikan saldo460rb pada catatan sebelumnya. Benefit adalah kredit tambahan untuk utang; hanya sisanya yang dibayar. Potongan otomatis bukan cash/Expense dan tidak dicatat berulang tiap refresh.
+- Supabase MCP tersambung kembali; fungsi live diinspeksi lalu forward migration **`2026-10-21-benefit-debt-offset.sql` / `benefit_debt_offset`** diterapkan. Summary/bulan/final-prefix memakai satu formula beforeDebt/benefitOffset/netDebt/payable; candidate allocation melewati benefit yang dipakai offset dan cash sebelumnya; fingerprint versi aturan berubah. Tidak mengubah migration20 yang sudah diterapkan, tidak membuka release gate.
+- **Live read-only:** Arief target50/actual90/tarif6000, cost540rb, salary1jt, gross240rb; **before460rb / offset240rb / sisa220rb / cash0**. Input produksi/gaji tidak diubah. Sesudah probe: payments0,finalmonths0,Expense6 tetap,enabledfalse; anon readfalse/private candidate authenticatedfalse.
+- **Tes:** 5 tes baru/diubah merah pada rumus lama, helper8/8 hijau; suite **866/866**, TypeScript, scoped lint dan service smoke lulus. MCP rollback kasus utang100rb/benefit240rb → cash140rb; bayar50rb → sisa90rb; replay/void tidak dobel, open-month dan old fingerprint ditolak. Chrome komponen asli+service fixture lulus before/offset/sisa, no cash saat utang tersisa, retry UUID sama, HP dan role restrictions; screenshot diperiksa. Kolom potongan tampil pada ringkasan/detail. Build final revisi ini **exit0**, main2507.50kB/gzip668.99kB; warning existing Browserslist/import invoiceCode/chunk besar tetap. Local3000/Worker8787 HTTP200.
+- Public payment tetapfalse sampai gate verifikasi lama dituntaskan; ini bukan klaim pembayaran tunai siap rilis. Rincian `docs/target-jahit-settlement-verification-2026-10-21.md`. Browser/server fixture khusus ditutup; server lokal user dipertahankan. Tidak commit/push/deploy atau membuat transaksi bisnis.
+
+### 2026-10-21 — Target Jahit: cost otomatis, saldo akumulasi dan pembayaran benefit — **HITUNGAN/UI TERPASANG; PEMBAYARAN PUBLIK MASIH DIGATE**
+
+- Keputusan user: tarif **JAHIT+OBRAS**; extra dari kelebihan total bulanan menurut tanggal/input_at/id setoran (entry crossing dibagi); surplus menutup utang dahulu, basis utang tetap salary−seluruh realisasi. Payment ikut uang diterima, parsial terhubung Expense, Owner/Finance, **hanya bulan final**. Produksi tanpa target tetap punya biaya tetapi bukan otomatis extra. Klik orang membuka rincian bulan.
+- Penyebab cost0 terkonfirmasi: realisasi90 Arief dibaca sewing, sedangkan hitungan biaya lama mensyaratkan detail target yang kosong. Read model MCP baru membuktikan target50/actual90/tarif6000 → **cost540rb, extra40, benefit bruto240rb**. Salary live1jt → **utang460rb, dapat bayar0**. Tarif baseline diberi label historis belum terverifikasi; data operasional tidak diubah untuk menyesuaikan contoh.
+- Backend melalui Supabase MCP: ledger benefit/link Expense/kategori BENEFIT; monthly/person/read helper; payment atomic/idempotency/stale balance/allocations; void/audit; generic linked Expense mutation dan permanent-delete preview diblokir; salary ikut write gate serta final guard. Fingerprint final mencakup salary dan input_at sewing. Mirror migration `supabase/migrations/2026-10-20-target-jahit-benefit-payments.sql`. Payload gagal dicatat, interval typo ditemukan probe dan diperbaiki MCP; bukan dianggap sukses. Tidak membuat pembayaran bisnis atau memfinalkan bulan operasional.
+- UI/service: Target dan Laporan memakai biaya/extra/benefit kanonik server, tidak lagi bergantung rincian planning; missing/error uang tidak menjadi0. Tab Utang/Benefit satu baris akumulatif per staff ID, debt positif tidak disembunyikan oleh PCS gate; detail bulanan/entry dan riwayat bayar/void memakai shadcn existing. Kolom final/provisional terpisah; Expense linked tidak menawarkan generic edit/attachment/duplicate. Bayar/void memakai RPC, bukan two-request client mutation.
+- **Tes lulus:** unit **863/863**, TypeScript dan scoped ESLint, service smoke. Chrome nyata dengan service fixture lulus cost tanpa detail, ringkasan/detail bulanan/entry, pembayaran10rb dari240rb → sisa230rb, gagal/retry UUID sama, role inventory locked, HP390 tanpa overflow (bug lebar dialog fixture ditemukan dan diperbaiki, screenshot diperiksa). Bukan login/API produksi. Build final setelah patch Report completeness **exit0**,3858 modul/main2506.48kB/gzip668.79kB; warning existing Browserslist/import invoiceCode/chunk besar tetap. Typecheck/lint/service smoke sesudah patch juga lulus.
+- **MCP rollback:** Owner/Finance authenticated pay lolos, staff/anon/private-helper/direct-ledger ditolak; partial/replay/void diuji, direct Finance linked edit42501, Owner ordinary salary tetap0row, Finance salary normal tetap bisa, salary final ditolak. Preview linked payment punya blocker. Overpay/stale/tanggal tak sah ditolak. Sebelum MCP putus:0payments,0finalmonth,releasefalse; Expense sequence naik karena rollback tidak memutar sequence, bukan record pembayaran tersimpan.
+- **Concurrency nyata:** actual payment holder PID1988527 **17:02:13.338455–17:02:33.365843 UTC**; payment contender PID1988530 **17:02:21.021666** ditolak40001. Salary holder PID1989218 **17:04:57.772136–17:05:17.793764**; payment contender PID1989219 **17:04:59.038840** ditolak40001. Gate-only probe lain berhasil; serial/terlambat tidak dihitung. Satu holder60s MCP tidak merespons2395s; tidak diklaim sukses.
+- **Blocker:** Supabase MCP kini `getaddrinfo ENOTFOUND mcp.supabase.com`; **hentikan DB dan minta koneksi MCP diaktifkan kembali**, jangan fallback. Release `staff_settlement_release.enabled=false` tetap; public payment RPC/tombol belum aktif sampai matrix tambahan/release lulus. Sisa: no-target/open-month/atomic-failure SQL matrix, lintasbulan/identitas legacy/void attachment/correction, final guard ordering terbaru, login nyata. Detail `docs/target-jahit-settlement-verification-2026-10-21.md`. Tidak menyebut fitur bayar selesai penuh.
+- Browser/server fixture khusus ditutup; local user **3000/8787 tetap HTTP200**. Tidak commit/push/deploy. Perubahan lokal sebelumnya dipertahankan.
+
+### 2026-10-20 — Aplikasi lokal diaktifkan atas permintaan user — **BERJALAN**
+
+- Menjalankan `npm run dev -- --host 127.0.0.1 --strictPort` di background; Vite 7.3.0 mengumumkan ready di **http://127.0.0.1:3000/**. Startup lambat saat RAM bebas sekitar 210 MB; probe awal timeout sebelum siap, pemeriksaan ulang **HTTP 200** dengan HTML Vite valid.
+- Modul `src/pages/KancingEntryForm.tsx` yang disajikan dev server **HTTP 200** dan memuat helper PIC Contact terbaru. Worker existing **http://127.0.0.1:8787/health → 200 {ok:true}**, tidak direstart. Tidak membuka browser tambahan, tidak mengklaim sesi login UI teruji pada startup ini.
+- Server Vite dibiarkan hidup untuk user. Tidak DB write, commit/push/deploy atau menutup aplikasi user.
+
+### 2026-10-20 — PIC Kancing/Finishing mengikuti posisi di Contact — **SELESAI LOKAL & TERVERIFIKASI**
+
+- Permintaan user: PIC Kancing dari posisi **Penjahit atau Finishing**, PIC Finishing hanya posisi **Finishing** pada sidebar Contact → Karyawan. Status **Aktif** tetap menjadi syarat, mengikuti pola Entry Jahit; Leader/nonaktif tidak ditawarkan. Nama dummy di kedua form dihapus, laporan lama tidak diubah.
+- Supabase MCP read-only mengonfirmasi sumber Contact `register_penjahit` dengan posisi/status: 5 Penjahit aktif, 2 Finishing aktif, 1 Leader aktif dan 1 Penjahit nonaktif. Tidak mengubah schema/data/RLS atau memigrasi PIC lama.
+- Helper murni `activeKancingNames` / `activeFinishingNames` di `src/lib/karyawan.ts` di-export melalui service existing. Kedua form memuat karyawan lewat `registerPenjahit.fetchAll` bersama sumber produksi; gagal fetch menampilkan error/retry, bukan fallback dummy. Submit mensyaratkan PIC ada di daftar yang dimuat. Reuse AppSelect/FieldDescription existing, tanpa komponen/dependensi/desain baru.
+- **Verifikasi:** 3 tes posisi baru (helper 12/12), seluruh unit **858/858**, smoke form eligibility **6/6**, frontend TypeScript dan lint seluruh file perubahan lulus; diff-check lulus. Chrome nyata memakai form asli + service fixture lulus seluruh harness `check-production-entry-browser.mjs`: exact PIC dropdown per tahap, input/reset/payload/retry, search, swipe/keyboard, attachment/date retention, eligibility dan error upstream, lebar 320/390/1024 tanpa overflow. Screenshot Finishing HP diperiksa. Fixture bukan login/API nyata; tidak membuat laporan bisnis. Build produksi tidak diulang pada revisi PIC ini.
+- Browser/server fixture khusus ditutup sesudah tes untuk hemat memori; tidak mematikan Worker/aplikasi user. Belum commit/push/deploy.
+
+### 2026-10-20 — Foto kosong kembali di online + lokal — **DUA DEFECT DIPERBAIKI LOKAL; ONLINE/UPLOAD ORDER MENUNGGU LANJUTAN**
+
+- **Diagnosis DNS dipastikan setelah user memberi ulang public URL:** public URL `https://pub-236af3194f964df7b1eb886a35cb5c9b.r2.dev` benar. Request normal timeout 15 detik; DNS lokal A `202.169.44.80`, sedangkan Cloudflare DNS-over-HTTPS A `104.18.50.34` / `104.18.54.45`. Request foto contoh dengan `curl --resolve` ke `104.18.50.34`, hostname/SNI dan verifikasi TLS tetap aktif, **HTTP 200 image/png 55333 byte**. Perbedaan resolusi DNS lokal terbukti menjelaskan kegagalan sampel ini; tidak perlu login Cloudflare untuk membaca public bucket. Tidak mengubah DNS/hosts/browser user. User menyatakan akun Cloudflare tidak berada di laptop ini; jangan meminta login akun lagi. Opsi perbaikan akses perangkat: Secure DNS browser; opsi untuk semua pengguna: endpoint/custom domain yang dapat diakses melalui pemegang akun bila diperlukan. Ini tidak mengisi foto Heya yang belum ada.
+- User mengonfirmasi gejala di **keduanya**. Probe deployment read-only: HTML HTTP 200, bundle `assets/index-EmIDH5Rl.js` masih memuat basis `pub-236af3194f964df7b1eb886a35cb5c9b.r2.dev` dan **tidak** memuat rute `/media/`. HEAD foto contoh langsung r2.dev timeout 20 detik; DNS A saat probe `202.169.44.80` (jangan menyimpulkan penyedia blokir spesifik dari IP saja). Worker lokal 8787 hidup; dua GET contoh lama product/expense **200 image/png**, 55333/55842 byte. File contoh tidak hilang.
+- Supabase MCP read-only memverifikasi kolom dan data terbaru: **1 order Heya Top `PO-35b34094` / `PO/002-CSC/2026/10/001`**, foto induk null; 2 WO dengan foto variasi null, tidak ada variation photo terisi. Inventaris S3 R2 read-only lengkap (tidak truncated): 9 product photos lama, **0 key di prefix order Heya**. Jangan menghubungkan foto lama ke order baru atau mengklaim user pernah berhasil upload Heya tanpa bukti. Screenshot/urutan upload user masih ditunggu.
+- **CORS terbukti gagal sebelum fix:** OPTIONS dari `http://127.0.0.1:3000` tanpa Access-Control-Allow-Origin, sedangkan localhost:3000 lolos. `worker/wrangler.toml` ditambah origin 127.0.0.1:3000 dan https://konveksi.livougroup.com secara eksplisit (tanpa wildcard). Watcher Worker mengambil perubahan; OPTIONS kedua origin kini **204 dengan ACAO cocok**. Tes config merah sebelum/hijau sesudah.
+- **Bug error upload:** `uploadToR2` sebelumnya melempar network/CORS/session error, padahal caller mengharapkan `{error}`; bisa melewati warning setelah order tersimpan. Kini catch mengembalikan Error agar jalur peringatan foto existing berjalan. `scripts/smoke-r2-upload.mjs` menguji service asli: network dan sesi kosong terbukti merah sebelum/hijau sesudah, success metadata dan HTTP error tetap benar (**4/4**). Tidak mengubah payload/JWT atau menulis data untuk tes.
+- **Verifikasi:** frontend + Worker typecheck lulus, lint file perubahan lulus, unit **855/855**, smoke WorkOrder foto **7/7**. Build penuh setelah patch ini belum diulang (build checkpoint KPI sebelumnya sukses). Tidak mengklaim browser upload ber-login berhasil; kegagalan cleanup/path-update lain masih dapat memerlukan handling di dialog. Investigasi alur foto read-only didelegasikan, integrasi/fix/test dikerjakan main.
+- **Lanjutan atas permintaan “yaudah benerin”:** mencoba OAuth `wrangler login` dari sesi ini; browser dibuka tetapi timeout menunggu authorization code, exit 9 (diikuti assertion libuv Windows). Tidak memperoleh autentikasi, tidak deploy atau memakai akun sementara. User diminta menjalankan `! npm exec --prefix worker -- wrangler login` dan menyetujui Allow di browser. Build penuh setelah perbaikan upload **berhasil exit 0** (3857 modul, main 2493.96 kB / gzip 665.33 kB; warning existing Browserslist/import invoiceCode/chunk besar). Build memakai env lokal loopback; **bukan artefak siap deploy online** sebelum signer diganti ke URL publik saat build.
+- **Blocker online:** Wrangler `whoami` tidak terautentikasi; Worker publik belum terverifikasi. Frontend lokal signer `http://127.0.0.1:8787`, bukan alamat untuk deploy. Perlu login Cloudflare, izin deploy Worker/config/secret dan URL Worker publik, lalu rebuild frontend dengan `VITE_R2_PUBLIC_BASE` kosong serta `VITE_R2_SIGN_ENDPOINT` publik. Jangan deploy env loopback atau menganggap perubahan lokal otomatis online. Tidak menjalankan login/deploy/commit/push, DB write, restore path atau upload/hapus objek existing.
+
+### 2026-10-20 — Lanjutan verifikasi KPI setelah pembatalan CSV/PDF — **BUILD & BROWSER FIXTURE LULUS**
+
+- User meminta lanjut setelah menutup aplikasi. RAM masih 376 MB bebas, kemudian 642 MB setelah build; pengujian dilakukan serial dan satu Chrome khusus, tanpa menutup aplikasi user.
+- `npm run build` **exit 0**, TypeScript lulus, 3857 modul; main 2493.85 kB / gzip 665.29 kB. Warning existing Browserslist/import invoiceCode/chunk besar tetap ada. Seluruh unit saat ini **854/854 lulus, 0 gagal/skip**; smoke settings/service/generation, scoped lint empat harness dan diff-check lulus.
+- **Chrome nyata dengan komponen asli + service fixture:** Owner/Staff/Inventory routes, Team/pribadi, mode/bulan/race, sort/riwayat; settings alasan wajib/dialog finalisasi, loaded-state refresh, unlock Owner bukan Finance, edit target existing, error simpan/retry, audit filter/end; keyboard heatmap ArrowRight/Home/End, switch metrik dan satu tab stop; warna heatmap light/dark, menu tema portal, persistensi reload dan lebar 390px tanpa overflow semuanya lulus. Screenshot diperiksa, tidak ada runtime exception. **Bukan login/API/database live**; finalisasi/simpan hanya fixture.
+- Harness existing diperbaiki untuk Auth/settings boundaries baru, default `import.meta.env` kosong dan penyajian `app.css` hasil esbuild (sebelumnya heatmap fixture kehilangan CSS). Assertion tema menunggu computed style. **Tidak mengubah kode aplikasi, data bisnis atau schema** pada sesi ini.
+- **Koreksi riwayat:** saat diperiksa, `kpiExport.ts`, `KpiExportActions.tsx`, tes/smoke export dan tombol WhatsApp ternyata **tidak ada di working tree**, walau log sebelumnya menyebut WhatsApp dipertahankan. Tidak mengembalikan fitur tanpa konfirmasi dan tidak mengklaim clipboard teruji. CSV/PDF tetap tidak ada di KPI. Sisa jika WhatsApp masih diinginkan: konfirmasi scope lalu implementasi/verifikasi tersendiri.
+- **Belum rilis penuh:** login nyata per role, rekonsiliasi data operasional, alur settings lain/Orang/hapus libur end-to-end dan SPA fallback hosting masih belum dibuktikan. Tidak mengulang pemeriksaan DB live sesi ini. Browser dan kedua server fixture ditutup setelah tes untuk hemat RAM; server aplikasi utama tetap OFF. Tidak DB write/migration/seed/commit/push/deploy. Rincian bukti: `docs/kpi-verification-2026-10-19.md`.
+
+### 2026-10-20 — Monitor Kinerja Produksi: CSV dan PDF dibatalkan — **SELESAI**
+
+- **Permintaan user:** fitur ini tidak perlu CSV dan PDF. Tombol ekspor CSV Team/pribadi, preview cetak/Save as PDF, helper pembentuk CSV/slip, komponen `KpiMonthlySlip.tsx`, print-only CSS, dan `scripts/smoke-kpi-print.mjs` dihapus. Tidak mengubah ekspor pada invoice/modul laporan lain.
+- Salin WhatsApp khusus Owner/Finance Team, heatmap, dark mode, dashboard dan estimasi upah tetap dipertahankan. `kpiExport.ts`/`KpiExportActions.tsx` kini hanya mengurus ringkasan WhatsApp; test/harness mengikuti scope baru dan memastikan kontrol CSV/PDF serta download/print code tidak ada.
+- **Verifikasi:** TypeScript dan scoped ESLint lulus; 6 tes WhatsApp/heatmap serta smoke clipboard lulus; seluruh suite serial **853/853 lulus**. Penurunan dari 862 karena 9 tes CSV/slip yang tidak relevan dihapus, bukan kegagalan. Tidak menjalankan build/browser/server tambahan karena tekanan memori existing. Tidak ada DB write/migration/commit/push/deploy.
+- **Sisa verifikasi:** browser pengaturan/role/refresh, dark mode, heatmap/keyboard, dan clipboard nyata; build terbaru serta hosting/login nyata. Pengujian CSV/print/PDF **tidak lagi diperlukan** untuk fitur KPI. Dokumentasi verifikasi diberi catatan scope terbaru; catatan fase lama tetap riwayat, bukan instruksi mengembalikan ekspor.
+
+### 2026-10-20 — Menutup blocker FASE 6–7 — **BACKEND UTAMA TERVERIFIKASI; BROWSER/REGRESI AKHIR TERHALANG MEMORI KRITIS**
+
+- **Bukti concurrency nyata, bukan probe serial:** close kandidat PID1922383 memegang transaksi `01:19:45.819533–01:19:49.833840 UTC`; INSERT libur PID1922384 `01:19:46.174211` ditolak `40001 KPI_WRITE_BUSY_RETRY`. Urutan terbalik: INSERT holder PID1923154 `01:30:34.100426–01:30:38.106067`; close PID1923155 `01:30:37.807723` juga ditolak retry. Semua holder/contender memakai Supabase MCP dan rollback. Dua sesi subagent hanya dipakai sebagai mechanical gate-holder, keputusan/test/SQL tetap main. Probe serial tambahan sebelumnya tidak dihitung sebagai bukti.
+- **Matrix rollback 17 kasus lulus:** mutasi/delete/move sewing/finishing, parent/detail target, libur, target biaya, versi tarif, relasi WO, nama/posisi karyawan, dan hapus permanen cascade order ditolak ketika mengubah bulan final; no-op update dan koreksi sesudah Owner unlock diizinkan. Cascade gagal atomic: order dan entry tetap ada. Snapshot close idempotent tidak ditimpa oleh close ulang.
+- **Finalisasi diaktifkan kembali** lewat forward migration `supabase/migrations/2026-10-20-kpi-close-candidate.sql` (helper close privat teruji) dan `2026-10-20-kpi-finalization-release.sql` (RPC publik meneruskan ke helper). Role `authenticated` Finance close lulus, Finance unlock ditolak, staff close ditolak, Owner unlock lulus. Tombol Finalkan kini aktif dengan alasan wajib, hanya bulan sah/bukan depan/belum final; Unlock hanya Owner pada bulan final. Tidak memfinalkan data operasional—seluruh pengujian status di-rollback.
+- **Preview hapus:** `2026-10-20-kpi-delete-preview.sql` menambah blocker final-month ke graph bersama preview/execute. Tes libur menampilkan alasan bulan final dan execute menolak `DELETE_BLOCKED` sebelum delete.
+- **Generate Planning kini atomic:** `2026-10-20-kpi-atomic-generation.sql` menambah `kpi_generate_targets` dan `src/services/staffDebt.ts` mengganti loop HTTP parent/detail dengan satu RPC. Server recheck approved/validity/salary/month-final. Tes DB membuktikan parent+detail create 30, merge 40 (tidak dobel karena join komponen); kegagalan grup bulan final kedua rollback seluruh grup pertama, setelah unlock kedua grup berhasil. Gaji tidak digandakan dan kolom derived/gaji target tidak ditulis.
+- **Pengaturan:** daftar target existing + edit, aksi Hapus libur memakai PermanentDeleteDialog, filter audit yang sudah termuat dan penanda akhir pagination ditambahkan. `src/services/kpiSettings.ts` memuat target existing; frontend tidak lagi menebak angka lama. Typecheck/lint file perubahan lulus, termasuk setelah perubahan RPC/UI finalisasi.
+- **Kebersihan MCP terakhir:** 0 bulan final, 0 order/person/holiday fixture tersisa. Helper close privat tidak executable authenticated; Generate tidak executable anon. Tidak mengubah legacy SELECT policy.
+- **Regresi patch terbaru:** `node --test --test-concurrency=1 tests/*.test.ts` **862/862 lulus** setelah refactor Generate/settings; `scripts/smoke-kpi-generation.mjs` lulus (satu RPC, ID terdeduplikasi, limit, error atomic tanpa sukses parsial). `scripts/smoke-kpi-settings.mjs` mengeksekusi handler halaman asli dengan boundary tiruan: reason/loaded-state, refresh tanpa status stale, Finance tanpa unlock, target existing, error simpan, dan hapus libur lewat dialog existing semuanya lulus. Data settings kini dikunci ke loadKey bulan+nonce, bukan memakai state lama saat refresh. Smoke export juga diulang lulus. Tambahan `scripts/smoke-kpi-print.mjs` merender slip asli tanpa browser: escaping nama, satu bulan/31 hari, dan upah nol/parsial/null lulus. Tes ini membuktikan dan memperbaiki keterangan nilai lengkap yang sebelumnya muncul saat estimasi null; tidak membuktikan layout cetak/PDF. Typecheck, lint file Generate/settings/harness dan diff-check lulus. Build terbaru belum diulang.
+- **Belum selesai penuh:** browser pengaturan/role/refresh, Fase 7 dark-mode/heatmap/download/clipboard/cetak dan hasil PDF panjang belum diuji. Memori sempat **16 MB free / 7886 MB total**, pemeriksaan berikutnya **121–300 MB** (sebelumnya 460 MB). Tidak menjalankan Chrome/server/build tambahan; tes Node dilakukan serial agar ringan. Server lokal tetap OFF; tidak menghentikan aplikasi user atau mengubah resource sistem tanpa izin. Lanjutkan build dan browser setelah memori cukup; belum siap rilis penuh.
+- Bukti/interval diperbarui di `docs/kpi-verification-2026-10-19.md`. Migration baru diterapkan lewat Supabase MCP; tidak commit/push/deploy atau menjalankan seed demo. Catatan release gate Fase 6 nonaktif di log tanggal 19 merupakan riwayat lama, digantikan release tanggal 20 di atas.
+
+### 2026-10-19 — Monitor Kinerja Produksi, FASE 8 — **VERIFIKASI CHECKPOINT; BELUM SIAP RILIS PENUH**
+
+- Checklist dan bukti rinci: `docs/kpi-verification-2026-10-19.md`. Memisahkan implementasi, bukti unit/service, role database, dan visual/E2E yang belum diuji. Tidak menyatakan seluruh delapan fase selesai.
+- **Dua bug dibuktikan dan diperbaiki** di `src/lib/kpiTeam.ts`: (1) entry masa depan sebelumnya menambah 999 pcs ke gauge/HPP Team (1154 vs 155 pada fixture), sekarang dipotong sampai tanggal acuan seperti halaman pribadi; (2) pembanding bulan historis sebelumnya terpotong tanggal hari ini (entry Agustus 25 hilang saat memilih September pada Oktober 19), kini bulan lampau membandingkan bulan sebelumnya penuh dan override ritme lintas bulan hanya untuk bulan berjalan. Dua tes merah-sebelum/hijau-sesudah ditambahkan ke `tests/kpiTeam.test.ts`.
+- **Verifikasi kode lulus:** seluruh unit **862/862**, TypeScript, scoped ESLint KPI/types/services/tests/harness/main/Vite, smoke service dan handler ekspor, build akhir exit 0 (3861 modul, main 2507.15 kB / gzip 668.89 kB). Warning existing Browserslist/import invoiceCode/chunk besar masih ada. **Lint seluruh src tidak lulus: 46 error, 18 warning** di App/vendor/primitives/hooks/non-KPI; tidak dilakukan refactor massal di luar scope.
+- **MCP role matrix terbaru non-vacuous:** fixture lengkap baseline/order/WO dan entry kedua sumber untuk tiap identitas dibuat di transaksi rollback. Owner/Finance memilih penjahit 6 pcs/Rp78.000; staff penjahit/leader 6 pcs/Rp78.000 miliknya walau meminta ID asing; dua finisher masing-masing 5 pcs/Rp10.000; inventory 0/null. Staff baca audit/baseline baru 0 baris. Permission anon Team tarif/upah, direct resolver authenticated, status UPDATE/TRUNCATE dan audit INSERT semuanya false. Legacy SELECT policy tetap tidak diperketat.
+- **Release gate tetap aktif:** `kpi_set_month(...,true,...)` diuji menolak Owner dengan `KPI_FINALIZATION_PENDING_VERIFICATION`; 0 bulan final. Uji dua sesi saling overlap **BELUM terbukti**; probe holder serial yang kembali dijalankan bukan tes concurrency, tidak dihitung sebagai lulus. Matrix cascade/permanent-delete Fase 6 belum lengkap. Tidak mengubah RPC/migration atau membuka tombol finalisasi pada Fase 8.
+- **Browser/cetak/dark/heatmap belum dijalankan ulang:** memori sempat 934 MB lalu turun 438 MB bebas dari 7886 MB. Server lokal tetap OFF, tidak restart Chrome/server. Rekonsiliasi dengan data operasional nyata dan SPA fallback hosting juga belum dibuktikan. Build/unit tidak menggantikan gate tersebut.
+- Fixture rollback terverifikasi bersih: 0 order/WO/sewing/finishing Fase 8 tersisa. Tidak ada perubahan bisnis/migration permanen, seed, commit/push/deploy. Lanjutan wajib: tuntaskan release gate Fase 6 dan visual/E2E Fase 7, lalu evaluasi readiness ulang.
+
+### 2026-10-19 — Monitor Kinerja Produksi, FASE 7 — **IMPLEMENTASI LOKAL; BROWSER/CETAK VISUAL BELUM DIVERIFIKASI**
+
+- **Keputusan user:** slip kinerja memakai dialog browser **Cetak / Save as PDF**, bukan unduhan .pdf otomatis. Tidak menambah library PDF/dependensi. Laporan pribadi berlabel estimasi upah, bukan bukti pembayaran; preview memakai React dan print root terpisah, tanpa mengirim laporan ke layanan eksternal.
+- **Ekspor:** `src/lib/kpiExport.ts` menyediakan model CSV Team/pribadi dan slip, scope role/identitas, filter periode, BOM/CRLF/quote escaping serta neutralisasi formula spreadsheet pada teks. Nilai numerik negatif tetap angka. Bulan pembanding Team tidak ikut ekspor Bulan; history pribadi disaring sesuai Harian/Bulanan/Akumulasi. Staff tidak dapat mengekspor Team/orang asing dan tidak mendapat raw rate/HPP/target biaya/identitas lain. Tarif null/0/parsial dan baseline legacy tetap berketerangan.
+- **Aksi UI:** `KpiExportActions.tsx` menambah unduhan CSV, preview slip bulanan pribadi, dan dialog salin WhatsApp harian/mingguan khusus Owner/Finance Team. Minggu dimulai Senin sampai tanggal laporan; tanggal eksplisit dan coverage divalidasi, jahit/finishing terpisah, target bulanan diberi label terpisah, tanpa nominal upah/HPP. Clipboard sukses/ditolak ditangani; fallback textarea readonly untuk salin manual. Tidak membuka WhatsApp atau mengirim pesan. Aksi dinonaktifkan saat data/estimasi masih loading/error/stale.
+- **Heatmap:** `kpiHeatmap.ts` + `KpiHeatmap.tsx`, komposisi application-specific shadcn Card/Button/Tooltip (registry event-calendar tidak sesuai kebutuhan magnitude grid). Selector sewing/finishing terpisah, kalender sesuai rentang mode, threshold pcs tetap, penanda libur/future, keyboard arrow/Home/End dan alternatif daftar tanggal. Ramp sequential light/dark divalidasi melalui validator dataviz: monotone, delta lightness, kontras dan satu hue lulus setelah warna terang awal diperbaiki.
+- **Polish/theme:** `next-themes` ThemeProvider dipasang sekali di `main.tsx` dengan default light; kontrol Terang/Gelap/Sistem di header KPI. Header action wrap untuk layar sempit. `kpiPhase7.css` scoped heatmap/print, A4 light-paper, header tabel berulang, print hanya slip. Data laporan tidak disimpan di browser storage; hanya preferensi tema melalui library.
+- **Verifikasi lulus:** 15 tes export/heatmap baru, seluruh suite **860/860**, TypeScript, scoped ESLint, `scripts/smoke-kpi-export.mjs` mengeksekusi handler asli dengan hook/UI stub (CSV role-scoped/URL cleanup, foreign-ID/loading rejection, snapshot slip satu orang/bulan, clipboard sukses/denial fallback, staff tanpa Team action), smoke service KPI existing, dan build produksi exit 0. Pemeriksaan Fase 6 release-gate file/UI tetap nonaktif. Build dijalankan sebelum revisi teks WhatsApp terakhir; typecheck/lint/smoke/full tests sesudah revisi lulus.
+- **Belum diuji:** browser/visual desktop/HP/dark-mode, real download/clipboard permission, operasi keyboard heatmap nyata, dialog print/Save as PDF dan pagination cetak panjang. Memori saat pemeriksaan hanya **401 MB free / 7886 MB total**, sehingga tidak membuka Chrome/server fixture maupun menghidupkan server lokal. Jangan menyebut fitur cetak/tema sudah terverifikasi visual. Harness browser lama diperbarui provider tema dan legacy-flag stub tetapi tidak dijalankan pada Fase 7.
+- **Status fase:** Fase 6 **tetap checkpoint parsial**, `KPI_FINALIZATION_PENDING_VERIFICATION` serta tombol Finalkan disabled tidak diubah; Fase 8 belum dimulai. Tidak ada perubahan database/migration/RLS, seed, commit/push/deploy, atau publikasi laporan pada fase ini. Server lokal tetap OFF. Lanjutkan gate Fase 6 dan pengujian Fase 7 sebelum klaim siap rilis.
+
+### 2026-10-19 — Monitor Kinerja Produksi, FASE 6 — **CHECKPOINT PARSIAL; FINALISASI SENGAJA DINONAKTIFKAN SERVER + UI**
+
+- **Keputusan user:** versi harga **per order bertanggal berlaku** dari Register Harga; baseline awal immutable untuk entry lama dengan label estimasi historis belum terverifikasi; bulan final wajib terlindungi di seluruh jalur termasuk hapus permanen, hanya Owner membuka kunci. Staff tetap hanya boleh menerima agregat upah pribadi.
+- **Sudah diterapkan LIVE melalui Supabase MCP:** migrations `kpi_fase6_core`, `kpi_fase6_settings`, `kpi_fase6_guard_hardening`, `kpi_fase6_release_gate` (mirror di `supabase/migrations/2026-10-19-kpi-produksi-fase6-{core,settings,hardening,release-gate}.sql`). Tabel baru baseline/versi tarif, audit KPI privat, fingerprint bulan final; 1 baseline dari harga existing disalin sekali, tidak mengarang tanggal berlaku historis. Resolver tarif memilih versi efektif terbaru <= tanggal entry, fallback baseline berlabel unverified. RPC Team `kpi_tarif_entries` dan agregat upah sendiri sekarang memakai resolver sama, bukan harga terkini di browser.
+- **Penguncian kandidat:** gate advisory transaksi fail-fast (tidak menunggu sambil menahan lock tabel legacy), READ COMMITTED saja, AFTER STATEMENT membandingkan fingerprint input semua bulan final. Trigger mencakup entry/target/detail/libur/biaya/karyawan/WO/order/harga/versi/baseline; TRUNCATE ditolak. `permanent_delete_execute` dipatch mengambil gate sebelum lock tabel existing. Audit atomik pada perubahan pengaturan, actor `auth.uid()`, RLS read Owner/Finance dan tanpa client write. Policy tulis status lama/grant UPDATE/DELETE/TRUNCATE dicabut.
+- **PENTING — belum lolos release gate:** uji dua sesi benar-benar overlap dan matriks cascade/permanent deletion menyeluruh **BELUM** dilakukan. Banyak probe lock sempat dijalankan berurutan; itu bukan bukti concurrency dan tidak boleh dihitung sebagai tes dua sesi. **RPC `kpi_set_month(...,true,...)` kini selalu menolak `KPI_FINALIZATION_PENDING_VERIFICATION`, dan tombol Finalkan nonaktif.** Owner-only unlock tetap tersedia untuk pemulihan. MCP terakhir: 0 bulan final, 0 order fixture tersisa, anon status RPC false, direct authenticated status UPDATE false, audit INSERT false. Jangan menghapus gate ini sebelum uji keamanan lengkap lulus.
+- **UI/service lokal:** `/laporan/pengaturan` guarded Owner/Finance, tabs target existing, tarif versi/koreksi optimistic revision, biaya/HPP, libur, reuse KaryawanTab, status bulan, audit paged. Tombol pengaturan dari Team/orang privileged; staff diarahkan ke halaman sendiri. Banner kualitas data mencakup target/rate/identitas/hari kerja kosong/produksi nol/biaya/baseline legacy. Holiday update App dipindah ke service. Planning Generate diberi preflight final-month dan error propagation (masih multi-request; belum transactional, tidak boleh diklaim aman dari partial writes/concurrency).
+- **Tes yang benar-benar lulus:** fixture transaksi rollback membuktikan boundary baseline 13.000 sebelum tanggal versi dan 23.000 pada tanggal versi, perubahan tanggal entry keluar dari bulan final ditolak, DELETE entry final ditolak, Owner unlock mengizinkan edit lagi (sebelum release gate finalisasi ditutup). Finance close lolos dan unlock ditolak (versi sebelum release gate); staff setting ditolak dan baca audit/baseline menghasilkan 0 baris. Release gate server terbaru diuji menolak close bahkan Owner. Typecheck dan scoped ESLint lulus; smoke service resolver/role lulus; seluruh suite **845/845 lulus**. Build akhir setelah perubahan gate/UI berhasil (exit 0); `git diff --check` lulus. Browser settings belum diuji; server tetap tidak dinyalakan.
+- **Belum selesai Fase 6:** concurrency/close-vs-writer dengan dua sesi, cascade/permanent-delete matrix dan preview blocker bulan final, normal Order Entry end-to-end (trigger capture sudah diperbaiki agar metadata-only tidak menimpa override KPI), error UI/affected-row lama secara menyeluruh, browser settings/form/role/refresh/mobile. Unit test tidak mengesahkan SQL concurrency. Setting holiday belum mempunyai aksi hapus di UI baru (alur hapus lama tetap ada dan guard berlaku); audit filter/metadata period bisa diperluas. Fingerprint seluruh target row dapat terlalu ketat terhadap derived-column recompute dan biaya per final month perlu profiling. Legacy SELECT policies tidak diperketat.
+- **Resource/rollout:** server lokal tetap OFF setelah sistem menghentikannya karena memori rendah; tidak restart/server/browser fixture pada fase ini. Tidak commit/push/deploy, tidak menjalankan seed demo, tidak mengubah record bisnis existing (baseline baru disalin sesuai izin user). Fase 7–8 belum dimulai. Sesi berikut harus melanjutkan Fase 6, bukan menganggap selesai atau langsung mengaktifkan finalisasi.
+
+### 2026-10-19 — Monitor Kinerja Produksi, FASE 5 — **SELESAI LOKAL & TERVERIFIKASI; menunggu konfirmasi user**
+
+- **Keputusan baru user:** staff penjahit/finisher **boleh melihat estimasi upah sendiri**. Bukan izin melihat HPP, target biaya, upah divisi, tarif mentah, atau data orang lain. Owner dan finance tetap mendapat dropdown semua orang serta tombol kembali Team. Staff memiliki tab pribadi Harian/Bulanan/Akumulasi, tanpa global switch Team atau pemilih orang.
+- **Backend terpasang melalui Supabase MCP:** forward migration `supabase/migrations/2026-10-19-kpi-produksi-fase5.sql` menambah helper privat `kpi_person_entries` (authenticated tidak dapat EXECUTE langsung), RPC `kpi_produksi_orang`, `kpi_upah_pribadi` (agregat bulanan biaya diketahui/pcs bertarif/entry tanpa tarif), serta `kpi_riwayat_pribadi` (keyset tanggal+divisi+entry_id). Staff selalu memakai `profiles.orang_id`, ID asing diabaikan, sumber dibatasi posisi: penjahit/leader hanya sewing dan finisher hanya finishing. RPC anon ditolak, ukuran halaman dibatasi 1–101, cursor harus lengkap. Policy tabel lama tidak diubah.
+- **Tes database non-vacuous:** fixture order/harga lengkap + tiga entry sewing dan satu finishing untuk tiap identitas profil dibuat di transaksi rollback. Dengan role `authenticated`, owner/finance dapat memilih orang; staff/leader penjahit menerima 6 pcs / estimasi Rp78.000, dua finisher masing-masing 5 pcs / Rp10.000, inventory 0/null. Entry sumber asing atas nama orang yang sama tidak ikut dihitung. Cursor tidak mengulang entry yang baru dibaca; limit besar/cursor parsial ditolak. Pemeriksaan setelah rollback: 0 order/WO/entry fixture tersisa. Seed demo tidak dijalankan.
+- **Halaman pribadi:** hero Hari ini yang jujur pada bulan historis, gauge dan kartu sisa/normal/ngebut, kalimat kebutuhan, grafik harian kalender utuh dengan penanda libur/tooltip/label maksimum+terakhir, Brush dan dropdown rentang yang bisa dioperasikan keyboard, alternatif daftar harian; riwayat keyset 10 entry per halaman dengan kartu HP dan DataTable desktop. Tab Bulanan memberi progres tiap bulan, estimasi upah pribadi per pcs (target biaya hanya owner/finance), rincian sisa/ngebut/status final berdasarkan bulan terkunci. Tab Akumulasi memberi gauge/sisa/ngebut pribadi. Error upah/riwayat terpisah dari produksi, respons stale dibuang.
+- **Model/IO:** helper murni `src/lib/kpiOrang.ts`, hook `useKpiPersonalData.ts`, `KpiPersonalChart.tsx`, `KpiPersonalHistory.tsx`. Staff mendapat angka agregat upah dari server saja; tidak ada fetch tabel tarif/target biaya. Tarif 0 terjaga, tarif kosong/parsial tidak ditampilkan sebagai total lengkap. Entri bertanggal masa depan tidak menggelembungkan current/akumulasi.
+- **Verifikasi:** 13 tes pribadi baru; seluruh suite **839/839 lulus**; TypeScript dan scoped ESLint lulus; smoke service asli dengan backend tiruan lulus; browser fixture komponen asli lulus untuk tab staff, upah sendiri, tanpa dropdown/back/HPP, owner selector, label finishing, paging riwayat, Team regression, dan HP tanpa overflow; screenshot diperiksa. `npm run build` akhir berhasil (exit 0); `git diff --check` lulus.
+- **Server lokal:** Vite sempat gagal EBUSY karena memantau profil Chrome di `.scratch`; `vite.config.ts` kini mengabaikan `.scratch` dan `.claude/worktrees` pada watcher. Server kembali hidup di `http://127.0.0.1:3000` (route laporan HTTP 200). Tidak mematikan server lokal untuk cleanup fixture.
+- **Batas:** upah menggunakan harga order saat ini, bukan snapshot tanggal historis/slip pembayaran; UI menyatakan keterbatasan itu. Uji browser memakai fixture, bukan login nyata per role. Legacy RPC/tabel baca lama di luar jalur pribadi baru tidak diperketat (sesuai batas proyek). Tidak commit/push/deploy, tidak mengubah record bisnis permanen. Fase 6 belum dimulai.
+
+### 2026-10-19 — Monitor Kinerja Produksi, FASE 4 — **SELESAI LOKAL & TERVERIFIKASI; menunggu konfirmasi user**
+
+- **Bulan:** kartu ritme/proyeksi, gauge Produksi Jahit, empat kartu sisa hari/sisa target/normal/ngebut dengan delta bulan sebelumnya dan sparkline, perbandingan HPP serta breakdown upah jahit/leader/finishing dan catatan WIP, maksimal tiga orang bertarget yang tertinggal. Bagian Penjahit dan Finishing mempunyai progres realisasi/target di luar batang, penanda target, link nama ke halaman orang, tabel sisa target dengan kontrol urut eksplisit, serta grafik dan tabel upah per pcs. Target normal penjahit tidak memasukkan target leader.
+- **Akumulasi:** gauge jahit, sisa target dan ngebut kumulatif, HPP, tren produksi/HPP bulanan, tiga tren upah divisi (leader/penjahit/finishing), progres/sisa target/upah per orang untuk Jahit dan Finishing. Target biaya kumulatif dibobot target pcs per bulan; bulan berbobot tanpa target biaya memberi nilai tidak tersedia, tidak mengambil target terakhir secara diam-diam. Halaman detail orang tetap scope Fase 5.
+- **Kode:** kalkulasi teruji berada di `src/lib/kpiTeam.ts`; hook `useKpiData.ts` menyimpan pembatalan respons stale dan hanya membangun Team bagi scope yang berhak. Komposisi memakai `KpiTeamSections.tsx`, `KpiTeamCharts.tsx`, komponen donut/chart shadcn existing, dan `DataTable` ReUI existing (tanpa modifikasi primitive/global theme). Setiap chart tren memiliki alternatif tabel dan nilai terakhir; pasangan palette light/dark divalidasi.
+- **Service:** schema `target_biaya`, harga/komponen, register harga dan work order diinspeksi lewat Supabase MCP read-only; tidak ada migration/DB write/seed baru pada fase ini. Target per bulan/divisi dan baris target asli dipertahankan agar finishing/target tanpa setoran tidak hilang. RPC produksi/target dibaca per halaman hingga kosong untuk menghindari limit baris PostgREST. Tarif 0 dibedakan dari kosong; error pembacaan harga bukan tarif hilang. HPP nol valid tidak dianggap null. Role terbatas tidak meminta tabel tarif/target biaya.
+- **Verifikasi lulus:** 15 tes Team baru, seluruh unit suite **826/826**, TypeScript, scoped ESLint, smoke service asli dengan backend tiruan (`scripts/smoke-kpi-service.mjs`), browser fixture React/shadcn asli (`scripts/check-kpi-browser.mjs`) untuk mode, race bulan, pengurutan, link nama, role, error/retry dan HP tanpa overflow. Screenshot Team desktop/HP diperiksa. `npm run build` akhir berhasil (exit 0); warning existing Browserslist/dynamic import/chunk besar tetap dicatat. `git diff --check` lulus.
+- **Batas:** browser menggunakan service fixture, bukan login produksi; sumber produksi live saat inspeksi sebelumnya kosong sehingga rekonsiliasi nyata berisi setoran belum dibuktikan. Jalur tarif masih memakai harga order yang tersedia sekarang (bukan bukti snapshot tarif historis per tanggal); skema harga yang ada tidak diubah. Riwayat harga efektif dan workflow audit/kunci tetap perlu keputusan Fase 6. Hosting SPA fallback belum diverifikasi, seed demo tidak dijalankan, tidak commit/push/deploy. Berhenti di checkpoint Fase 4.
+
+### 2026-10-19 — Monitor Kinerja Produksi, FASE 3 — **SELESAI & TERVERIFIKASI (menunggu konfirmasi user)**
+
+- Kerangka dashboard sudah terhubung ke `/laporan`, `/laporan/team`, dan `/laporan/orang/:id`; modul terpilih diturunkan dari URL agar direct link serta Back/Forward browser konsisten. Router memakai `tentukanRute()` yang diuji unit, bukan aturan duplikat. Redirect owner/finance, staff dari `/team`/id asing ke profilnya sendiri, tanpa akses, mode Bulan/Akumulasi, chip bulan, Refresh, skeleton/error/empty state, serta header navy halaman orang sudah terpasang.
+- **Perbaikan privasi di backend:** fungsi `kpi_orang_list()` yang sebelumnya mengirim semua identitas ke setiap sesi kini hanya memberi owner/finance seluruh daftar dan staff hanya baris terkait `profiles.orang_id`; policy tabel lama tidak disentuh. Perubahan fungsi diterapkan lewat Supabase MCP (`kpi_orang_list_scope`) dan dicatat di `supabase/migrations/2026-10-19-kpi-orang-list-scope.sql`. RPC tetap menolak anon. Test role authenticated dalam transaksi rollback: owner/finance masing-masing 9 identitas; inventory 0; staff/leader masing-masing maksimal 1 identitas miliknya dan 0 identitas asing. Probe staff yang meminta id produksi 999999 tetap menghasilkan 0 baris produksi asing.
+- Perbaikan kualitas: request periode stale dibatalkan dan tidak merender angka periode/orang sebelumnya di bawah label baru; kegagalan RPC (termasuk hari libur, daftar orang, status bulan, atau daftar bulan) menjadi error + retry alih-alih angka nol diam-diam; daftar bulan dimuat sekali bersama status memuat/error. Guard kosong tidak meneruskan permintaan periode. Revisi token dark/light dan badge ritme merah agar kontras benar.
+- Navigasi SPA memakai path asset root (`vite.config.ts` `base: '/'`) agar URL deep-link tidak meminta bundle dari `/laporan/assets`. **Rilis perlu konfigurasi hosting SPA fallback ke `index.html`** untuk URL `/laporan/*`; belum bisa diverifikasi pada hosting Openship di sesi ini.
+- Browser smoke fixture terisolasi (service Supabase dipalsukan, tanpa credential/DB) melewati: redirect tim owner, switch mode, chip, balapan ganti bulan, halaman orang, role staff/id asing, pembatasan mode/biaya, inventory tanpa akses, error daftar bulan + retry, dan ukuran HP tanpa overflow; tidak ada runtime exception. Screenshot fixture diperiksa. `npx tsc -b --noEmit` exit 0; ESLint semua file KPI/fixture/config yang disentuh exit 0; `node --test tests/*.test.ts` **811 lulus, 0 gagal** (termasuk 4 tes formatter KPI); `npm run build` sukses. Warning build tetap: Browserslist lama, dynamic/static import `invoiceCode`, dan bundle utama >500KB (warning existing). `git diff --check` lulus.
+- **Belum diverifikasi:** login browser nyata untuk setiap role, data target tim di database fixture yang sesungguhnya, SPA fallback pada hosting produksi, dan konfigurasi deploy. Seed demo tetap tidak dijalankan. Fase 4 (isi dashboard Team sesuai brief) belum dimulai; Fase 3 menyiapkan shell + empat kartu ringkas yang sebelumnya sudah ada di working tree.
+
+### 2026-10-18 — Monitor Kinerja Produksi, FASE 2 (modul rumus) — **SELESAI & TERUJI**
+
+- **Berkas baru:** `src/lib/kpi.ts` (modul murni, tanpa impor apa pun) dan `tests/kpi.test.ts` (74 tes).
+- **Kenapa tanpa impor:** tes dijalankan `node --test` tanpa bundler, jadi modul yang mengimpor alias `@/` hanya bisa dipakai sebagai TIPE, tidak bisa dipanggil. Karena seluruh rumus dashboard wajib diuji, `kpi.ts` harus bebas impor. Konsekuensinya daftar libur TIDAK diambil sendiri dari `src/data/nationalHolidays.ts` — pemanggil menggabungkan libur nasional + `daftar_libur` lewat `gabungLibur()`. Ini juga yang membuat fungsinya deterministik saat diuji.
+- **Isi modul:** `hariKerjaBulan`, `sisaHariKerja`, `hariKerjaMundur`, `progress`, `sisaTarget`, `targetNormalPerHari`, `targetNgebutPerHari`, `rataRataHariKerja`, `proyeksiAkhir`, `statusRitme`, `statusBulanFinal`, `hitungUpah`, `hitungHpp`, `ringkasPeriode`, `ringkasPerOrang`, `perluPerhatian`, `ringkasBulanan`, `deretHarian`, `pcsPadaTanggal`, `gabungLibur`, `tanggalHariIni`.
+- **Tiga keputusan rumus yang menyimpang dari bacaan harfiah brief, beserta alasannya:**
+  1. **Pembagi rata-rata 7 hari** memakai jumlah hari kerja yang benar-benar ditemukan (maks 7), bukan angka 7 mati. Pada tanggal 1, pembagi 7 akan melaporkan ritme sepertujuh dari sebenarnya sehingga proyeksi ikut runtuh. Pada kondisi normal hasilnya identik.
+  2. **`sisaHariKerja` menghitung hari ini (inklusif)**, berbeda dari `sisaHari` di `targetCompute.ts` yang mulai besok. Dashboard menampilkan target ngebut untuk hari kerja yang masih bisa dipakai — dan hari ini masih bisa dipakai. Perbedaan ini didokumentasikan di kode.
+  3. **HPP dibagi pcs SEWING**, dan pemisahan upah penjahit vs leader memakai `divisi` ORANG (bukan divisi entry), karena leader menyetor lewat `sewing_records` yang sama. Entry tanpa `orangId` diperlakukan sebagai penjahit.
+- **Perlakuan tarif kosong:** `tarif: null` dibedakan dari `0`. `hitungUpah` membagi upah per pcs dengan **pcs yang benar-benar bertarif** (bukan seluruh pcs) supaya angka tidak turun palsu saat sebagian data belum bertarif, dan mengembalikan `perPcs: null` bila belum ada tarif sama sekali — UI wajib menampilkan "Tarif belum diisi", bukan "Rp 0".
+- **Edge case yang diuji eksplisit:** target 0/kosong, tanpa entry, pembagian nol, bulan tanpa hari kerja sama sekali, tanggal 1, bulan lampau, bulan depan, surplus (selisih kumulatif negatif), entry tanpa `orangId`, orang bertarget tanpa setoran, penyetor tanpa target, tarif belum diisi.
+- **Verifikasi angka brief:** tes menegaskan tim 443/600 = 73,83% dan Arief 115/164 = 70,12%, cocok dengan contoh di brief.
+- **Verifikasi kode:** `node --test tests/kpi.test.ts` → **74/74 lulus**; seluruh suite `tests/*.test.ts` → **788/788 lulus** (baseline 714 + 74 baru); `npx tsc -b --noEmit` exit 0; ESLint file baru exit 0.
+- **Belum selesai:** fase 3–8 (kerangka halaman & routing, tab Team, halaman per orang, pengaturan, ekspor, verifikasi akhir). Modul ini belum dipakai halaman mana pun. Seed demo masih belum dijalankan.
+
+### 2026-10-18 — Monitor Kinerja Produksi, FASE 1 (skema) — **TERPASANG; MENUNGGU KONFIRMASI USER**
+
+- **Konteks:** user meminta dashboard "Monitor Kinerja Produksi" bertahap 8 fase. Brief menyebut tabel `orang`, `target_bulanan`, `tarif_upah`, `hari_libur`, `bulan_status`, `audit_log` dan role `penjahit`/`finishing` — **tidak satu pun cocok dengan database live**. Empat keputusan user mengikat: (1) role tetap `staff`, pembatasan lewat `profiles.orang_id`; (2) tarif upah pakai `register_harga` (tanpa tabel `tarif_upah`); (3) tambah `react-router`; (4) RLS hanya untuk objek baru, policy baca lama tidak diperketat.
+- **Prinsip utama dipatuhi:** **tidak ada tabel setoran baru**. Realisasi dibaca dari entry yang sudah ada — `sewing_records` (`tgl_laporan`, `pic_penjahit`, `qty_selesai`) dan `finishing_records` (`tgl_import`, `pic_finishing`, `qty_finishing`).
+- **Migration:** `supabase/migrations/2026-10-19-kpi-produksi-fase1.sql`, di-apply lewat Supabase MCP (`kpi_produksi_fase1` → success). Isi: kolom `profiles.orang_id` + index; 4 helper otorisasi (`my_orang_divisi`, `my_orang_nama`, `kpi_can_view_team`, `kpi_can_view_orang`); view `v_produksi_harian` (`security_invoker = true`, UNION ALL sewing + finishing); RPC `kpi_produksi_harian(dari, sampai, orang_id)`; tabel `target_biaya`; tabel `bulan_status` + `bulan_is_final()`; `kpi_orang_list()`; `kpi_hari_libur()`; `kpi_target_bulanan()`.
+- **Aturan validitas entry finishing:** `tgl_import IS NOT NULL AND coalesce(sync_status,'OK') = 'OK'`. Entry tanpa tanggal tidak bisa ditempatkan di bulan mana pun; status selain `OK` adalah sinkronisasi gagal. Keduanya terbukti tersaring (5 entry seed → 3 di view).
+- **Satu-satunya jalur baca aplikasi adalah `kpi_produksi_harian()`**, bukan view. Alasannya jujur dicatat di migration: policy baca `sewing_records`/`finishing_records` saat ini masih "allow read for all", jadi `security_invoker` saja tidak membatasi penjahit. Filter per-orang ditegakkan di fungsi, dan parameter `p_orang_id` dari klien **diabaikan sepenuhnya** untuk akun non-owner/finance.
+- **Uji RLS (semua di dalam transaksi yang di-rollback):** owner & finance melihat 3 baris produksi + 3 target; suwati (penjahit) dan azrul (finishing) masing-masing 1 baris miliknya sendiri, dan permintaan paksa `orang_id` lain tetap mengembalikan baris sendiri; inventory 0 baris; **anon ditolak `42501 permission denied for function`**. `target_biaya`: owner/finance baca+tulis lolos, inventory/Suwati 0 baris dan tulis ditolak RLS. `bulan_status`: semua authenticated boleh baca, UPDATE oleh Suwati **tidak error tetapi 0 baris** — UI wajib memakai `.select()` dan memeriksa affected rows.
+- **Perubahan pada data live yang harus diketahui:** `profiles.orang_id` di-backfill untuk 8 akun (Arief→7, Asmeriani→6, Azrul→5, Fajar→10, Ince→8, Suwati→3, Umul→9, Iman→2) dengan pencocokan `display_name = register_penjahit.pic_penjahit`. Hanya kolom baru yang nullable yang diisi; tidak ada data lama diubah dan query idempoten (`orang_id is null`).
+- **Seed:** `supabase/seed/kpi-produksi-demo.sql` ditulis tetapi **belum dijalankan**. Angkanya mengikuti brief: Arief 115/164 = 70%, tim 443/600 = 74% (target jahit tim 600 = penjahit 550 + leader 50; target finishing 200+150 sengaja terpisah). Aritmetika sudah diverifikasi di transaksi rollback. Semua baris bertanda `input_by = 'seed-kpi'` agar mudah dibersihkan.
+- **Verifikasi kode:** `npx tsc -b --noEmit` exit 0. Tidak ada file frontend yang disentuh pada fase ini.
+- **Belum selesai:** fase 2–8 (modul `lib/kpi.ts` + tes unit, halaman & routing, tab tim, halaman per orang, pengaturan, ekspor, verifikasi akhir). Seed belum dijalankan. Migration belum di-commit.
+
+### 2026-10-18 — Foto/lampiran tidak terbaca — **DUA SEBAB DIPERBAIKI; rute baca pindah ke Worker**
+
+- **Keluhan user (verbatim):** *"btw kenapa skrg fotonya malah ga kebaca ? sblmnya bisa kok"*.
+- **Sebab 1 — jalur BACA diblokir ISP, bukan data hilang.** `nslookup pub-236af3194f964df7b1eb886a35cb5c9b.r2.dev` menjawab `internetpositif.ioh.co.id` (114.7.173.245/246) dan `block.myrepublic.co.id` (158.140.186.3) — DNS hijack "Internet Positif". Akibatnya `<img src="https://pub-….r2.dev/…">` menerima halaman blokir, bukan gambar. Bukti objeknya utuh: Cloudflare DoH & Google DoH mengembalikan IP asli (104.18.50.34/54.45); `curl --resolve` ke IP itu → **HTTP 200 image/png 55.842 byte**. Inventaris bucket `konveksi` juga lengkap (11 objek: 9 product-photos, 1 complain, 1 expense).
+- **Sebab 2 — jalur TULIS belum dikonfigurasi.** `VITE_R2_SIGN_ENDPOINT` kosong, sehingga `uploadToR2` mem-POST `/sign/upload` ke dev server Vite (404). Kini diisi `http://127.0.0.1:8787` dan `wrangler dev` berjalan.
+- **Sebab 3 (ditemukan saat memperbaiki) — URL lampiran tersimpan absolut di database.** Kolom `complain_files.file_url`, `invoice_payment_files.file_url`, `expense_entries.proof_url`/`proof_payment_url` menyimpan URL penuh yang dirangkai saat unggah, jadi ikut membeku pada konfigurasi saat itu. Kalau dibiarkan, baris yang diunggah dari lokal akan berisi `127.0.0.1` dan mati setelah deploy. Perbaikan: pembacaan menghitung ulang dari kolom `path` (`attachmentUrlFor`, dengan nilai tersimpan hanya sebagai cadangan untuk baris tanpa path), sedangkan penulisan memakai `durableAttachmentUrlFor` yang **menolak menulis alamat loopback** ke database.
+- **Perbaikan utama: rute baca baru `GET /media/<jenis>/<path>` di Worker.** `*.workers.dev` tidak diblokir ISP, jadi lampiran disajikan lewat origin Worker, bukan `r2.dev`. `VITE_R2_PUBLIC_BASE` sekarang **dikosongkan** dan basis publik diturunkan dari `VITE_R2_SIGN_ENDPOINT` + `/media`; variabel itu tetap didukung bila kelak ada custom domain R2. Parser rute ada di `src/lib/r2.ts:parseMediaObjectPath` (murni, diuji), pembacaan bertanda tangan di `worker/src/sign.ts:getObject`. Rute ini publik seperti `r2.dev` — penulisan/penghapusan tetap wajib token lewat `/sign/*`.
+- **Bug runtime Worker yang ikut diperbaiki:** `redirect: 'error'` **tidak didukung** runtime Cloudflare Workers (hanya `follow`/`manual`), sehingga `/sign/delete` dan `/cleanup` akan gagal 500 saat benar-benar dipakai. Keempat pemakaian (`sign.ts` GET/DELETE, `cleanup.ts` RPC/legacy delete) diganti `redirect: 'manual'`. Ditemukan lewat uji nyata rute media, bukan pembacaan kode.
+- **Verifikasi:** `GET /media/expense-proofs/expense-17/1789703033702-XGF.png` → **200 image/png 55.842**; `GET /media/product-photos/PO-9fdfe041/1789488863012-U6Y0.png` → **200 image/png 55.333**; objek tidak ada → 404; jenis lampiran asing → 404; percobaan traversal `..%2F..%2F` → 404. `npx tsc -b --noEmit` 0, Worker `tsc --noEmit` 0, **714 unit tests lulus** (2 tes baru untuk rute media), ESLint file berubah 0, `npm run build` 0 dan bundle produksi **tidak lagi memuat `r2.dev`**.
+- **Belum selesai:** Worker belum di-deploy (perlu `wrangler login` + `SUPABASE_SERVICE_ROLE_KEY` sebagai secret), jadi `VITE_R2_SIGN_ENDPOINT` masih menunjuk `127.0.0.1` dan hanya berfungsi selama `wrangler dev` hidup. Upload foto lewat browser belum diuji end-to-end oleh Claude (butuh sesi login); verifikasi di atas adalah HTTP langsung ke Worker. Baris `expense_entries` id 17 masih menyimpan URL Supabase lama, tetapi kini tampil benar karena URL dihitung ulang dari `proof_path`.
+
+### 2026-10-18 — Nomor urut Order Entry reset ke 001 saat data habis — **TERPASANG & TERVERIFIKASI**
+
+- **Keluhan user:** setelah semua order dihapus permanen, order baru tetap mendapat `PO/.../10/2026/004`, padahal tidak ada satu pun order 001–003 yang tersisa. User meminta penomoran mulai lagi dari 001.
+- **Ini perubahan keputusan, bukan bug.** Keputusan sebelumnya (2026-10-17) adalah "counter terus lanjut, tidak reset sequence", dan `next_production_code()` memang diimplementasikan sebagai penghitung monoton di `production_code_sequence` (`2026-09 → 7`, `2026-10 → 3`). Keputusan baru menggantikannya.
+- **Aturan baru:** nomor = (nomor tertinggi yang **masih tersimpan** pada periode itu) + 1, dihitung dari `production_orders.product_note`, bukan dari counter. Periode kosong ⇒ kembali ke `001`. Celah di tengah **tidak** diisi: kalau 001–005 ada lalu 003 dihapus, nomor berikutnya tetap 006 — hanya ekor yang dipadatkan, sehingga kode tidak pernah melompat mundur selama masih ada order yang lebih besar.
+- **`production_code_sequence` tetap dipakai, tetapi perannya berubah** menjadi mutex per periode: baris dikunci `FOR UPDATE` sampai transaksi pemanggil selesai, jadi dua penyimpanan bersamaan tetap mendapat nomor berbeda. `last_value` kini hanya cermin nomor terakhir yang diterbitkan, bukan sumber nomor.
+- **Tabrakan yang harus ikut diselesaikan:** kode yang dipakai ulang sudah tercatat sebagai tombstone di `deleted_business_references` (kind `production_code` dan `work_code`), sehingga `permanent_delete_writer_guard` akan menolak insert dengan `DELETE_STALE_REFERENCE`. `next_production_code()` sekarang menghapus tombstone untuk kode yang benar-benar diterbitkan ulang (termasuk `work_code` berformat `<kode> | <product> | <color> | <size>`); pembersihan berada di transaksi yang sama sehingga ikut rollback bila penyimpanan order gagal.
+- **Keamanan:** karena fungsi itu kini melakukan DELETE, `EXECUTE` dicabut dari `PUBLIC`/`anon`/`authenticated`. Pemanggil sahnya hanya `order_entry_save` (SECURITY DEFINER, berjalan sebagai pemilik fungsi). `production_code_preview` tetap dapat dipanggil klien.
+- **Perubahan diterapkan** lewat Supabase MCP dalam 3 tahap (payload gabungan sempat gagal `Invalid or expired requestState`), file migrasi lokal: `supabase/migrations/2026-10-18-production-code-reset-on-empty.sql`. Mirror `production_code_sequence` diisi ulang dari data yang tersisa (`2026-09 → 0`, `2026-10 → 0`).
+- **Verifikasi MCP (semua di dalam transaksi yang di-rollback):** `production_code_preview('Livou')` = `PO/001-LVU/2026/10/001`, `production_code_preview('Cassca')` = `PO/002-CSC/2026/10/001`. Simulasi hapus-penuh (insert → tombstone → hapus → kode berikutnya kembali `001`) lolos sampai insert `work_orders` dengan `work_code` yang sama, artinya guard tidak lagi menolak. Celah tengah terbukti benar: 001/002/003 dibuat, 002 dihapus, berikutnya `004` (bukan `002`), dan preview menyamakan angka itu. Jalur penuh `order_entry_save` mengembalikan kode yang identik dengan preview.
+- **Verifikasi kode:** `npx tsc -b --noEmit` lulus, 712 unit tests lulus. Tidak ada perubahan frontend — `previewProductionCode()` di `src/services/productionOrders.ts` hanya meneruskan RPC, jadi angka di form otomatis ikut aturan baru.
+- **Tidak diubah:** penomoran invoice (`permanent_delete_invoice_sequence`) tetap mempertahankan high-water mark dan sengaja menggabungkan tombstone, karena user hanya menyebut Order Entry. Bila invoice juga harus reset, itu keputusan terpisah.
 
 ### 2026-10-18 — Hapus permanen per modul — **BACKEND TERPASANG DI DATABASE APLIKASI; media cleanup belum dikonfigurasi**
 

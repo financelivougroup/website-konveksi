@@ -49,10 +49,14 @@ export const POTONGAN_POSISI_KEY: Record<string, string> = {
  * Konveksi (`product_note`) dari Kode Produksi Client (`client_production_code`),
  * sama seperti halaman produksi lain.
  */
-export async function fetchProductionCodeRows(): Promise<ComplainOptionRow[]> {
-  const { data, error } = await supabase
+export async function fetchProductionCodeRows(includeCompleted = true): Promise<ComplainOptionRow[]> {
+  let query = supabase
     .from('work_orders')
     .select('product, warna, size, client_production_code, product_note, source_order_id');
+  // Planning only offers unfinished variations. Complain retains completed
+  // production, since complaints may arrive after completion/invoicing.
+  if (!includeCompleted) query = query.not('prod_status', 'in', '(FINISHED,INVOICED)');
+  const { data, error } = await query;
 
   if (error || !data || data.length === 0) {
     return [];
@@ -79,7 +83,7 @@ export async function fetchProductionCodeData(): Promise<{
   options: ComplainProductionOption[];
   variants: ClientVariant[];
 }> {
-  const rows = await fetchProductionCodeRows();
+  const rows = await fetchProductionCodeRows(false);
   return {
     options: buildComplainOptions(rows),
     variants: buildClientVariants(rows),

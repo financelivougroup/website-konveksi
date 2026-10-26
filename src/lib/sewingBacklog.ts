@@ -70,7 +70,7 @@ function summarizeProduct(products: string[]): string {
 /**
  * Sisa Uang yang Harus Dikejar untuk satu baris Target bulanan.
  * Bulanan dan tidak kumulatif; hasil minimum Rp0; tidak memasukkan penalti
- * dan tidak mengubah rumus Utang Staf.
+ * dan tidak mengubah rumus Utang Staff.
  *
  * Basisnya `targetCostPosisi` (nilai uang target bulanan), bukan kolom
  * `salary` yang sudah dihapus.

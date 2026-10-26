@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, type ReactNode } from 'react';
 import { Loader2, Plus, RefreshCw, Search, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { PermanentDeleteDialog } from '@/components/Modals/PermanentDeleteDialog';
@@ -80,7 +80,7 @@ const EMPTY_CELL = <span className="text-gray-300">—</span>;
  * Kunci `useColumnSettings` sengaja TIDAK diubah: menggantinya akan membuat
  * pengaturan kolom yang sudah dibuat user kembali ke awal.
  */
-export function KaryawanTab() {
+export function KaryawanTab({ tabs }: { tabs?: ReactNode } = {}) {
   const { profile } = useAuth();
   const canDelete = canPermanentlyDelete(profile.role);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -262,9 +262,12 @@ export function KaryawanTab() {
 
   if (loading) {
     return (
-      <div className="flex-1 flex items-center justify-center">
-        <p className="text-slate-400 text-sm">Loading Karyawan...</p>
-      </div>
+      <>
+        <div className="px-6 pt-3">{tabs}</div>
+        <div className="flex-1 flex items-center justify-center">
+          <p className="text-slate-400 text-sm">Loading Karyawan...</p>
+        </div>
+      </>
     );
   }
 
@@ -273,13 +276,16 @@ export function KaryawanTab() {
   return (
     <>
       <div className="px-6 pt-3 pb-0">
-        <div className="flex items-center justify-end gap-2.5 mb-4">
-          <button onClick={refresh} className="h-8 px-3.5 text-[12px] font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 hover:shadow-md hover:shadow-slate-200 transition-all flex items-center gap-2">
-            <RefreshCw className="w-3.5 h-3.5" /> Refresh
-          </button>
-          <button onClick={openCreate} className="h-8 px-3.5 text-[12px] font-medium bg-primary text-white rounded-lg hover:bg-primary/90 hover:shadow-md hover:shadow-slate-300 transition-all flex items-center gap-2">
-            <Plus className="w-3.5 h-3.5" /> Tambah Karyawan
-          </button>
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+          {tabs}
+          <div className="ml-auto flex items-center gap-2.5">
+            <button onClick={refresh} className="h-8 px-3.5 text-[12px] font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 hover:shadow-md hover:shadow-slate-200 transition-all flex items-center gap-2">
+              <RefreshCw className="w-3.5 h-3.5" /> Refresh
+            </button>
+            <button onClick={openCreate} className="h-8 px-3.5 text-[12px] font-medium bg-primary text-white rounded-lg hover:bg-primary/90 hover:shadow-md hover:shadow-slate-300 transition-all flex items-center gap-2">
+              <Plus className="w-3.5 h-3.5" /> Tambah Karyawan
+            </button>
+          </div>
         </div>
         {message && <div className="mb-3 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[12px] text-blue-700">{message}</div>}
       </div>
@@ -344,16 +350,15 @@ export function KaryawanTab() {
             <DialogTitle className="text-[14px]">
               {editTarget ? 'Edit Karyawan' : 'Tambah Karyawan Baru'}
             </DialogTitle>
-            <DialogDescription className="text-[12px]">
-              Karyawan aktif bisa dipilih di Planning Produksi, Target Jahit, dan
-              modul produksi lainnya.
+            <DialogDescription className="sr-only">
+              Form data karyawan.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-3.5 py-1">
             <div className="space-y-1.5">
               <Label htmlFor="karyawan-nama" className="text-[12px]">
-                Nama karyawan <span className="text-rose-600">*</span>
+                Nama karyawan
               </Label>
               <Input
                 id="karyawan-nama"
@@ -366,7 +371,7 @@ export function KaryawanTab() {
 
             <div className="space-y-1.5">
               <Label htmlFor="karyawan-posisi" className="text-[12px]">
-                Posisi <span className="text-rose-600">*</span>
+                Posisi
               </Label>
               <Select value={form.posisi} onValueChange={(value) => setField('posisi', value)}>
                 <SelectTrigger id="karyawan-posisi" className="h-9 text-[13px]">
@@ -384,7 +389,7 @@ export function KaryawanTab() {
 
             <div className="space-y-1.5">
               <Label htmlFor="karyawan-tanggal-mulai" className="text-[12px]">
-                Tanggal mulai bekerja <span className="text-rose-600">*</span>
+                Tanggal mulai bekerja
               </Label>
               {/* Tanpa `maxDate`: tanggal masa depan boleh dipilih, sesuai
                   keputusan pemilik produk untuk tanggal mulai kerja. */}
@@ -410,10 +415,6 @@ export function KaryawanTab() {
                   ))}
                 </SelectContent>
               </Select>
-              <p className="text-[11px] text-slate-400">
-                Karyawan Non-Aktif tidak muncul di dropdown Planning Produksi,
-                tapi riwayatnya tetap tersimpan.
-              </p>
             </div>
           </div>
 

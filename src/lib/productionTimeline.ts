@@ -205,12 +205,23 @@ export function buildDayPoints(rows: StageRow[]): DayPoint[] {
 }
 
 /**
- * Saring baris ke satu tahap (atau semua), urut menurun untuk tabel riwayat.
+ * Saring baris ke satu tahap (atau semua), **urut menaik** untuk tabel riwayat:
+ * tanggal terbaru berada paling bawah (permintaan user), sama seperti urutan
+ * kronologis laporan.
  *
- * Diurutkan ulang di sini — bukan hanya mengandalkan urutan masukan — supaya
- * hasilnya tetap benar apa pun asal barisnya.
+ * Diurutkan ulang di sini — bukan hanya mengandalkan urutan masukan dari
+ * `buildStageRows` (yang tetap menurun untuk kebutuhan lain) — supaya hasilnya
+ * benar apa pun asal barisnya. Tanggal kosong ditempatkan paling atas karena
+ * tidak punya posisi kronologis; seri dipecah urutan lini lalu id.
  */
 export function filterStageRows(rows: StageRow[], stage: StageKey | 'all'): StageRow[] {
   const filtered = stage === 'all' ? rows : rows.filter((row) => row.stage === stage);
-  return [...filtered].sort(compareDesc);
+  return [...filtered].sort(compareAsc);
+}
+
+function compareAsc(a: StageRow, b: StageRow): number {
+  if (!a.tanggal !== !b.tanggal) return a.tanggal ? 1 : -1;
+  if (a.tanggal !== b.tanggal) return a.tanggal < b.tanggal ? -1 : 1;
+  if (a.stage !== b.stage) return STAGE_INDEX[a.stage] - STAGE_INDEX[b.stage];
+  return a.id < b.id ? -1 : 1;
 }

@@ -14,6 +14,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { findClientByBrand } from '@/lib/clientCode';
+import { T_CODE } from '@/lib/tableStyles';
 import { cn } from '@/lib/utils';
 import {
   CLIENT_ORDER_FIXTURES,
@@ -151,7 +152,7 @@ export function ClientProductionCodePicker({
                 value={keyword}
                 onChange={(event) => setKeyword(event.target.value)}
                 placeholder="Cari kode produksi, nomor order, atau kode client…"
-                className="h-9 pl-8 font-mono text-[13px]"
+                className={`h-9 pl-8 text-[13px] ${T_CODE}`}
               />
             </div>
             {/* Tempat pemanggilan API nanti. Disabled dengan alasan tertulis
@@ -213,7 +214,7 @@ export function ClientProductionCodePicker({
                             )}
                           />
                           <span className="min-w-0 flex-1">
-                            <span className="block truncate font-mono text-[13px] text-slate-800">
+                            <span className={`block truncate text-[13px] text-slate-800 ${T_CODE}`}>
                               {order.productNote}
                             </span>
                             <span className="mt-0.5 block text-[11px] text-slate-500">

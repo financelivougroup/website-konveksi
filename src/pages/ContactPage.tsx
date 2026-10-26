@@ -31,6 +31,14 @@ const TABS: PillTabItem<ContactTabId>[] = [
  */
 export function ContactPage() {
   const [activeTab, setActiveTab] = useState<ContactTabId>('register-penjahit');
+  const tabs = (
+    <PillTabs
+      items={TABS}
+      active={activeTab}
+      aria-label="Pilih master data Contact"
+      onChange={setActiveTab}
+    />
+  );
 
   return (
     <main className="flex-1 flex flex-col min-w-0 overflow-auto">
@@ -40,19 +48,13 @@ export function ContactPage() {
             <h1 className="text-[17px] font-semibold tracking-tight text-slate-900">Contact</h1>
           </div>
         </div>
-        <PillTabs
-          items={TABS}
-          active={activeTab}
-          aria-label="Pilih master data Contact"
-          onChange={setActiveTab}
-        />
       </div>
 
       {/* Isi tab mengisi sisa tinggi; tiap tab menggulir sendiri di dalamnya. */}
       <div className="flex-1 flex flex-col min-h-0">
-        {activeTab === 'register-penjahit' && <KaryawanTab />}
-        {activeTab === 'register-client' && <ClientTab />}
-        {activeTab === 'vendor' && <VendorTab />}
+        {activeTab === 'register-penjahit' && <KaryawanTab tabs={tabs} />}
+        {activeTab === 'register-client' && <ClientTab tabs={tabs} />}
+        {activeTab === 'vendor' && <VendorTab tabs={tabs} />}
       </div>
     </main>
   );

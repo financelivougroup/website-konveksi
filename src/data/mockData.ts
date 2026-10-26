@@ -207,6 +207,15 @@ export const viewConfig: Record<ModuleId, ViewConfig> = {
     sync: false,
     columns: [],
   },
+  // Monitor Kinerja Produksi — halaman baca-saja yang dirender langsung oleh
+  // KpiProduksiPage/KpiOrangPage, bukan lewat DataTable. Kolomnya kosong karena
+  // tidak ada tabel generik di baliknya.
+  'laporan-kinerja-produksi': {
+    title: 'Monitor Kinerja Produksi',
+    editable: false,
+    sync: false,
+    columns: [],
+  },
   // Profit & Loss dibaca langsung dari Supabase lewat ProfitLossPage (menggabung
   // invoices + expense_entries), jadi columns dikosongkan seperti halaman
   // custom lainnya.
@@ -362,6 +371,10 @@ export const mockData: Record<ModuleId, Record<string, unknown>[]> = {
   // Live data: Laporan Target Jahit dibaca lewat src/services/targetJahit.ts dan
   // diagregasi baca-saja di src/components/Laporan/TargetJahitReportPage.tsx.
   'laporan-target-jahit': [],
+  // Live data: Monitor Kinerja Produksi membaca v_produksi_harian lewat RPC
+  // kpi_produksi_harian() di src/services/kpiProduksi.ts dan menghitung sendiri
+  // seluruh turunannya di src/lib/kpi.ts. Tidak ada fixture.
+  'laporan-kinerja-produksi': [],
   // Live data: snapshot stok + produksi dibaca lewat src/services/lowStock.ts.
   // Fixture kosong ini bukan sumber persistent dan tidak pernah dipakai halaman.
   'stock-monitoring': [],
@@ -452,6 +465,7 @@ export const navGroups = [
     items: [
       { id: 'profit-loss' as const, label: 'Profit & Loss', icon: 'TrendingUp' },
       { id: 'laporan-target-jahit' as const, label: 'Laporan Target Jahit', icon: 'Target' },
+      { id: 'laporan-kinerja-produksi' as const, label: 'Monitor Kinerja Produksi', icon: 'BarChart3' },
       { id: 'stock-monitoring' as const, label: 'Stock Monitoring', icon: 'PackageSearch' },
     ],
   },

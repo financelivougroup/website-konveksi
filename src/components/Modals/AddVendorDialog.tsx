@@ -120,15 +120,15 @@ export function AddVendorDialog({
           <DialogTitle className="text-[14px]">
             {isEdit ? 'Edit Vendor' : 'Tambah Vendor Baru'}
           </DialogTitle>
-          <DialogDescription className="text-[12px]">
-            Vendor tersimpan di Master Data → Vendor dan bisa dipilih saat mencatat biaya.
+          <DialogDescription className="sr-only">
+            Form data vendor.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3.5 py-1">
           <div className="space-y-1.5">
             <Label htmlFor="add-vendor-nama" className="text-[12px]">
-              Nama vendor <span className="text-rose-600">*</span>
+              Nama vendor
             </Label>
             <Input
               id="add-vendor-nama"
@@ -175,9 +175,6 @@ export function AddVendorDialog({
                 ))}
               </SelectContent>
             </Select>
-            <p className="text-[11px] text-slate-400">
-              Vendor non-aktif tidak muncul lagi di pilihan saat mencatat biaya.
-            </p>
           </div>
 
           {error && (

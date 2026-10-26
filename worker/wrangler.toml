@@ -7,12 +7,14 @@ compatibility_date = "2025-01-01"
 # R2 tidak punya RLS, jadi TIDAK ada lapisan kedua di belakangnya.
 
 [vars]
-R2_BUCKET = "konveksi-attachments"
+# Nama bucket R2 — huruf kecil, persis seperti di endpoint S3:
+#   https://<account>.r2.cloudflarestorage.com/konveksi
+R2_BUCKET = "konveksi"
 SIGN_EXPIRY_SECONDS = "900"
 SUPABASE_URL = "https://ihmhxacmvvsqtnylnwrs.supabase.co"
 # Origin aplikasi yang diizinkan memanggil Worker, dipisah koma.
-# Tambahkan origin produksi saat sudah ada.
-ALLOWED_ORIGINS = "http://localhost:3000,http://127.0.0.1:5173,http://localhost:5173"
+# Izinkan kedua hostname lokal dan origin produksi secara eksplisit, bukan wildcard.
+ALLOWED_ORIGINS = "http://localhost:3000,http://127.0.0.1:3000,http://127.0.0.1:5173,http://localhost:5173,https://konveksi.livougroup.com"
 
 # Rahasia — JANGAN ditulis di berkas ini. Pasang dengan:
 #   npx wrangler secret put R2_ACCOUNT_ID

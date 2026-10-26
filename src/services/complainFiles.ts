@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import { removeAttachment } from '@/services/permanentDeletion';
-import { publicUrlFor, removeFromR2, uploadToR2 } from '@/services/r2Storage';
+import { attachmentUrlFor, durableAttachmentUrlFor, removeFromR2, uploadToR2 } from '@/services/r2Storage';
 
 const TABLE = 'complain_files';
 
@@ -28,7 +28,9 @@ function mapRow(row: DbRow): ComplainFileRow {
     complainId: row.complain_id,
     fileName: row.file_name,
     filePath: row.file_path,
-    fileUrl: row.file_url,
+    // Dihitung ulang dari path: `file_url` tersimpan membeku pada konfigurasi
+    // saat unggah dan bisa menunjuk `r2.dev` (diblokir ISP) atau host lokal.
+    fileUrl: attachmentUrlFor('complain-proofs', row.file_path, row.file_url) ?? '',
     uploadedAt: row.uploaded_at,
   };
 }
@@ -87,7 +89,9 @@ export async function uploadComplainProof(input: UploadComplainProofInput): Prom
   return {
     fileName: input.file.name,
     filePath,
-    fileUrl: publicUrlFor('complain-proofs', filePath) ?? '',
+    // Nilai untuk DISIMPAN: kosong saat dikembangkan lokal (lihat
+    // `durableAttachmentUrlFor`); pembacaan menghitung ulang dari path.
+    fileUrl: durableAttachmentUrlFor('complain-proofs', filePath),
     error: null,
   };
 }

@@ -33,6 +33,8 @@ async function pic(stage) {
   await evaluate(`document.getElementById('${stage}-pic-trigger').scrollIntoView({block:'center'})`);
   await click(`#${stage}-pic-trigger`);
   await until(`document.querySelector('[role="option"]')`);
+  const options = await evaluate(`Array.from(document.querySelectorAll('[role="option"]')).filter(el=>!el.textContent.startsWith('Pilih ')).map(el=>el.textContent.trim())`);
+  assert.deepEqual(options, stage === 'kancing' ? ['Fixture Penjahit', 'Fixture Finisher'] : stage === 'finishing' ? ['Fixture Finisher'] : ['Fixture Penjahit'], `${stage}: PIC from Contact positions`);
   const point = await evaluate(`(()=>{const r=Array.from(document.querySelectorAll('[role="option"]')).find(el=>!el.textContent.startsWith('Pilih ')).getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`);
   await send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...point });
   await send('Input.dispatchMouseEvent', { type: 'mousePressed', button: 'left', clickCount: 1, ...point });
@@ -178,7 +180,7 @@ for (const stage of ['sewing', 'kancing', 'finishing']) {
     if (mode === 'loading') await until(`document.getElementById('${stage}-orders')?.getAttribute('aria-busy')==='true'`);
     if (mode === 'error') {
       await until(`document.body.textContent.includes('Work order gagal dimuat')`);
-      assert.equal(await evaluate('window.entryFixture.fetchCalls.length'), stage === 'sewing' ? 3 : 2, 'first-load failure count');
+      assert.equal(await evaluate('window.entryFixture.fetchCalls.length'), 3, 'first-load failure count');
       assert.equal(await evaluate(`window.entryFixture.fetchCalls.includes('workOrders')`), false, 'WO injected while records fetch');
       assert.equal(await evaluate(`document.querySelector('[aria-roledescription="slide"] button')===null`), true);
       await evaluate(`Array.from(document.querySelectorAll('button')).find(b=>b.textContent==='Coba lagi').click()`);
@@ -188,7 +190,7 @@ for (const stage of ['sewing', 'kancing', 'finishing']) {
       await click('[aria-roledescription="slide"] button');
       await until(`document.getElementById('${stage}-qty').checkVisibility()`);
     } else {
-      await until(`document.body.textContent.includes('Tidak ada WO yang tersedia')`);
+      await until(`document.body.textContent.includes('Tidak ada produksi yang tersedia')`);
     }
     assert.equal(await evaluate('document.documentElement.scrollWidth <= innerWidth'), true, `${stage} ${mode} overflow`);
   }
@@ -203,11 +205,7 @@ const expectedEligibleIds = {
 const ownService = { sewing: 'sewingRecords', kancing: 'kancingRecords', finishing: 'finishingRecords' };
 const upstreamService = { sewing: 'cuttingRecords', kancing: 'sewingRecords', finishing: 'kancingRecords' };
 async function displayedIds() {
-  return evaluate(`Array.from(document.querySelectorAll('[aria-roledescription="slide"] button')).map(button=>{
-    const code=Array.from(button.querySelectorAll('span')).map(s=>s.textContent).find(text=>text.startsWith('WO: '))?.slice(4);
-    const wo=window.entryFixture.orders.find(order=>order.workCode===code);
-    if(!wo)throw new Error('unmapped card '+code);return wo.id;
-  })`);
+  return evaluate(`Array.from(document.querySelectorAll('[aria-roledescription="slide"]')).map(slide=>slide.dataset.workOrderId)`);
 }
 async function searchOrders(stage, query) {
   await evaluate(`(()=>{const el=document.getElementById('${stage}-orders-search');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(el,${JSON.stringify(query)});el.dispatchEvent(new Event('input',{bubbles:true}));})()`);
@@ -226,7 +224,7 @@ for (const stage of ['sewing', 'kancing', 'finishing']) {
   for (const id of ['ivory', 'champagne', 'equal', 'no-upstream', 'latest-cut-equal', 'zero-output', 'over-own']) {
     await searchOrders(stage, `ELIG-${id}`);
     if (expectedEligibleIds[stage].includes(id)) {
-      await until(`document.querySelectorAll('[aria-roledescription="slide"]').length===1 && document.querySelector('[aria-roledescription="slide"] button').textContent.includes('WO: ELIG-${id}')`);
+      await until(`document.querySelectorAll('[aria-roledescription="slide"]').length===1 && document.querySelector('[aria-roledescription="slide"]').dataset.workOrderId===${JSON.stringify(id)}`);
       assert.deepEqual(await displayedIds(), [id]);
     } else {
       await until(`document.body.textContent.includes('Tidak ada hasil pencarian')`);
@@ -248,7 +246,7 @@ for (const stage of ['sewing', 'kancing', 'finishing']) {
   assert.equal(await evaluate(`document.getElementById('${stage}-qty').checkVisibility()`), false);
   assert.equal(await evaluate('window.entryFixture.calls.length'), 0);
   const initialFetches = await evaluate('window.entryFixture.fetchCalls');
-  assert.equal(initialFetches.length, stage === 'sewing' ? 3 : 2);
+  assert.equal(initialFetches.length, 3);
   assert.equal(initialFetches.includes('workOrders'), false, 'WO collection is injected');
   assert.equal(initialFetches.filter(name=>name===upstreamService[stage]).length, 1);
   assert.equal(initialFetches.filter(name=>name===ownService[stage]).length, 1);
@@ -258,7 +256,7 @@ for (const stage of ['sewing', 'kancing', 'finishing']) {
   const retryFetches = await evaluate('window.entryFixture.fetchCalls');
   assert.equal(retryFetches.filter(name=>name===upstreamService[stage]).length, 2);
   assert.equal(retryFetches.filter(name=>name===ownService[stage]).length, 2);
-  assert.equal(retryFetches.filter(name=>name==='registerPenjahit').length, stage === 'sewing' ? 1 : 0);
+  assert.equal(retryFetches.filter(name=>name==='registerPenjahit').length, stage === 'sewing' ? 1 : 2);
   assert.equal(await evaluate('document.documentElement.scrollWidth <= innerWidth'), true);
   console.log(`PASS ${stage}: upstream-only service failure, no selection/submission, retry loads both record sources`);
 }

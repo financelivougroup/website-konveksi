@@ -262,7 +262,7 @@ test('filter satu tahap hanya mengembalikan tahap itu', () => {
   assert.equal(only[0].stage, 'sewing');
 });
 
-test('filterStageRows mengurut menurun walau masukan menaik', () => {
+test('filterStageRows mengurut menaik: tanggal terbaru di paling bawah', () => {
   const rows = buildStageRows(
     sources({
       sewing: [
@@ -271,7 +271,18 @@ test('filterStageRows mengurut menurun walau masukan menaik', () => {
       ],
     }),
   );
-  assert.deepEqual(filterStageRows(rows, 'all').map((r) => r.id), ['s2', 's1']);
+  assert.deepEqual(filterStageRows(rows, 'all').map((r) => r.id), ['s1', 's2']);
+});
+
+test('filterStageRows menaruh tanggal kosong paling atas tanpa mengacak tanggal valid', () => {
+  const rows = buildStageRows(
+    sources({
+      cutting: [cutting({ id: 'c1', inputAt: '2026-09-02' })],
+      sewing: [sewing({ id: 's1', tanggalLaporan: '2026-09-10' })],
+      kancing: [kancing({ id: 'k1', tanggalLaporan: '' })],
+    }),
+  );
+  assert.deepEqual(filterStageRows(rows, 'all').map((r) => r.id), ['k1', 'c1', 's1']);
 });
 
 test('filter tahap tanpa baris menghasilkan array kosong', () => {

@@ -4,8 +4,9 @@ This project is a **Production Monitoring Dashboard** for a garment manufacturin
 
 ## Before Making Any Changes
 
-1. **Read `project.md` first** — it contains the full project overview, tech stack, completed features, pending tasks, and latest progress log. Every Claude session must start by reading this file.
-2. Check `docs/superpowers/specs/` and `docs/superpowers/plans/` for design specs and implementation plans relevant to your task.
+1. **Read `project.md` first** — start with its current overview and latest progress; dated older entries are history, not all current instructions.
+2. **Read `CONTEXT.md` and `GLOSSARY.md`** before domain work, then relevant decisions from `docs/adr/README.md`. Follow `docs/agents/domain.md` when updating these documents.
+3. Check `docs/README.md`, `docs/superpowers/specs/`, and `docs/superpowers/plans/` for relevant design history and implementation plans; check supersession notes before applying old requirements.
 
 ## Delegation and Model Cost
 
@@ -38,7 +39,7 @@ This project is a **Production Monitoring Dashboard** for a garment manufacturin
 
 ## Database Operations — Supabase MCP Required
 
-- **Deployment note:** this project runs against a **local Supabase instance** (not the Supabase cloud service), chosen so storage & RAM usage depends on this laptop rather than on cloud quota. Either setup (local or cloud) is acceptable — the requirement is that **Claude always remembers and uses the Supabase MCP** as the database-operation interface, regardless of where the database runs. If the MCP points at the local instance, that is the correct setup; never bypass it with ad-hoc SQL clients.
+- **Deployment note (verified 2026-10-22):** the application's `.env` and the Supabase MCP in `.mcp.json` currently target the same **Supabase cloud project**; running Vite/Worker locally does not make the database local. Local or cloud deployment is acceptable. **Always use Supabase MCP** as the database-operation interface, inspect the configured target before database work, and never switch environments or bypass MCP with ad-hoc SQL clients as a side effect of documentation work.
 - For every task that touches the database — including schema inspection, queries, migrations, tables, columns, constraints, indexes, RLS policies, database functions, triggers, or production data — **use Supabase MCP before proposing or applying changes**.
 - Inspect the current schema and relevant existing objects through Supabase MCP first. Do not infer the live database state only from TypeScript types, service files, documentation, or old migration files.
 - Do not write or execute assumption-based SQL without first obtaining the applicable schema context through Supabase MCP. SQL migration files may still be created when needed, but their contents must be based on the MCP-verified current schema.
@@ -46,6 +47,16 @@ This project is a **Production Monitoring Dashboard** for a garment manufacturin
 - If Supabase MCP is unavailable, disconnected, or awaiting authorization, **stop the database task and ask the user to activate or authorize it**. Do not silently fall back to manual SQL or guess the schema.
 
 ## Product Design Direction
+
+### Figma approval before UI implementation
+
+For every task that adds or changes a design/UI (including layout, dialogs, typography, colors, or component presentation):
+
+1. Prepare or update the proposed design in **Figma** using the applicable Figma skills and existing shadcn/ReUI design system. Use the user's designated file; if no destination is known, ask for it before writing to Figma.
+2. Share the Figma file/frame link for review and **wait for the user's explicit approval of that design**.
+3. Implement only the approved design in application code. A request to design something, an existing Figma connection, or approval of another task does not replace this approval.
+
+If Figma is disconnected or requires authorization, pause the design workflow and ask the user to connect/authorize it; do not substitute a code-first implementation or another preview destination. This gate applies to design/UI work, not unrelated backend logic, tests, or documentation maintenance. The user may explicitly waive the gate for a particular task.
 
 - Treat this product primarily as a **SaaS operations dashboard**, not as a marketing landing-page project. Prioritize information hierarchy, operational clarity, compact data presentation, predictable interactions, and consistency with the existing dashboard.
 - Do not invoke or apply skills, rules, or styling guidance made specifically for landing pages or marketing sites when designing dashboard screens. Only use landing-page-specific guidance when the user explicitly asks to work on a marketing or landing page.

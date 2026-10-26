@@ -11,8 +11,9 @@ import { ColumnSettingsButton } from '@/components/Table/ColumnSettings';
 import { useColumnSettings } from '@/lib/columnSettings';
 import { applyFilters, applySorts, type FieldOption, type FilterRule, type SortRule } from '@/lib/tableQuery';
 import { fetchAll as fetchAllTarget, type TargetJahitRow } from '@/services/targetJahit';
-import { fetchAll as fetchAllRegister, type RegisterPenjahitRow } from '@/services/registerPenjahit';
-import { computeDebt, buildPriceMap, type DebtSummary } from '@/services/staffDebt';
+import { buildPriceMap } from '@/services/staffDebt';
+import { applySettlementMonths, fetchStaffSettlements, type StaffSettlement } from '@/services/staffSettlement';
+import { StaffSettlementDialog } from '@/components/TargetJahit/StaffSettlementDialog';
 import * as daftarLiburSvc from '@/services/daftarLibur';
 import * as sewingRecordSvc from '@/services/sewingRecords';
 import * as workOrderSvc from '@/services/workOrders';
@@ -20,16 +21,13 @@ import * as targetJahitDetailSvc from '@/services/targetJahitDetail';
 import { enrichTargetRows, enrichDetails } from '@/lib/targetCompute';
 import { buildSalaryLookup, emptySalaryLookup, type SalaryLookup } from '@/lib/staffSalary';
 import * as expenseSvc from '@/services/expenseEntries';
-import { calculateDesignBenefits } from '@/lib/targetBenefit';
 import { buildSewingBacklog, calculateMonthlyRemainingMoney, type SummaryRate } from '@/lib/sewingBacklog';
 import { fetchSewingRatesByProductionOrder, type SewingRateByProductionOrder } from '@/services/productionOrderPrices';
 import type { WorkOrderDesignIdentity } from '@/lib/targetDetailIdentity';
-import { filterDebtRowsByLatestAccum } from '@/lib/staffDebtEligibility';
-import { sumRealisasiCostByStaff } from '@/lib/staffDebtAmounts';
 import type { SewingRecord, WorkOrder } from '@/types/pipeline';
 import { useAuth } from '@/contexts/AuthContext';
 import { PermanentDeleteDialog } from '@/components/Modals/PermanentDeleteDialog';
-import { canPermanentlyDelete } from '@/lib/permissions';
+import { canPermanentlyDelete, canViewAllStaffMoney } from '@/lib/permissions';
 import type { PermanentDeleteResult } from '@/types/permanentDeletion';
 
 // Map live snake_case target_jahit columns to camelCase render keys.
@@ -108,24 +106,6 @@ function formatRateValue(rate: number | null): ReactNode {
   return rate == null ? <span className="text-gray-300">—</span> : formatCurrency(rate);
 }
 
-interface DebtRow {
-  nama: string;
-  totalTargetCost: number;
-  /** Realisasi Cost / Posisi — pengurang Target Cost (dulu "Total Nilai PCS"). */
-  realisasiCost: number;
-  utang: number;
-}
-
-interface BenefitRow {
-  id: number;
-  nama: string;
-  bulan: string;
-  targetMonthly: number;
-  realisasiMonthly: number;
-  extraProduction: number;
-  benefitAmount: number;
-}
-
 function renderCell(col: ColDef, row: Record<string, unknown>) {
   const v = row[col.key];
   if (col.key === 'bulanTahun') {
@@ -147,7 +127,7 @@ function renderCell(col: ColDef, row: Record<string, unknown>) {
     }
     return formatCurrency(Number(v));
   }
-  if (col.format === 'currency') return v == null || v === '' ? <span className="text-gray-300">—</span> : formatCurrency(Number(v));
+  if (col.format === 'currency') return v == null || v === '' || !Number.isFinite(Number(v)) ? <span className="text-gray-400">Belum tersedia</span> : formatCurrency(Number(v));
   if (col.format === 'percent') return v == null || v === '' ? <span className="text-gray-300">—</span> : `${(Number(v) * 100).toFixed(1)}%`;
   if (col.key === 'targetDaily') {
     if (v == null || v === '') return <span className="text-gray-300">—</span>;
@@ -174,7 +154,15 @@ function renderCell(col: ColDef, row: Record<string, unknown>) {
 
 export function TargetJahitPage() {
   const { profile } = useAuth();
-  const canSeeDebt = profile.role === 'owner' || profile.role === 'finance';
+  // Owner & finance melihat seluruh staf; akun lain hanya barisnya sendiri.
+  // Aturan yang sama ditegakkan `staff_settlement_read` di database — UI ini
+  // cerminnya, bukan penggantinya.
+  const canSeeAllStaff = canViewAllStaffMoney(profile.role);
+  // `canSeeDebt` tetap berarti "boleh melihat penghasilan SELURUH staf" —
+  // dipakai kolom biaya di tab Target, enrich saldo, dan overlay. Jangan
+  // diganti `true`: yang dibuka untuk semua akun hanyalah tab Utang Staff &
+  // Benefit (beserta barisnya sendiri), bukan kolom gaji/biaya orang lain.
+  const canSeeDebt = canSeeAllStaff;
   const canDelete = canPermanentlyDelete(profile.role);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteIds, setDeleteIds] = useState<readonly string[]>([]);
@@ -213,9 +201,23 @@ export function TargetJahitPage() {
   const [backlogSearch, setBacklogSearch] = useState('');
   const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set());
 
-  // Utang Staf state.
-  const [debtRows, setDebtRows] = useState<DebtRow[]>([]);
-  const [debtLoading, setDebtLoading] = useState(false);
+  const [settlements, setSettlements] = useState<StaffSettlement[]>([]);
+  const [moneyError, setMoneyError] = useState<string | null>(null);
+  const [moneyLoading, setMoneyLoading] = useState(true);
+  const [staffDetailId, setStaffDetailId] = useState<number | null>(null);
+  const refreshMoney = useCallback(async () => {
+    setMoneyLoading(true);
+    setMoneyError(null);
+    const result = await fetchStaffSettlements();
+    if (result.error) { setMoneyError(result.error.message); }
+    // Akun tanpa hak lihat-seluruh hanya menerima barisnya sendiri dari server
+    // (dan `[]` bila belum terhubung ke data karyawan). Penyaringan di bawah
+    // adalah sabuk pengaman kedua, bukan pembatas utamanya.
+    else setSettlements(canSeeAllStaff ? result.data : result.data.filter(person => person.staffId === profile.orangId));
+    setMoneyLoading(false);
+    if (result.error) throw result.error;
+  }, [canSeeAllStaff, profile.orangId]);
+  useEffect(() => { void Promise.resolve().then(refreshMoney).catch(() => {}); }, [refreshMoney]);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -253,60 +255,18 @@ export function TargetJahitPage() {
     setLoading(false);
   }, []);
 
-  useEffect(() => { refresh(); }, [refresh]);
+  useEffect(() => { void Promise.resolve().then(refresh); }, [refresh]);
 
   // Live enrichment: all 22 columns computed from source data at render time
   // (workdays, realization from sewing_records, accumulation, status).
   const allEnriched = useMemo(
-    () => enrichTargetRows(items, sewing, workOrderDesign, prices, details, libur, new Date(), salaries),
-    [items, sewing, workOrderDesign, prices, details, libur, salaries],
+    () => {
+      const rows = enrichTargetRows(items, sewing, workOrderDesign, prices, details, libur, new Date(), salaries);
+      return canSeeDebt ? applySettlementMonths(rows, moneyLoading || moneyError ? [] : settlements) : rows;
+    },
+    [items, sewing, workOrderDesign, prices, details, libur, salaries, settlements, canSeeDebt, moneyLoading, moneyError],
   );
 
-  // Realisasi Cost / Posisi per penjahit — DIAMBIL dari baris hasil enrichment
-  // di atas, bukan dihitung ulang. Tab Utang Staf dan tab Target dengan demikian
-  // membaca angka yang sama; dua tempat yang menghitung nilai yang sama adalah
-  // cara paling mudah membuat keduanya berbeda diam-diam.
-  const realisasiCostByStaff = useMemo(
-    () => sumRealisasiCostByStaff(allEnriched),
-    [allEnriched],
-  );
-
-  const loadDebt = useCallback(async () => {
-    if (!canSeeDebt) return; // owner/finance only — never query debt for other roles
-    setDebtLoading(true);
-    try {
-      // Penjahit names: register_penjahit first, fall back to distinct nama in target_jahit.
-      const { data: registerRows } = await fetchAllRegister();
-      let names: string[] = [];
-      if (registerRows && registerRows.length > 0) {
-        names = registerRows.map((r: RegisterPenjahitRow) => r.picPenjahit);
-      } else {
-        names = Array.from(new Set(items.map((r) => r.nama).filter(Boolean))) as string[];
-      }
-
-      const results = await Promise.all(
-        names.map((n) => computeDebt(n, realisasiCostByStaff.get(n.trim()) ?? 0)),
-      );
-      const combined: DebtRow[] = names.map((nama, i) => {
-        const d: DebtSummary = results[i];
-        return {
-          nama,
-          totalTargetCost: d.totalTargetCost,
-          realisasiCost: d.realisasiCost,
-          utang: d.utang,
-        };
-      });
-      setDebtRows(combined);
-    } finally {
-      setDebtLoading(false);
-    }
-  }, [canSeeDebt, items, realisasiCostByStaff]);
-
-  useEffect(() => {
-    if (canSeeDebt && tab === 'utang-staf') {
-      loadDebt();
-    }
-  }, [tab, canSeeDebt, loadDebt]);
 
   // Backlog jahit global (baca-saja): seluruh Work Order yang masih punya sisa
   // jahit, dikelompokkan per Product Note. Dihitung murni di helper.
@@ -344,101 +304,55 @@ export function TargetJahitPage() {
     );
   }, [allEnriched, search]);
 
-  const visibleDebtRows = useMemo(
-    () => filterDebtRowsByLatestAccum(debtRows, allEnriched),
-    [debtRows, allEnriched],
-  );
+  const visibleDebtRows = moneyError || moneyLoading ? [] : settlements.filter(person => person.debt === null || person.debt > 0);
+  const debtGridRows = visibleDebtRows.map(person => ({...person, id: person.staffId}));
+  const moneyCell = (value: unknown) => value == null ? 'Belum tersedia' : formatCurrency(Number(value));
 
-  // The grid keys rows by `row.id` (`getRowId`); a debt row is identified by
-  // the staff name, so it is copied across as `id`.
-  const debtGridRows = useMemo(
-    () => visibleDebtRows.map((r) => ({ ...r, id: r.nama })),
-    [visibleDebtRows],
-  );
-
-  // Kolom tab "Utang Staf".
+  // Kolom tab "Utang Staff".
   const debtColumns = useMemo(
     () => [
       { key: 'nama', label: 'Nama', width: '180px' },
       {
-        key: 'totalTargetCost',
-        label: 'Target Cost',
+        key: 'salary',
+        label: 'Gaji diterima | Akumulasi',
         width: '140px',
         align: 'right' as const,
         render: (row: Record<string, unknown>) => (
-          <span className="tabular-nums text-gray-700">{formatCurrency(Number(row.totalTargetCost))}</span>
+          <span className="tabular-nums text-gray-700">{formatCurrency(Number(row.salary))}</span>
         ),
       },
       {
-        key: 'realisasiCost',
+        key: 'cost',
         label: 'Realisasi Cost / Posisi',
         width: '160px',
         align: 'right' as const,
         render: (row: Record<string, unknown>) => (
-          <span className="tabular-nums text-gray-700">{formatCurrency(Number(row.realisasiCost))}</span>
+          <span className="tabular-nums text-gray-700">{row.cost == null ? 'Belum tersedia' : formatCurrency(Number(row.cost))}</span>
         ),
       },
+      ...[['debtBeforeBenefit','Utang sebelum benefit'],['benefitOffset','Benefit untuk potong utang']].map(([key,label])=>({key,label,width:'180px',align:'right' as const,render:(row:Record<string,unknown>)=>row[key]==null?'Belum tersedia':formatCurrency(Number(row[key]))})),
       {
-        key: 'utang',
-        label: 'Utang',
+        key: 'debt',
+        label: 'Sisa utang',
         width: '140px',
         align: 'right' as const,
         render: (row: Record<string, unknown>) => (
-          <span className="font-semibold text-rose-600 tabular-nums">{formatCurrency(Number(row.utang))}</span>
+          <span className="font-semibold text-rose-600 tabular-nums">{row.debt == null ? 'Belum tersedia' : formatCurrency(Number(row.debt))}</span>
         ),
       },
     ],
     [],
   );
 
-  // Kolom tab "Benefit".
-  const benefitColumns = useMemo(
-    () => [
-      { key: 'nama', label: 'Nama', width: '170px' },
-      {
-        key: 'bulan',
-        label: 'Bulan',
-        width: '130px',
-        render: (row: Record<string, unknown>) => {
-          const bulan = String(row.bulan ?? '').trim();
-          return bulan ? formatMonthYearFromYm(bulan) : <span className="text-gray-300">—</span>;
-        },
-      },
-      {
-        key: 'targetMonthly',
-        label: 'Target | Monthly',
-        width: '120px',
-        align: 'right' as const,
-        render: (row: Record<string, unknown>) => <span className="tabular-nums text-gray-700">{String(row.targetMonthly)}</span>,
-      },
-      {
-        key: 'realisasiMonthly',
-        label: 'Realisasi | Monthly',
-        width: '130px',
-        align: 'right' as const,
-        render: (row: Record<string, unknown>) => <span className="tabular-nums text-gray-700">{String(row.realisasiMonthly)}</span>,
-      },
-      {
-        key: 'extraProduction',
-        label: 'Extra Production',
-        width: '130px',
-        align: 'right' as const,
-        render: (row: Record<string, unknown>) => (
-          <span className="font-semibold text-emerald-600 tabular-nums">+{String(row.extraProduction)}</span>
-        ),
-      },
-      {
-        key: 'benefitAmount',
-        label: 'Benefit Amount',
-        width: '140px',
-        align: 'right' as const,
-        render: (row: Record<string, unknown>) => (
-          <span className="tabular-nums text-gray-700">{formatCurrency(Number(row.benefitAmount))}</span>
-        ),
-      },
-    ],
-    [],
-  );
+  const benefitColumns = [
+    {key:'nama',label:'Nama',width:'180px'},
+    ...[
+      ['benefit','Benefit bruto | Akumulasi'],['debtBeforeBenefit','Utang sebelum benefit'],
+      ['benefitOffset','Benefit untuk potong utang'],['paid','Sudah dibayar tunai'],
+      ['payable','Sisa setelah utang | Sementara'],['finalPayable','Dapat dibayar | Final'],
+      ['debt','Utang | Akumulasi'],
+    ].map(([key,label]) => ({key,label,width:'180px',align:'right' as const,render:(row:Record<string,unknown>)=>moneyCell(row[key])})),
+  ];
 
   const normalized = useMemo(
     () => applySorts(applyFilters(enriched.map((r) => normalizeTargetRow(r)), filters), sorts),
@@ -637,24 +551,9 @@ export function TargetJahitPage() {
     [],
   );
 
-  // Benefit tab: rows with a surplus on at least one design (extraProduction > 0).
-  // The per-design rate is deliberately NOT a column here — it differs by
-  // production code, so it lives in the detail popup instead.
-  const benefitRows = useMemo<BenefitRow[]>(() => {
-    if (!canSeeDebt) return [];
-    return enriched
-      .filter((r) => r.extraProduction > 0)
-      .map((r) => ({
-        id: r.id,
-        nama: r.nama,
-        bulan: r.bulan_tahun,
-        targetMonthly: r.target_monthly,
-        realisasiMonthly: r.realisasiMonthly,
-        extraProduction: r.extraProduction,
-        benefitAmount: r.benefitAmount,
-      }))
-      .sort((a, b) => (b.bulan || '').localeCompare(a.bulan || '') || a.nama.localeCompare(b.nama));
-  }, [enriched, canSeeDebt]);
+  // Financial summaries deliberately ignore Target table search/month filters.
+  const benefitRows = moneyError || moneyLoading ? [] : settlements.filter(person => person.benefit === null || person.benefit > 0 || person.paid > 0)
+    .map(person => ({...person,id:person.staffId}));
 
   // Edit benefit rate inline dihapus: tarif benefit adalah milik DESAIN (dari
   // Register Harga), bukan satu angka per penjahit+bulan. Rinciannya ada di
@@ -721,7 +620,7 @@ export function TargetJahitPage() {
           </div>
           <div className="flex items-center gap-2.5">
             {tab === 'target' && (
-              <button onClick={refresh} className="h-8 px-3.5 text-[12px] font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 hover:shadow-md hover:shadow-slate-200 transition-all flex items-center gap-2">
+              <button onClick={() => { void refresh(); void refreshMoney().catch(() => {}); }} className="h-8 px-3.5 text-[12px] font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 hover:shadow-md hover:shadow-slate-200 transition-all flex items-center gap-2">
                 <RefreshCw className="w-3.5 h-3.5" /> Refresh
               </button>
             )}
@@ -749,44 +648,24 @@ export function TargetJahitPage() {
           >
             Belum Jahit
           </button>
-          {canSeeDebt ? (
-            <button
-              onClick={() => setTab('utang-staf')}
-              className={cn(
-                'h-8 px-4 text-[12px] font-medium rounded-lg transition-colors',
-                tab === 'utang-staf' ? 'bg-primary text-white shadow-md shadow-slate-300' : 'bg-white text-slate-600 border border-gray-200 hover:bg-slate-50 hover:text-blue-700',
-              )}
-            >
-              Utang Staf
-            </button>
-          ) : (
-            <button
-              disabled
-              title="Hanya owner/finance yang dapat melihat."
-              className="h-8 px-4 text-[12px] font-medium rounded-lg bg-slate-50 text-slate-400 border border-gray-200 cursor-not-allowed"
-            >
-              Utang Staf 🔒
-            </button>
-          )}
-          {canSeeDebt ? (
-            <button
-              onClick={() => setTab('benefit')}
-              className={cn(
-                'h-8 px-4 text-[12px] font-medium rounded-lg transition-colors',
-                tab === 'benefit' ? 'bg-primary text-white shadow-md shadow-slate-300' : 'bg-white text-slate-600 border border-gray-200 hover:bg-slate-50 hover:text-blue-700',
-              )}
-            >
-              Benefit
-            </button>
-          ) : (
-            <button
-              disabled
-              title="Hanya owner/finance yang dapat melihat."
-              className="h-8 px-4 text-[12px] font-medium rounded-lg bg-slate-50 text-slate-400 border border-gray-200 cursor-not-allowed"
-            >
-              Benefit 🔒
-            </button>
-          )}
+          <button
+            onClick={() => setTab('utang-staf')}
+            className={cn(
+              'h-8 px-4 text-[12px] font-medium rounded-lg transition-colors',
+              tab === 'utang-staf' ? 'bg-primary text-white shadow-md shadow-slate-300' : 'bg-white text-slate-600 border border-gray-200 hover:bg-slate-50 hover:text-blue-700',
+            )}
+          >
+            Utang Staff
+          </button>
+          <button
+            onClick={() => setTab('benefit')}
+            className={cn(
+              'h-8 px-4 text-[12px] font-medium rounded-lg transition-colors',
+              tab === 'benefit' ? 'bg-primary text-white shadow-md shadow-slate-300' : 'bg-white text-slate-600 border border-gray-200 hover:bg-slate-50 hover:text-blue-700',
+            )}
+          >
+            Benefit
+          </button>
         </div>
       </div>
 
@@ -824,7 +703,11 @@ export function TargetJahitPage() {
                 data={normalized as unknown as Record<string, unknown>[]}
                 selectedRows={selectedRows}
                 onToggleRow={handleToggleRow}
-                onRowClick={(row) => setOverlayId(Number(row.id))}
+                onRowClick={(row) => {
+                  const person = canSeeDebt ? settlements.find(p => p.nama === row.nama) : undefined;
+                  if (person) setStaffDetailId(person.staffId);
+                  else setOverlayId(Number(row.id));
+                }}
                 hiddenColumns={hiddenCols}
                 frozenColumns={frozenCols}
                 headerFrozen={headerFrozen}
@@ -851,7 +734,7 @@ export function TargetJahitPage() {
                   className="w-full h-8 pl-8 pr-3 text-[12px] border border-gray-200 rounded-lg outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
                 />
               </div>
-              <button onClick={refresh} className={cn(T_TOOLBAR_BTN, T_TOOLBAR_BTN_IDLE)}>
+              <button onClick={() => { void refresh(); void refreshMoney().catch(() => {}); }} className={cn(T_TOOLBAR_BTN, T_TOOLBAR_BTN_IDLE)}>
                 <RefreshCw className="w-3 h-3" /> Refresh
               </button>
               <span className="text-[11px] text-slate-400 ml-auto">{visibleBacklogGroups.length} product note belum jahit</span>
@@ -866,7 +749,7 @@ export function TargetJahitPage() {
             {backlogError ? (
               <div className="py-10 text-center">
                 <p className="text-[13px] text-rose-600 mb-3">Gagal memuat data Work Order: {backlogError}</p>
-                <button onClick={refresh} className={cn(T_TOOLBAR_BTN, T_TOOLBAR_BTN_IDLE)}>
+                <button onClick={() => { void refresh(); void refreshMoney().catch(() => {}); }} className={cn(T_TOOLBAR_BTN, T_TOOLBAR_BTN_IDLE)}>
                   <RefreshCw className="w-3 h-3" /> Refresh
                 </button>
               </div>
@@ -911,13 +794,16 @@ export function TargetJahitPage() {
           </>
         )}
 
+        {moneyError && <div role="alert" className="text-sm text-destructive">{moneyError} <Button variant="outline" size="sm" onClick={()=>void refreshMoney().catch(()=>{})}>Muat ulang saldo</Button></div>}
         {tab === 'utang-staf' && (
           <>
-            {debtLoading ? (
+            {moneyLoading ? (
               <p className="text-slate-400 text-sm">Menghitung utang staf...</p>
             ) : visibleDebtRows.length === 0 ? (
               <p className="text-slate-400 text-sm">
-                {debtRows.length === 0 ? 'Belum ada data utang staf.' : '🎉 Tidak ada staf dengan kekurangan target akumulasi dan utang jahit.'}
+                {moneyError ? 'Saldo belum tersedia.' : canSeeAllStaff
+                  ? 'Tidak ada utang staf pada seluruh riwayat yang dimuat.'
+                  : 'Belum ada utang atas namamu pada riwayat yang dimuat.'}
               </p>
             ) : (
               <div className={T_WRAP}>
@@ -925,6 +811,7 @@ export function TargetJahitPage() {
                   variant="plain"
                   columns={debtColumns}
                   data={debtGridRows as unknown as Record<string, unknown>[]}
+                  onRowClick={row => setStaffDetailId(Number(row.id))}
                   emptyMessage={
                     <div className="py-10 text-center text-[13px] text-gray-400">
                       Belum ada data utang staf.
@@ -938,15 +825,17 @@ export function TargetJahitPage() {
 
         {tab === 'benefit' && (
           <>
-            {benefitRows.length === 0 ? (
-              <p className="text-slate-400 text-sm">Belum ada staf yang produksinya melebihi target.</p>
+            {moneyLoading ? (
+              <p className="text-slate-400 text-sm">Menghitung benefit staf...</p>
+            ) : benefitRows.length === 0 ? (
+              <p className="text-slate-400 text-sm">{moneyError ? 'Saldo belum tersedia.' : 'Belum ada staf yang produksinya melebihi target.'}</p>
             ) : (
               <div className={T_WRAP}>
                 <DataTable
                   variant="plain"
                   columns={benefitColumns}
                   data={benefitRows as unknown as Record<string, unknown>[]}
-                  onRowClick={(row) => setOverlayId(Number(row.id))}
+                  onRowClick={(row) => setStaffDetailId(Number(row.id))}
                   emptyMessage={
                     <div className="py-10 text-center text-[13px] text-gray-400">
                       Belum ada staf yang produksinya melebihi target.
@@ -959,6 +848,7 @@ export function TargetJahitPage() {
         )}
       </div>
 
+      <StaffSettlementDialog person={(() => { const person=settlements.find(p=>p.staffId===staffDetailId);return person?{...person,enabled:person.enabled&&!moneyLoading&&!moneyError}:null; })()} onClose={()=>setStaffDetailId(null)} onChanged={refreshMoney} />
       {/* ===== Full-screen detail overlay (pola Kanban card detail) ===== */}
       <Dialog
         open={overlayRow !== null}
@@ -974,12 +864,12 @@ export function TargetJahitPage() {
         if (!src) return null;
         const myDetails = details.filter((d) => d.targetJahitId === src.id);
         const enrichedD = enrichDetails(myDetails, sewing, src.nama, src.bulan_tahun, workOrderDesign);
-        // Benefit dihitung PER DESAIN (tarif beda-beda per kode produksi), dan
-        // hanya untuk owner/finance — sama seperti kolom biaya lainnya.
-        const designBenefits = canSeeDebt
-          ? calculateDesignBenefits(myDetails, enrichedD.map((e) => e.qtyRealisasi), prices)
-          : [];
-        const totalBenefit = designBenefits.reduce((sum, b) => sum + b.benefitAmount, 0);
+        const monthlyMoney = canSeeDebt ? settlements.find(p=>p.nama===src.nama)?.months.find(m=>m.month.slice(0,7)===src.bulan_tahun) : undefined;
+        const designBenefits = myDetails.map(detail => {
+          const entries = monthlyMoney?.entries.filter(e => e.productNote===detail.productNote && e.product===detail.product && (e.warna??'')===(detail.warna??'')) ?? [];
+          return {extraProduction:entries.reduce((sum,e)=>sum+e.extra,0),benefitRate:entries.length===1?entries[0].rate??0:0,benefitAmount:entries.reduce((sum,e)=>sum+(e.benefit??0),0)};
+        });
+        const totalBenefit = monthlyMoney?.benefit ?? 0;
         // The grid reads the realized qty and value from the enriched row, so
         // both are merged onto the raw detail row here — the cell renderers
         // stay free of index lookups into a parallel array.

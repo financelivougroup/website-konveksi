@@ -1,34 +1,30 @@
 # Domain Docs
 
-How the engineering skills should consume this repo's domain documentation when exploring the codebase.
+Repository ini memakai **satu konteks domain**. Menu produksi, kinerja, dan finance merupakan area dalam konteks yang sama; tidak perlu membuat context map atau glossary per folder.
 
-## Before exploring, read these
+## Sebelum eksplorasi
 
-- **`CONTEXT.md`** at the repo root, or
-- **`CONTEXT-MAP.md`** at the repo root if it exists: it points at one `CONTEXT.md` per context. Read each one relevant to the topic.
-- **`docs/adr/`**: read ADRs that touch the area you're about to work in. In multi-context repos, also check `src/<context>/docs/adr/` for context-scoped decisions.
+1. Baca ringkasan dan Latest Progress di `project.md` sesuai `CLAUDE.md`.
+2. Baca `CONTEXT.md` untuk batas domain, pemetaan implementasi, akses, dan kesenjangan yang diketahui.
+3. Gunakan istilah bisnis dari `GLOSSARY.md`; baca ADR terkait melalui `docs/adr/README.md` sebelum mengubah keputusan yang sudah ada.
+4. Untuk pekerjaan fitur, temukan spec/plan terkait melalui `docs/README.md`. Dokumen bertanggal adalah riwayat desain/pengujian; periksa status dan perubahan yang menggantikannya.
 
-If any of these files don't exist, **proceed silently**. Don't flag their absence; don't suggest creating them upfront. The `/domain-modeling` skill creates them lazily when terms or decisions actually get resolved.
+## Satu fungsi per dokumen
 
-## File structure
+| Dokumen | Isi | Saat diperbarui |
+|---|---|---|
+| `GLOSSARY.md` | Definisi bisnis singkat, istilah kanonis dan yang dihindari | Segera ketika arti istilah disepakati; tanpa tabel DB, API, status implementasi, atau rencana kerja |
+| `CONTEXT.md` | Batas domain, hubungan konsep, pemetaan kode, aturan aktif, batas verifikasi | Saat perilaku atau pemahaman terkini berubah |
+| `docs/adr/NNNN-slug.md` | Alasan keputusan yang mahal dibalik, mengejutkan tanpa konteks, dan melibatkan trade-off nyata | Hanya bila ketiganya terpenuhi; bukan untuk setiap perubahan UI |
+| `project.md` | Ringkasan, pekerjaan terbuka dan Latest Progress | Pada akhir tugas; sebutkan bukti yang dijalankan serta batasnya |
+| Spec/plan/checkpoint bertanggal | Desain atau bukti pada saat itu | Pertahankan riwayat; tambahkan pointer supersession bila perlu, bukan menulis ulang hasil lama menjadi seolah baru |
 
-Single-context repo:
+## Menyelaraskan dokumen
 
-```text
-/
-├── CONTEXT.md
-├── docs/adr/
-│   ├── 0001-event-sourced-orders.md
-│   └── 0002-postgres-for-write-model.md
-└── src/
-```
+- Cocokkan pernyataan implementasi dengan working tree, termasuk perubahan belum commit. Catat konflik; dokumentasi tidak boleh mengubah perilaku aplikasi secara terselubung.
+- Untuk klaim live database, baca objek yang relevan lewat **Supabase MCP**. Migration lama dan tipe TypeScript adalah petunjuk, bukan bukti objek live sudah terpasang.
+- Pisahkan role akun, posisi karyawan, hak baca, hak tulis, dan release gate. Jangan menerjemahkan "tab terbuka" sebagai izin semua transaksi.
+- Saat ADR berubah, beri status superseded dan tautkan penggantinya. ADR retrospektif menyebut bahwa ia merekam keputusan lama, bukan persetujuan baru.
+- Uji tautan lokal dan ejaan istilah sesudah edit. Laporkan hal yang belum diuji; browser fixture, impersonasi SQL, dan login nyata adalah bukti berbeda.
 
-## Use the glossary's vocabulary
-
-When your output names a domain concept, use the term as defined in `CONTEXT.md`. Don't drift to synonyms the glossary explicitly avoids.
-
-If the concept you need isn't in the glossary yet, reconsider the terminology or note the gap for `/domain-modeling`.
-
-## Flag ADR conflicts
-
-If your output contradicts an existing ADR, surface it explicitly rather than silently overriding.
+Format glossary dan ADR mengikuti skill `mattpocock-skills:domain-modeling` yang terpasang. Gunakan `mattpocock-skills:writing-for-agents` ketika mengubah instruksi pembacaan dokumen.

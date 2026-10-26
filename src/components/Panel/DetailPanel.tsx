@@ -379,7 +379,7 @@ function FormField({ label, required, children }: { label: string; required?: bo
     <div className="mb-3.5">
       <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
         {label}
-        {required && <span className="text-rose-400 ml-0.5">*</span>}
+        {required && <span className="sr-only"> (wajib diisi)</span>}
       </label>
       {children}
     </div>

@@ -59,8 +59,41 @@ export function r2PublicUrl(
   return `${base}/${r2Key(logicalBucket, path)}`;
 }
 
+/**
+ * Awalan rute baca lampiran di Worker (`GET /media/<jenis>/<path>`).
+ *
+ * Kenapa lewat Worker, bukan `r2.dev`: domain `*.r2.dev` diblokir DNS oleh
+ * beberapa ISP Indonesia ("Internet Positif"), sehingga `<img>` tidak pernah
+ * sampai ke Cloudflare. `*.workers.dev` tidak ikut diblokir, jadi Worker dipakai
+ * sebagai pintu baca sekaligus pintu tulis.
+ */
+export const MEDIA_PATH_PREFIX = '/media/';
+
 /** Batas panjang kunci objek (karakter); jauh di bawah batas 1024 milik S3/R2. */
 export const MAX_R2_KEY_LENGTH = 512;
+
+/**
+ * Pecah `pathname` rute media menjadi jenis lampiran dan path relatif.
+ *
+ * Mengembalikan null bila bukan rute media, jenis lampiran tidak dikenal, atau
+ * path-nya tidak aman — pemanggil (Worker) lalu menjawab 404/403. Fungsi ini
+ * murni supaya bisa diuji tanpa Worker.
+ */
+export function parseMediaObjectPath(
+  pathname: string,
+): { logicalBucket: R2LogicalBucket; path: string } | null {
+  if (!pathname.startsWith(MEDIA_PATH_PREFIX)) return null;
+  const rest = pathname.slice(MEDIA_PATH_PREFIX.length);
+  const slash = rest.indexOf('/');
+  if (slash <= 0) return null;
+  const logicalBucket = rest.slice(0, slash);
+  if (!isR2LogicalBucket(logicalBucket)) return null;
+  const path = rest.slice(slash + 1);
+  if (!isSafeObjectPath(path)) return null;
+  // Path datang dari URL, jadi karakter sintaks URL sudah tidak boleh tersisa.
+  if (/[?#%\\]/.test(path)) return null;
+  return { logicalBucket, path };
+}
 
 /**
  * Validasi path relatif sebelum dijadikan kunci objek.

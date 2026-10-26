@@ -1,5 +1,8 @@
 import { useMemo } from 'react';
 import { Search } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { logCardMetrics, type LogTarget } from '@/lib/logDashboard';
+import { getNationalHolidaysForYear } from '@/data/nationalHolidays';
 import { AppSelect } from '@/components/AppSelect';
 import { LaporanKpiCards } from '@/components/Laporan/LaporanKpiCards';
 import {
@@ -55,6 +58,13 @@ interface Props {
    * menyisakan satu baris kosong di dashboard yang padat.
    */
   actions?: React.ReactNode;
+  targets?: LogTarget[];
+  holidays?: string[];
+  metricsLoading?: boolean;
+  targetError?: string | null;
+  calendarError?: string | null;
+  onRetryMetrics?: () => void;
+  today?: Date;
 }
 
 export function LogDashboardPanel({
@@ -67,6 +77,7 @@ export function LogDashboardPanel({
   searchQuery,
   onSearchChange,
   actions,
+  targets = [], holidays = [], metricsLoading = false, targetError, calendarError, onRetryMetrics, today = new Date(),
 }: Props) {
   const picLabel = PIC_LABEL[kind];
 
@@ -78,6 +89,10 @@ export function LogDashboardPanel({
   const picOpts = useMemo(() => picOptions(scopedRows), [scopedRows]);
   const rows = useMemo(() => applyLaporanFilters(scopedRows, filters), [scopedRows, filters]);
   const summary = useMemo(() => summarizeLaporan(rows), [rows]);
+  const years = new Set([today.getFullYear(), ...[filters.bulan,...scopedRows.map(row=>row.tanggal)].map(value=>Number(value.slice(0,4))).filter(y=>Number.isInteger(y)&&y>=1900&&y<=today.getFullYear())]);
+  const firstYear = Math.min(...years);
+  const nationalHolidays = Array.from({length:today.getFullYear()-firstYear+1},(_,i)=>getNationalHolidaysForYear(firstYear+i)).flat();
+  const metrics = logCardMetrics(scopedRows,filters,targets,[...holidays,...nationalHolidays],today);
 
   const hasFilter = Boolean(filters.bulan || filters.produk || filters.pic);
 
@@ -95,7 +110,10 @@ export function LogDashboardPanel({
 
   return (
     <div className="flex flex-col gap-4">
-      {hasScoped && <LaporanKpiCards kind={kind} summary={summary} picLabel={picLabel} />}
+      <LaporanKpiCards kind={kind} summary={summary} picLabel={picLabel} logMetrics={metrics}
+        targetState={metricsLoading?'Memuat target…':targetError?'Target belum tersedia':undefined}
+        calendarState={metricsLoading?'Memuat kalender…':calendarError?'Kalender belum tersedia':undefined} />
+      {(targetError || calendarError) && <div role="alert" className="text-xs text-destructive">{targetError || calendarError}{onRetryMetrics && <Button size="sm" variant="outline" className="ml-2" onClick={onRetryMetrics}>Muat ulang KPI</Button>}</div>}
 
       <div className="flex flex-wrap items-center gap-2">
         {hasScoped && (

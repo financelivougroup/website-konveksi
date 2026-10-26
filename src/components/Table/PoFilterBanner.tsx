@@ -1,4 +1,5 @@
 import { X, Filter } from 'lucide-react';
+import { T_CODE } from '@/lib/tableStyles';
 
 /**
  * Penanda bahwa halaman tujuan sedang tersaring ke satu PO.
@@ -37,7 +38,7 @@ export function PoFilterBanner({
       <div className="flex items-center gap-2">
         <Filter className="w-3.5 h-3.5 flex-shrink-0 text-blue-600" />
         <span className="text-[12px] text-blue-700">
-          Difilter ke PO: <span className="font-mono font-medium">{code || orderId}</span>
+          Difilter ke PO: <span className={`font-medium ${T_CODE}`}>{code || orderId}</span>
           <span className="text-blue-600/80"> — {count} baris</span>
         </span>
         <button

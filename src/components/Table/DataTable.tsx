@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState, useCallback, useRef, useEffect } from 'react';
+import { Fragment, Children, cloneElement, isValidElement, useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import {
   Eye, Pencil, Trash2,
   Cloud, CloudOff, Calculator, Lock, Star, Heart, Zap, AlertCircle,
@@ -86,7 +86,7 @@ interface DisplayColumn extends ProjectColumnDef {
 /**
  * `app` (the default) keeps the full App-view chrome: source indicator, note
  * tooltip, double-click rename, header menu, drag-to-reorder, and the built-in
- * View/Edit/Delete action column. `plain` renders bare headers and only the
+ * View/Edit/Delete actions on selection. `plain` renders bare headers and only the
  * columns the caller describes — that is what the per-page tables use.
  */
 type DataTableVariant = 'app' | 'plain';
@@ -133,16 +133,9 @@ interface DataTableProps<TId extends string | number = number> {
   onPageChange?: (page: number) => void;
   onPageSizeChange?: (size: number) => void;
   variant?: DataTableVariant;
-  /**
-   * Plain variant: replaces the built-in action column entirely.
-   *
-   * The returned node is rendered as-is, so any control that must NOT also
-   * trigger `onRowClick` has to call `stopPropagation` itself. The selection
-   * checkbox and the built-in View/Edit/Delete trio are guarded internally;
-   * a caller-supplied renderer is not.
-   */
+  /** Actions shown above the table when exactly one row is selected. */
   rowActions?: (row: GridRow) => React.ReactNode;
-  /** Plain variant: label for the `rowActions` column. Defaults to "Actions". */
+  /** Legacy compatibility; actions are no longer rendered as a column. */
   actionsLabel?: string;
   /** Plain variant: whole-row click. */
   onRowClick?: (row: GridRow) => void;
@@ -255,7 +248,6 @@ const ROW_HEIGHT_CLASSES: Record<RowHeight, string> = {
 const ROW_SEPARATOR = '[&:not(:last-child)>td]:shadow-[inset_0_-1px_0_0_hsl(var(--border))]';
 
 const SELECT_COLUMN_ID = '__select';
-const ACTION_COLUMN_ID = '__actions';
 
 /** Map source icon string to Lucide component */
 const sourceIconMap: Record<string, React.FC<{ className?: string }>> = {
@@ -320,27 +312,27 @@ function HeaderMenu({
   return (
     <div
       ref={menuRef}
-      className="fixed z-[70] min-w-[200px] bg-white rounded-xl shadow-xl border border-gray-100 py-1.5 animate-scaleIn"
+      className="fixed z-[70] min-w-[200px] bg-white dark:bg-popover dark:text-popover-foreground rounded-xl shadow-xl border border-gray-100 dark:border-border py-1.5 animate-scaleIn"
       style={{ left: x, top: y }}
     >
-      <div className="px-3 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-gray-50 mb-1">
+      <div className="px-3 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-gray-50 dark:border-border mb-1">
         {col.label}
       </div>
-      <button onClick={() => { onEditNote(); onClose(); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] text-slate-600 hover:bg-slate-50 transition-colors text-left">
+      <button onClick={() => { onEditNote(); onClose(); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] text-slate-600 dark:text-foreground hover:bg-slate-50 dark:hover:bg-accent transition-colors text-left">
         <StickyNote className="w-3.5 h-3.5 text-amber-400" /> Edit Field Description
       </button>
-      <button onClick={() => { onSetSource(); onClose(); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] text-slate-600 hover:bg-slate-50 transition-colors text-left">
+      <button onClick={() => { onSetSource(); onClose(); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] text-slate-600 dark:text-foreground hover:bg-slate-50 dark:hover:bg-accent transition-colors text-left">
         <Database className="w-3.5 h-3.5 text-cyan-400" /> Set Source Indicator
       </button>
-      <div className="mx-3 my-1 border-t border-gray-50" />
-      <button onClick={() => { onSortAsc(); onClose(); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] text-slate-600 hover:bg-slate-50 transition-colors text-left">
+      <div className="mx-3 my-1 border-t border-gray-50 dark:border-border" />
+      <button onClick={() => { onSortAsc(); onClose(); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] text-slate-600 dark:text-foreground hover:bg-slate-50 dark:hover:bg-accent transition-colors text-left">
         <SortAsc className="w-3.5 h-3.5 text-sky-500" /> Sort Ascending
       </button>
-      <button onClick={() => { onSortDesc(); onClose(); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] text-slate-600 hover:bg-slate-50 transition-colors text-left">
+      <button onClick={() => { onSortDesc(); onClose(); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] text-slate-600 dark:text-foreground hover:bg-slate-50 dark:hover:bg-accent transition-colors text-left">
         <SortDesc className="w-3.5 h-3.5 text-sky-500" /> Sort Descending
       </button>
-      <div className="mx-3 my-1 border-t border-gray-50" />
-      <button onClick={() => { onGroupBy(); onClose(); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] text-slate-600 hover:bg-slate-50 transition-colors text-left">
+      <div className="mx-3 my-1 border-t border-gray-50 dark:border-border" />
+      <button onClick={() => { onGroupBy(); onClose(); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] text-slate-600 dark:text-foreground hover:bg-slate-50 dark:hover:bg-accent transition-colors text-left">
         <FolderTree className="w-3.5 h-3.5 text-emerald-500" /> Add Field to Group
       </button>
     </div>
@@ -413,7 +405,7 @@ function HeaderCellContent({
               if (e.key === 'Escape') setRenaming(false);
             }}
             onClick={(e) => e.stopPropagation()}
-            className="h-5 px-1 text-[11px] font-normal normal-case tracking-normal bg-white border border-slate-400 rounded outline-none w-[100px]"
+            className="h-5 px-1 text-[11px] font-normal normal-case tracking-normal bg-white dark:bg-card dark:text-foreground border border-slate-400 dark:border-input rounded outline-none w-[100px]"
           />
         ) : (
           <span
@@ -583,13 +575,34 @@ export function DataTable<TId extends string | number = number>({
   onResizeColumn, onReorderColumn, onRenameColumn, onUpdateNote,
   onSortColumn, onGroupColumn, onSetSource,
   totalCount, page = 1, pageSize = 10, onPageChange, onPageSizeChange,
-  variant = 'app', rowActions, actionsLabel = 'Actions', onRowClick, hiddenColumns, emptyMessage,
+  variant = 'app', rowActions, onRowClick, hiddenColumns, emptyMessage,
   expandedRow, isRowExpanded, footer, frozenColumns, headerFrozen = true,
 }: DataTableProps<TId>) {
-  // The plain variant is bare by construction: no header chrome, no built-in
-  // action column, and a selection column only when the caller asked for one.
+  // Per-row actions live in a selection toolbar, never in a table column.
+  // Callers with no controlled selection receive local selection for their actions.
   const isPlain = variant === 'plain';
-  const hasSelection = selectedRows !== undefined && onToggleRow !== undefined;
+  const [actionSelection, setActionSelection] = useState<Set<TId>>(new Set());
+  const hasControlledSelection = selectedRows !== undefined && onToggleRow !== undefined;
+  const hasRowActions = Boolean(rowActions || onViewDetail || onEditDetail || onDeleteRow);
+  const effectiveSelection = hasControlledSelection ? selectedRows : actionSelection;
+  const toggleSelection = useCallback((id: TId) => {
+    if (hasControlledSelection) {
+      onToggleRow?.(id);
+      return;
+    }
+    setActionSelection((previous) => {
+      const next = new Set(previous);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, [hasControlledSelection, onToggleRow]);
+  const hasSelection = hasControlledSelection || hasRowActions;
+  const footerWithSelection = hasSelection && !hasControlledSelection && isValidElement<{ children?: React.ReactNode }>(footer) && footer.type === 'tr'
+    ? cloneElement(footer, {}, <td aria-hidden="true" />, ...Children.toArray(footer.props.children))
+    : footer;
+  const selectedActionRow = effectiveSelection?.size === 1
+    ? data.find((row) => effectiveSelection.has(row.id as TId))
+    : undefined;
   const isPaginated = onPageChange !== undefined;
   const effectiveRowHeight: RowHeight = rowHeight;
   // `?? []` produces a NEW array on every render, which would invalidate every
@@ -723,75 +736,18 @@ export function DataTable<TId extends string | number = number>({
         headerTitle: col.label,
         headerClassName: col.align === 'right' ? 'text-right' : col.align === 'center' ? 'text-center' : undefined,
         cellClassName: cn(
-          'whitespace-nowrap text-slate-700',
+          'whitespace-nowrap text-slate-700 dark:text-foreground',
           col.align === 'right' && 'text-right',
           col.align === 'center' && 'text-center',
         ),
       },
     }));
 
-    const actionColumn: ColumnDef<DataGridFeatures, GridRow> = {
-      id: ACTION_COLUMN_ID,
-      header: isPlain ? () => actionsLabel : () => null,
-      cell: ({ row }) => {
-        // A caller-supplied renderer replaces the built-in trio entirely —
-        // page tables have their own actions (menus, links, editors).
-        if (rowActions) return rowActions(row.original);
-        const id = row.original.id as TId;
-        return (
-          <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-            <button
-              onClick={(e) => { e.stopPropagation(); onViewDetail?.(id); }}
-              className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
-              title="View"
-            >
-              <Eye className="w-3.5 h-3.5" />
-            </button>
-            {editable && (
-              <>
-                <button
-                  onClick={(e) => { e.stopPropagation(); onEditDetail?.(id); }}
-                  className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
-                  title="Edit"
-                >
-                  <Pencil className="w-3.5 h-3.5" />
-                </button>
-                {canDelete && onDeleteRow && <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={(e) => { e.stopPropagation(); onDeleteRow(id); }}
-                  className="h-7 w-7 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                  title="Hapus permanen"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>}
-              </>
-            )}
-          </div>
-        );
-      },
-      enableSorting: false,
-      enableResizing: false,
-      enableHiding: false,
-      size: rowActions ? 120 : 80,
-    };
-
-    // The action column exists in the app variant always (its View button is
-    // unconditional), and in the plain variant only when the page supplied
-    // actions or a label for them.
-    const wantsActions = isPlain ? Boolean(rowActions) : true;
     return [
       ...(hasSelection ? [selectColumn] : []),
       ...dataColumns,
-      ...(wantsActions ? [actionColumn] : []),
     ];
-    // The action cell closes over the row handlers, which the caller rebuilds
-    // when its data changes — so they belong here or the cell would act on a
-    // stale row lookup.
-  }, [
-    columns, onViewDetail, onEditDetail, onDeleteRow, editable, canDelete,
-    isPlain, hasSelection, rowActions, actionsLabel,
-  ]);
+  }, [columns, isPlain, hasSelection]);
 
   // ---- controlled table state --------------------------------------------
 
@@ -806,9 +762,9 @@ export function DataTable<TId extends string | number = number>({
 
   const rowSelection = useMemo<RowSelectionState>(() => {
     const out: RowSelectionState = {};
-    for (const id of selectedRows ?? []) out[String(id)] = true;
+    for (const id of effectiveSelection ?? []) out[String(id)] = true;
     return out;
-  }, [selectedRows]);
+  }, [effectiveSelection]);
 
   // The page tables keep their hide/show-columns choice in a `Set<string>`;
   // the grid wants a map of the hidden keys.
@@ -885,8 +841,8 @@ export function DataTable<TId extends string | number = number>({
   // what the grid keys rows by) but handed back in the caller's own type, so
   // numeric ids stay numbers and UUIDs stay strings.
   const handleRowSelectionChange = useCallback((updater: unknown) => {
-    if (!onToggleRow) return;
-    const current = selectedRows ?? new Set<TId>();
+    if (!toggleSelection) return;
+    const current = effectiveSelection ?? new Set<TId>();
     const next = typeof updater === 'function'
       ? (updater as (old: RowSelectionState) => RowSelectionState)(rowSelection)
       : (updater as RowSelectionState);
@@ -902,12 +858,12 @@ export function DataTable<TId extends string | number = number>({
     }
     const asId = (key: string): TId => byKey.get(key) ?? (key as TId);
     for (const key of nextIds) {
-      if (!current.has(asId(key))) onToggleRow(asId(key));
+      if (!current.has(asId(key))) toggleSelection(asId(key));
     }
     for (const id of current) {
-      if (!nextIds.has(String(id))) onToggleRow(id);
+      if (!nextIds.has(String(id))) toggleSelection(id);
     }
-  }, [rowSelection, selectedRows, onToggleRow, data]);
+  }, [rowSelection, effectiveSelection, toggleSelection, data]);
 
   // Pinning is fully controlled by the page's frozen-column set, so there is
   // nothing to write back. The handler exists only to keep TanStack from
@@ -982,15 +938,6 @@ export function DataTable<TId extends string | number = number>({
 
   const headerGroup = table.getHeaderGroups()[0];
   const headers = headerGroup?.headers ?? [];
-  // The app variant always has a leading select column and a trailing action
-  // column; the plain variant has only what the caller asked for, so the
-  // header list is sliced from flags rather than from fixed positions.
-  //
-  // Deliberately a second copy of the same flag the column list uses above:
-  // that one decides which columns are built, this one decides how the rendered
-  // header row is sliced. Changing one without the other would silently shift
-  // every header one cell left of its body column.
-  const wantsActions = isPlain ? Boolean(rowActions) : true;
   // Resolve the three header groups BY ID, not by position.
   //
   // Position slicing (`headers[0]` is the checkbox, last is the action column)
@@ -1008,7 +955,6 @@ export function DataTable<TId extends string | number = number>({
   // about pinning.
   const headerById = new Map(headers.map((h) => [h.column.id, h]));
   const selectHeader = hasSelection ? headerById.get(SELECT_COLUMN_ID) : undefined;
-  const actionHeader = wantsActions ? headerById.get(ACTION_COLUMN_ID) : undefined;
   const dataHeaders = columns
     .map((col) => headerById.get(col.key))
     .filter((h): h is GridHeader => h !== undefined);
@@ -1021,23 +967,11 @@ export function DataTable<TId extends string | number = number>({
   // spread its letters wider than the data underneath, which is what read as
   // "fontnya nggak fit".
   //
-  // Colour and weight were later raised to solid black + bold on request
-  // ("warnanya harus hitam pekat di bold, tapi sizenya tetap sama"). Only those
-  // two properties moved: every size, the uppercase transform and the tracking
-  // are exactly what they were.
-  //
-  // `text-black` and not the `text-foreground` token. The token is the theme's
-  // near-black — `hsl(240 10% 3.9%)`, i.e. rgb(9, 9, 11), which is not neutral
-  // but blue-tinted. At header size that reads as dark grey rather than
-  // "hitam pekat", and it is the one thing left that could make the header look
-  // short of the black the user pointed at. `#000` is the darkest value there
-  // is and carries no hue. The trade-off is deliberate: the header no longer
-  // inverts under a dark theme, but nothing in this app ever applies the
-  // `.dark` class (no ThemeProvider), so the light theme is the only one that
-  // renders — and this is a header on a white surface either way.
+  // Match T_TH's softer semibold/slate treatment without changing either
+  // variant's size, uppercase transform, tracking or dark-mode readability.
   const headerRowClass = isPlain
-    ? '[&>th]:h-10 [&>th]:text-[12px] [&>th]:font-bold [&>th]:text-black'
-    : '[&>th]:h-10 [&>th]:text-[11px] [&>th]:font-bold [&>th]:uppercase [&>th]:tracking-wider [&>th]:text-black';
+    ? '[&>th]:h-10 [&>th]:text-[12px] [&>th]:font-semibold [&>th]:text-slate-700 dark:[&>th]:text-foreground'
+    : '[&>th]:h-10 [&>th]:text-[11px] [&>th]:font-semibold [&>th]:uppercase [&>th]:tracking-wider [&>th]:text-slate-700 dark:[&>th]:text-foreground';
 
   // The app variant fills the viewport and carries its own page padding; the
   // plain variant is embedded in a page that already provides both.
@@ -1047,24 +981,39 @@ export function DataTable<TId extends string | number = number>({
 
   const resolvedEmpty = emptyMessage ?? (
     <div className="py-10 text-center">
-      <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-slate-100 flex items-center justify-center">
+      <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-slate-100 dark:bg-muted flex items-center justify-center">
         <svg className="w-7 h-7 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
         </svg>
       </div>
-      <h3 className="text-sm font-semibold text-slate-700 mb-1">No Data Available</h3>
+      <h3 className="text-sm font-semibold text-slate-700 dark:text-foreground mb-1">No Data Available</h3>
       <p className="text-xs text-slate-400">Try adjusting your filters or add new data</p>
     </div>
   );
 
   return (
     <div className={containerClass}>
+      {hasRowActions && effectiveSelection && effectiveSelection.size > 0 && (
+        <div role="toolbar" aria-label="Tindakan baris terpilih" className="mb-2 flex flex-wrap items-center gap-2 rounded-md border bg-muted/30 px-3 py-2">
+          <span className="text-xs text-muted-foreground">{effectiveSelection.size} baris dipilih</span>
+          {selectedActionRow ? rowActions ? rowActions(selectedActionRow) : (
+            <>
+              {onViewDetail && <Button type="button" variant="outline" size="sm" onClick={() => onViewDetail(selectedActionRow.id as TId)}><Eye /> Lihat</Button>}
+              {editable && onEditDetail && <Button type="button" variant="outline" size="sm" onClick={() => onEditDetail(selectedActionRow.id as TId)}><Pencil /> Edit</Button>}
+              {editable && canDelete && onDeleteRow && <Button type="button" variant="destructive" size="sm" onClick={() => onDeleteRow(selectedActionRow.id as TId)}><Trash2 /> Hapus permanen</Button>}
+            </>
+          ) : <span className="text-xs text-muted-foreground">Pilih satu baris untuk tindakan per catatan.</span>}
+          <Button type="button" variant="ghost" size="sm" onClick={() => {
+            for (const id of effectiveSelection) toggleSelection(id);
+          }}>Bersihkan pilihan</Button>
+        </div>
+      )}
       {/* Inline note edit modal */}
       {noteEditingCol && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center" onClick={() => setNoteEditingCol(null)}>
           <div className="absolute inset-0 bg-slate-900/20" />
-          <div className="relative bg-white rounded-xl shadow-xl border border-gray-100 p-5 w-[360px] animate-scaleIn" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-[13px] font-semibold text-slate-700 mb-3">
+          <div className="relative bg-white dark:bg-popover dark:text-popover-foreground rounded-xl shadow-xl border border-gray-100 dark:border-border p-5 w-[360px] animate-scaleIn" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-[13px] font-semibold text-slate-700 dark:text-foreground mb-3">
               Edit Field Description — {colById.get(noteEditingCol)?.label}
             </h3>
             <textarea
@@ -1072,11 +1021,11 @@ export function DataTable<TId extends string | number = number>({
               value={noteEditValue}
               onChange={(e) => setNoteEditValue(e.target.value)}
               placeholder="Enter field description..."
-              className="w-full h-20 px-3 py-2 text-[12px] border border-gray-200 rounded-lg outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200 resize-none"
+              className="w-full h-20 px-3 py-2 text-[12px] border border-gray-200 dark:border-input dark:bg-card dark:text-foreground rounded-lg outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200 dark:focus:ring-ring/30 resize-none"
             />
             <div className="flex justify-end gap-2 mt-3">
-              <button onClick={() => setNoteEditingCol(null)} className="px-3 py-1.5 text-[12px] text-slate-500 hover:bg-slate-50 rounded-lg">Cancel</button>
-              <button onClick={() => saveNoteEdit(noteEditingCol)} className="px-3 py-1.5 text-[12px] text-white bg-primary hover:bg-primary/90 rounded-lg">Save</button>
+              <button onClick={() => setNoteEditingCol(null)} className="px-3 py-1.5 text-[12px] text-slate-500 dark:text-muted-foreground hover:bg-slate-50 dark:hover:bg-accent rounded-lg">Cancel</button>
+              <button onClick={() => saveNoteEdit(noteEditingCol)} className="px-3 py-1.5 text-[12px] text-primary-foreground bg-primary hover:bg-primary/90 rounded-lg">Save</button>
             </div>
           </div>
         </div>
@@ -1086,9 +1035,9 @@ export function DataTable<TId extends string | number = number>({
       {sourceEditingCol && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center" onClick={() => setSourceEditingCol(null)}>
           <div className="absolute inset-0 bg-slate-900/20" />
-          <div className="relative bg-white rounded-xl shadow-xl border border-gray-100 p-5 w-[380px] animate-scaleIn" onClick={(e) => e.stopPropagation()}>
+          <div className="relative bg-white dark:bg-popover dark:text-popover-foreground rounded-xl shadow-xl border border-gray-100 dark:border-border p-5 w-[380px] animate-scaleIn" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-[13px] font-semibold text-slate-700">
+              <h3 className="text-[13px] font-semibold text-slate-700 dark:text-foreground">
                 Set Source Indicator — {colById.get(sourceEditingCol)?.label}
               </h3>
               <button onClick={() => setSourceEditingCol(null)} className="w-6 h-6 rounded-md flex items-center justify-center text-slate-400 hover:bg-slate-100 transition-colors">
@@ -1108,8 +1057,8 @@ export function DataTable<TId extends string | number = number>({
                       className={cn(
                         'flex flex-col items-center gap-1 p-2 rounded-lg border transition-all',
                         sourceIconValue === opt.value
-                          ? 'border-slate-400 bg-slate-50 shadow-sm'
-                          : 'border-gray-100 hover:border-gray-200 hover:bg-slate-50',
+                          ? 'border-slate-400 bg-slate-50 dark:border-ring dark:bg-accent shadow-sm'
+                          : 'border-gray-100 dark:border-border hover:border-gray-200 dark:hover:border-input hover:bg-slate-50 dark:hover:bg-accent',
                       )}
                       title={opt.label}
                     >
@@ -1128,13 +1077,13 @@ export function DataTable<TId extends string | number = number>({
                 value={sourceLabelValue}
                 onChange={(e) => setSourceLabelValue(e.target.value)}
                 placeholder="e.g. Sync from Supabase, Manual input..."
-                className="w-full px-3 py-2 text-[12px] border border-gray-200 rounded-lg outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                className="w-full px-3 py-2 text-[12px] border border-gray-200 dark:border-input dark:bg-card dark:text-foreground rounded-lg outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200 dark:focus:ring-ring/30"
               />
             </div>
 
             <div className="flex justify-end gap-2">
-              <button onClick={() => setSourceEditingCol(null)} className="px-3 py-1.5 text-[12px] text-slate-500 hover:bg-slate-50 rounded-lg">Cancel</button>
-              <button onClick={() => saveSourceEdit(sourceEditingCol)} className="px-3 py-1.5 text-[12px] text-white bg-primary hover:bg-primary/90 rounded-lg">Save</button>
+              <button onClick={() => setSourceEditingCol(null)} className="px-3 py-1.5 text-[12px] text-slate-500 dark:text-muted-foreground hover:bg-slate-50 dark:hover:bg-accent rounded-lg">Cancel</button>
+              <button onClick={() => saveSourceEdit(sourceEditingCol)} className="px-3 py-1.5 text-[12px] text-primary-foreground bg-primary hover:bg-primary/90 rounded-lg">Save</button>
             </div>
           </div>
         </div>
@@ -1180,7 +1129,7 @@ export function DataTable<TId extends string | number = number>({
           width: hasFrozen ? 'fixed' : 'auto',
         }}
         tableClassNames={{
-          headerSticky: 'sticky top-0 z-40 bg-white',
+          headerSticky: 'sticky top-0 z-40 bg-white dark:bg-card',
           headerRow: cn('group/head', headerRowClass),
           bodyRow: ROW_HEIGHT_CLASSES[effectiveRowHeight],
           // ReUI's own base class sets `text-sm` (14px). The app variant always
@@ -1238,12 +1187,6 @@ export function DataTable<TId extends string | number = number>({
                           })}
                         </SortableContext>
 
-                        {actionHeader && (
-                          <DataGridTableHeadRowCell header={actionHeader}>
-                            {flexRender(actionHeader.column.columnDef.header, actionHeader.getContext())}
-                          </DataGridTableHeadRowCell>
-                        )}
-
                         <DataGridTableFillHeadCell />
                       </DataGridTableHeadRow>
                     </DataGridTableHead>
@@ -1268,7 +1211,7 @@ export function DataTable<TId extends string | number = number>({
                               onRowClick && 'cursor-pointer',
                               ROW_SEPARATOR,
                               ROW_HEIGHT_CLASSES[effectiveRowHeight],
-                              isSelected ? 'bg-slate-50/60' : condClass || 'hover:bg-slate-50',
+                              isSelected ? 'bg-slate-50/60 dark:bg-accent/70' : condClass || 'hover:bg-slate-50 dark:hover:bg-muted',
                             )}
                           >
                             <SortableContext items={orderableIds} strategy={horizontalListSortingStrategy}>
@@ -1298,7 +1241,7 @@ export function DataTable<TId extends string | number = number>({
                         );
                       })}
                     </DataGridTableBody>
-                    {footer && <DataGridTableFoot>{footer}</DataGridTableFoot>}
+                    {footerWithSelection && <DataGridTableFoot>{footerWithSelection}</DataGridTableFoot>}
                   </DataGridTableBase>
                 </DataGridTableViewport>
               </DndContext>

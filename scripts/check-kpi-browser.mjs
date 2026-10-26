@@ -1,0 +1,173 @@
+// Drives the real KPI components with the isolated service fixture, never live Auth/DB.
+import assert from 'node:assert/strict';
+import { writeFileSync } from 'node:fs';
+const tabs = await (await fetch('http://127.0.0.1:9246/json')).json();
+const ws = new WebSocket(tabs.find(t => t.type === 'page').webSocketDebuggerUrl);
+await new Promise((resolve, reject) => { ws.onopen = resolve; ws.onerror = reject; });
+let seq = 0;
+const pending = new Map();
+const errors = [];
+ws.onmessage = ({ data }) => {
+  const m = JSON.parse(data);
+  if (m.method === 'Runtime.exceptionThrown') errors.push(m.params.exceptionDetails.text);
+  if (!m.id) return;
+  const p = pending.get(m.id); pending.delete(m.id);
+  if (m.error) p.reject(m.error); else p.resolve(m.result);
+};
+const send = (method, params = {}) => new Promise((resolve, reject) => { const id = ++seq; pending.set(id, { resolve, reject }); ws.send(JSON.stringify({ id, method, params })); });
+async function evaluate(expression) {
+  const r = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true });
+  if (r.exceptionDetails) throw new Error(JSON.stringify(r.exceptionDetails));
+  return r.result.value;
+}
+async function until(condition) {
+  return evaluate(`(async()=>{for(let i=0;i<150;i++){if(${condition})return true;await new Promise(r=>setTimeout(r,30))}throw new Error('Timeout: '+${JSON.stringify(condition)})})()`);
+}
+async function clickText(text) {
+  await evaluate(`(()=>{const b=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===${JSON.stringify(text)});if(!b)throw new Error('Missing button');if(b.getAttribute('role')==='tab'){b.dispatchEvent(new MouseEvent('mousedown',{bubbles:true,button:0}));}b.click()})()`);
+}
+async function open(route) {
+  await send('Page.navigate', { url: `http://127.0.0.1:4186${route}` });
+  await until('document.querySelector("h1") || document.body?.innerText.includes("Tidak ada akses")');
+}
+await send('Runtime.enable');
+await send('Page.enable');
+await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false });
+await send('Storage.clearDataForOrigin',{origin:'http://127.0.0.1:4186',storageTypes:'local_storage'});
+await open('/laporan?role=owner');
+await until('location.pathname === "/laporan/team" && document.body.innerText.includes("115")');
+await clickText('Akumulasi');
+await until('document.querySelector(".kpi-mode-akumulasi") && document.body.innerText.includes("205")');
+assert.equal(await evaluate(`document.querySelector('[aria-label="Pilih bulan"]') === null`), true);
+await clickText('Bulan');
+await until('document.body.innerText.includes("115")');
+await clickText('September 2026');
+await clickText('Oktober 2026');
+await until('document.body.innerText.includes("115")');
+await evaluate('new Promise(r=>setTimeout(r,400))');
+assert.equal(await evaluate('document.body.innerText.includes("115")'), true);
+await clickText('Fixture Orang 8');
+await until('document.querySelector("h1")?.textContent === "Pekerja Delapan" && document.body.innerText.includes("25")');
+assert.equal(await evaluate('getComputedStyle(document.querySelector("h1").parentElement.parentElement).backgroundColor'), 'rgb(27, 41, 75)');
+assert.equal(await evaluate('document.body.innerText.toLowerCase().includes("pilih orang")'), true);
+await clickText('Bulanan');
+await until('document.body.innerText.includes("Biaya Upah (1 pcs)")');
+await clickText('Harian');
+await until('document.body.innerText.includes("Total Selesai Finishing")');
+await send('Page.captureScreenshot').then(r => writeFileSync('.scratch/kpi-preview/owner-desktop.png', Buffer.from(r.data, 'base64')));
+await open('/laporan/orang/8?role=staff');
+await until('location.pathname === "/laporan/orang/7" && document.querySelector("h1")?.textContent === "Pekerja Tujuh"');
+assert.equal(await evaluate('document.body.innerText.includes("Kembali ke tim") || document.body.innerText.includes("Pilih orang")'), false);
+await until('document.body.innerText.includes("Rp1.495.000")');
+await clickText('Bulanan');
+await until('document.body.innerText.includes("Progress Setoran per Bulan")');
+assert.equal(await evaluate('document.body.innerText.includes("Target / pcs") || document.body.innerText.includes("HPP")'), false);
+await clickText('Akumulasi');
+await until('document.body.innerText.includes("Akumulasi Pribadi")');
+await clickText('Harian');
+await until('document.body.innerText.includes("Riwayat Entry")');
+await clickText('Berikutnya');
+await until('document.body.innerText.includes("Halaman 2") && [...document.querySelectorAll("button")].some(b=>b.textContent.trim()==="Sebelumnya"&&!b.disabled)');
+await clickText('Sebelumnya');
+await until('document.body.innerText.includes("Halaman 1")');
+assert.equal(await evaluate('(window.fixtureRequests || []).every(q => q.orangId === 7 && q.bolehLihatBiaya === false)'), true);
+await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+await until('document.querySelector(".recharts-line")');
+assert.equal(await evaluate('document.documentElement.scrollWidth <= innerWidth'), true);
+await send('Page.captureScreenshot').then(r => writeFileSync('.scratch/kpi-preview/staff-mobile.png', Buffer.from(r.data, 'base64')));
+await open('/laporan/team?role=inventory');
+await until('document.body.innerText.includes("Tidak ada akses")');
+assert.equal(await evaluate('(window.fixtureRequests || []).length'), 0);
+await open('/laporan/team?role=owner&month-error=1');
+await until('document.body.innerText.includes("Daftar bulan gagal (fixture)")');
+await evaluate('window.fixtureMonthFailure = false');
+await clickText('Coba lagi');
+await until('document.body.innerText.includes("115")');
+await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 1000, deviceScaleFactor: 1, mobile: false });
+await open('/laporan/team?role=owner');
+await until('document.querySelectorAll("table").length >= 4 && document.body.innerText.includes("115")');
+assert.equal(await evaluate('document.body.innerText.includes("Finishing") && document.body.innerText.includes("25 / 100")'), true);
+const beforeSort = await evaluate(`document.querySelector('section table tbody tr').innerText`);
+await evaluate(`document.querySelector('section button[aria-label="Balik arah urutan"]').click()`);
+const afterSort = await evaluate(`document.querySelector('section table tbody tr').innerText`);
+assert.notEqual(beforeSort, afterSort);
+await send('Page.captureScreenshot', { captureBeyondViewport: true }).then(r => writeFileSync('.scratch/kpi-preview/team-desktop.png', Buffer.from(r.data, 'base64')));
+await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+await evaluate('window.scrollTo(0,0)');
+assert.equal(await evaluate('document.documentElement.scrollWidth <= innerWidth'), true);
+await send('Page.captureScreenshot').then(r => writeFileSync('.scratch/kpi-preview/team-mobile.png', Buffer.from(r.data, 'base64')));
+await clickText('Akumulasi');
+await until('document.querySelector(".kpi-mode-akumulasi") && document.body.innerText.includes("205") && document.querySelectorAll(".recharts-line").length > 2');
+assert.equal(await evaluate('document.documentElement.scrollWidth <= innerWidth'), true);
+await send('Page.captureScreenshot').then(r => writeFileSync('.scratch/kpi-preview/team-accumulation.png', Buffer.from(r.data, 'base64')));
+await evaluate(`document.querySelector('section a[href="/laporan/orang/7"]').click()`);
+await until('location.pathname === "/laporan/orang/7" && document.querySelector("h1")?.textContent === "Pekerja Tujuh"');
+// Real keyboard events on the actual heatmap, including roving focus and division switch.
+await open('/laporan/team?role=owner');
+await until('document.querySelectorAll(".kpi-heat-cell[aria-label]").length===31');
+assert.equal(await evaluate('document.body.innerText.includes("CSV") || document.body.innerText.includes("PDF")'),false);
+assert.equal(await evaluate(`getComputedStyle(document.querySelector('.kpi-heat-cell[data-level="4"]')).backgroundColor`),'rgb(30, 64, 175)');
+await evaluate('document.querySelector(".kpi-heat-cell[aria-label]").focus()');
+async function press(key,code,keyCode){
+  await send('Input.dispatchKeyEvent',{type:'keyDown',key,code,windowsVirtualKeyCode:keyCode});
+  await send('Input.dispatchKeyEvent',{type:'keyUp',key,code,windowsVirtualKeyCode:keyCode});
+}
+await press('ArrowRight','ArrowRight',39);
+assert.match(await evaluate('document.activeElement.getAttribute("aria-label")'),/^2026-10-08/);
+await press('End','End',35);
+assert.match(await evaluate('document.activeElement.getAttribute("aria-label")'),/^2026-10-31/);
+await press('Home','Home',36);
+assert.match(await evaluate('document.activeElement.getAttribute("aria-label")'),/^2026-10-01/);
+await evaluate(`document.querySelector('[aria-label="Metrik heatmap"] button:last-child').click()`);
+await until('document.querySelector(".kpi-heat-cell[aria-label]").getAttribute("aria-label").includes("Finishing")');
+assert.equal(await evaluate(`document.querySelectorAll('.kpi-heat-cell[tabindex="0"]').length`),1);
+// Theme interaction on the full Team view, including the actual heatmap stylesheet.
+const themePoint=await evaluate(`(()=>{const b=document.querySelector('button[aria-label="Pilih tema tampilan"]');b.scrollIntoView();const r=b.getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2};})()`);
+await send('Input.dispatchMouseEvent',{type:'mousePressed',button:'left',clickCount:1,...themePoint});
+await send('Input.dispatchMouseEvent',{type:'mouseReleased',button:'left',clickCount:1,...themePoint});
+await until('document.querySelector("[role=menu]")');
+await evaluate(`[...document.querySelectorAll('[role=menuitem]')].find(b=>b.textContent.trim()==='Gelap').click()`);
+await until(`document.documentElement.classList.contains('dark') && getComputedStyle(document.querySelector('.kpi-heat-cell[data-level="2"]')).backgroundColor==='rgb(57, 135, 229)'`);
+assert.equal(await evaluate(`getComputedStyle(document.querySelector('.kpi-heat-cell[data-level="2"]')).backgroundColor`),'rgb(57, 135, 229)');
+await evaluate('document.querySelector("[aria-label=\\"Metrik heatmap\\"]").scrollIntoView({block:"center"})');
+await send('Page.captureScreenshot',{captureBeyondViewport:true}).then(r=>writeFileSync('.scratch/kpi-preview/heatmap-dark.png',Buffer.from(r.data,'base64')));
+await send('Page.reload');await until('document.querySelector(".kpi-heat-cell[aria-label]") && document.documentElement.classList.contains("dark")');
+// Settings keep the real Auth boundary, form controls, Radix tabs/dialog and delayed services.
+await send('Emulation.setDeviceMetricsOverride',{width:1280,height:900,deviceScaleFactor:1,mobile:false});
+await open('/laporan/pengaturan?role=owner&tab=bulan');
+await until('document.body.innerText.includes("Finalkan bulan") && !document.body.innerText.includes("Memuat pengaturan…")');
+const disabled=text=>evaluate(`([...document.querySelectorAll('button')].find(b=>b.textContent.trim()===${JSON.stringify(text)}))?.disabled`);
+async function fill(selector,value){await evaluate(`(()=>{const el=document.querySelector(${JSON.stringify(selector)});Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(el,${JSON.stringify(value)});el.dispatchEvent(new Event('input',{bubbles:true}));})()`);}
+assert.equal(await disabled('Finalkan bulan'),true);
+await fill('#setting-reason','Uji browser terisolasi');
+await until('[...document.querySelectorAll("button")].some(b=>b.textContent.trim()==="Finalkan bulan"&&!b.disabled)');
+await clickText('Finalkan bulan');
+await until('document.querySelector("[role=dialog]")');
+await evaluate('window.fixtureSettingsDelay=700');
+await clickText('Konfirmasi');
+await until('window.fixtureSettingsWrites.length===1 && document.body.innerText.includes("Memuat status…")');
+assert.equal(await disabled('Finalkan bulan'),true);
+await until('[...document.querySelectorAll("button")].some(b=>b.textContent.trim()==="Buka kunci"&&!b.disabled)');
+assert.deepEqual(await evaluate('window.fixtureSettingsWrites[0]'),{op:'month',args:['2026-10',true,'Uji browser terisolasi']});
+await clickText('Target');await until('document.body.innerText.includes("Edit target")');
+await clickText('Edit target');await until('document.querySelector("input[type=number]")?.value==="100"');
+await evaluate('window.fixtureSettingsFailure=true');
+await clickText('Simpan target');await until('document.querySelector("[role=alert]")?.textContent.includes("Simpan gagal (fixture)")');
+await evaluate('window.fixtureSettingsFailure=false');
+await clickText('Muat ulang');await until('!document.body.innerText.includes("Memuat pengaturan…") && !document.querySelector("[role=alert]")');
+await clickText('Audit');await fill('#kpi-audit-filter','tidak-cocok');
+await until('document.querySelectorAll("details").length===0');
+await fill('#kpi-audit-filter','Alasan fixture');await until('document.querySelectorAll("details").length===1');
+assert.equal(await disabled('Lihat lebih lama'),true);
+await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
+assert.equal(await evaluate('document.documentElement.scrollWidth<=innerWidth'),true);
+await send('Page.captureScreenshot').then(r=>writeFileSync('.scratch/kpi-preview/settings-mobile.png',Buffer.from(r.data,'base64')));
+await open('/laporan/pengaturan?role=finance&tab=bulan');
+await until('document.body.innerText.includes("Finalkan bulan")');
+assert.equal(await evaluate('[...document.querySelectorAll("button")].some(b=>b.textContent.trim()==="Buka kunci")'),false);
+await open('/laporan/pengaturan?role=staff');
+await until('location.pathname==="/laporan/orang/7" && document.querySelector("h1")?.textContent==="Pekerja Tujuh"');
+assert.equal(await evaluate('window.fixtureSettingsReads'),0);
+assert.deepEqual(errors, []);
+console.log('PASS: owner/staff/inventory routes, Team/personal modes, month race, sorting, settings role/reason/dialog/refresh/error/audit, real heatmap keyboard, mobile no overflow and CSV/PDF absent; no runtime exceptions. Service fixture only, no live Auth/DB.');
+ws.close();

@@ -1,4 +1,4 @@
-import type { ProductionStatus, VariasiStatus } from '@/types/pipeline';
+import type { ProductionStatus, VariasiStatus, WorkOrder } from '@/types/pipeline';
 // Impor NILAI (bukan type) harus relatif ber-ekstensi: `node --test` tidak bisa
 // meresolusi alias `@/`, sedangkan impor type di atas aman karena Node
 // menghapusnya saat runtime. Pola yang sama dipakai src/lib/kanban.ts.
@@ -69,6 +69,21 @@ export function deriveStatus(
   const kancing = Number(kancingTotal) || 0;
   const finishing = Number(finishingTotal) || 0;
   return kancing >= orderQty && finishing >= orderQty ? 'FINISHED' : 'PROGRESS';
+}
+
+/** Invoice issuance is terminal for monitoring; physical totals alone cannot derive it. */
+export function monitoringProductionStatus(
+  workOrder: Pick<WorkOrder, 'productionStatus' | 'invoiceStatus'>,
+  cuttingTotal: number,
+  sewingTotal: number,
+  orderQty: number,
+  kancingTotal: number,
+  finishingTotal: number,
+): ProductionStatus {
+  if (workOrder.productionStatus === 'INVOICED' || ['INVOICED', 'PARTIAL_PAID', 'PAID'].includes(workOrder.invoiceStatus)) {
+    return 'INVOICED';
+  }
+  return deriveStatus(cuttingTotal, sewingTotal, orderQty, kancingTotal, finishingTotal);
 }
 
 // ===== Status level-1 (per variasi) =====
@@ -247,6 +262,16 @@ export function variasiStatusText(statuses: readonly VariasiStatus[]): string {
  * supaya tidak ada dua literal yang bisa berbeda.
  */
 export const NEED_UP_POS_LABEL = 'Need Up POS';
+export const DONE_UP_POS_LABEL = 'Done Up POS';
+
+/** POS reconciliation label, independent of production and invoice status. */
+export function posUpdateLabel(finishingTotal: number, orderQty: number): string {
+  const finishing = Number(finishingTotal);
+  const qty = Number(orderQty);
+  if (!Number.isFinite(finishing) || !Number.isFinite(qty)) return '';
+  if (qty > 0 && finishing === qty) return DONE_UP_POS_LABEL;
+  return needsUpPos(finishing, qty) ? NEED_UP_POS_LABEL : '';
+}
 
 /**
  * Apakah perlu "naik POS": **finishing sudah melebihi Qty Diterima Client.**

@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Plus, RefreshCw, Search, Sparkles, Trash2, Upload } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatMonthYearFromYm } from '@/lib/monthYear';
-import { T_WRAP, T_TOOLBAR_BTN, T_TOOLBAR_BTN_IDLE, T_SOFT_BADGE_TONE } from '@/lib/tableStyles';
+import { T_WRAP, T_TOOLBAR_BTN, T_TOOLBAR_BTN_IDLE, T_SOFT_BADGE_TONE, T_CODE } from '@/lib/tableStyles';
 import { DataTable } from '@/components/Table/DataTable';
 import { FilterButton, SortButton, ExportButton } from '@/components/Table/TableTools';
 import { ColumnSettingsButton } from '@/components/Table/ColumnSettings';
@@ -355,7 +355,7 @@ export function PlanningProduksiPage() {
       render: (row: Record<string, unknown>) => {
         const code = row.productNote as string | null;
         return code
-          ? <span className="font-mono" title={code}>{code}</span>
+          ? <span className={T_CODE} title={code}>{code}</span>
           : <span className="text-gray-300">—</span>;
       },
     },
@@ -364,7 +364,7 @@ export function PlanningProduksiPage() {
       render: (row: Record<string, unknown>) => {
         const code = row.clientProductionCode as string | null;
         return code
-          ? <span className="font-mono" title={code}>{code}</span>
+          ? <span className={T_CODE} title={code}>{code}</span>
           : <span className="text-gray-300">—</span>;
       },
     },
@@ -550,11 +550,11 @@ export function PlanningProduksiPage() {
           module="planning_produksi" ids={deleteIds} onDeleted={handleDeleted} />
       )}
       <div className="px-6 pt-3 pb-0">
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex flex-col gap-3 mb-1">
           <div>
             <h1 className="text-[17px] font-semibold tracking-tight text-slate-900">Planning Produksi</h1>
           </div>
-          <div className="flex items-center gap-2.5">
+          <div className="flex flex-wrap items-center justify-end gap-2.5">
             <Button onClick={refresh} variant="outline" size="sm" className="h-8 px-3.5">
               <RefreshCw className="w-3.5 h-3.5 mr-2" /> Refresh
             </Button>
@@ -646,20 +646,20 @@ export function PlanningProduksiPage() {
 
           <div className="space-y-4 py-4">
             <div className="space-y-1.5">
-              <Label htmlFor="namaPenjahit">Nama Penjahit *</Label>
+              <Label htmlFor="namaPenjahit">Nama Penjahit</Label>
               <Select value={form.namaPenjahit} onValueChange={(v) => setField('namaPenjahit', v)}>
-                <SelectTrigger id="namaPenjahit" className="h-9 text-sm">
-                  <SelectValue placeholder="— Pilih Penjahit —" />
+                <SelectTrigger id="namaPenjahit" className="h-9 text-[12px]">
+                  <SelectValue placeholder="Pilih Penjahit" />
                 </SelectTrigger>
                 <SelectContent>
                   {/* Nama yang tersimpan tetap ditampilkan walau penjahitnya kini Non-Aktif. */}
                   {form.namaPenjahit && !penjahitList.some((p) => p.picPenjahit === form.namaPenjahit) && (
-                    <SelectItem value={form.namaPenjahit} className="text-sm">
+                    <SelectItem value={form.namaPenjahit} className="text-[12px]">
                       {form.namaPenjahit} (Non-Aktif)
                     </SelectItem>
                   )}
                   {penjahitList.map((p) => (
-                    <SelectItem key={p.id} value={p.picPenjahit} className="text-sm">
+                    <SelectItem key={p.id} value={p.picPenjahit} className="text-[12px]">
                       {p.picPenjahit}
                     </SelectItem>
                   ))}
@@ -672,15 +672,16 @@ export function PlanningProduksiPage() {
               <div>
                 {/* `-trigger` mengikuti id yang dipasang AppSelect pada tombolnya;
                     elemen ber-id `clientCode` sendiri adalah input tersembunyi. */}
-                <Label htmlFor="clientCode-trigger">Kode Produksi Client *</Label>
+                <Label htmlFor="clientCode-trigger">Kode Produksi Client</Label>
                 <AppSelect
                   id="clientCode"
                   className="mt-1"
                   value={form.clientCode}
                   onValueChange={selectClientCode}
                   options={codeChoiceOptions}
-                  placeholder="— Pilih Kode Produksi Client —"
-                  emptyMessage="Belum ada kode produksi di Work Order."
+                  placeholder="Pilih Kode Produksi Client"
+                  showPlaceholderOption={false}
+                  emptyMessage="No Data"
                   allowUnlistedValue
                 />
               </div>
@@ -689,26 +690,16 @@ export function PlanningProduksiPage() {
                     derived di ComplainPenaltiPage. Tidak ada `htmlFor` karena
                     memang tidak ada kontrol yang bisa difokus. */}
                 <Label>Kode Produksi Konveksi</Label>
-                <div className="mt-1 flex h-9 items-center rounded-lg border border-slate-200 bg-slate-50 px-3 font-mono text-[12px] text-slate-700">
+                <div className="mt-1 flex h-9 items-center rounded-lg border border-slate-200 bg-slate-50 px-3 text-[12px] text-slate-700">
                   {form.productionCode || <span className="text-slate-400">Terisi otomatis</span>}
                 </div>
               </div>
             </div>
-            <p className="text-[11px] text-slate-400">
-              Kode Produksi Konveksi terisi otomatis setelah Kode Produksi Client dipilih. Warna dan
-              Size ikut menyesuaikan kode tersebut — pilihannya berasal dari varian di Work Order,
-              jadi tidak perlu diketik manual.
-            </p>
-            {codeOptions.length === 0 && (
-              <p className="text-xs text-slate-400">
-                Belum ada kode produksi — buat order dulu di Order Entry supaya pasangan kodenya tersedia.
-              </p>
-            )}
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label htmlFor="product">Produk *</Label>
-                <Input id="product" type="text" value={form.product} onChange={(e) => setField('product', e.target.value)} placeholder="e.g. Dress" className="mt-1" />
+                <Label htmlFor="product">Produk</Label>
+                <Input id="product" type="text" value={form.product} onChange={(e) => setField('product', e.target.value)} placeholder="e.g. Dress" className="mt-1 text-[12px] placeholder:text-slate-400 md:text-[12px]" />
               </div>
               <div>
                 {/* Warna & Size tidak lagi diketik manual: pilihannya berasal
@@ -746,12 +737,12 @@ export function PlanningProduksiPage() {
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label htmlFor="qty">Qty *</Label>
-                <Input id="qty" type="number" min={0} value={form.qty} onChange={(e) => setField('qty', e.target.value)} placeholder="0" className="mt-1" />
+                <Label htmlFor="qty">Qty</Label>
+                <Input id="qty" type="number" min={0} value={form.qty} onChange={(e) => setField('qty', e.target.value)} placeholder="0" className="mt-1 text-[12px] placeholder:text-slate-400 md:text-[12px]" />
               </div>
               <div>
-                <Label htmlFor="bulanTarget">Bulan Target *</Label>
-                <Input id="bulanTarget" type="month" value={form.bulanTarget} onChange={(e) => setField('bulanTarget', e.target.value)} className="mt-1" />
+                <Label htmlFor="bulanTarget">Bulan Target</Label>
+                <Input id="bulanTarget" type="month" value={form.bulanTarget} onChange={(e) => setField('bulanTarget', e.target.value)} className="mt-1 text-[12px] md:text-[12px]" />
               </div>
             </div>
           </div>

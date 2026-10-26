@@ -166,24 +166,38 @@ function PermanentDeleteSession({ module, ids, onOpenChange, onDeleted, title }:
   )
 }
 
-export interface PermanentDeleteCleanupStatusProps {
-  /** Change after onDeleted to reload durable job status. */
-  refreshKey?: string | number
+export interface PermanentDeleteCleanupDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
 }
 
-/** Independent of selection: persisted jobs can be retried after a browser reload. */
-export function PermanentDeleteCleanupStatus({ refreshKey }: PermanentDeleteCleanupStatusProps) {
+/**
+ * Dialog coba-ulang pembersihan lampiran.
+ *
+ * Dulu ini blok `PermanentDeleteCleanupStatus` yang selalu ter-mount di dasar
+ * aplikasi, sehingga muncul sebagai kotak nyasar di bawah SETIAP halaman
+ * (termasuk halaman yang tidak ada hubungannya dengan penghapusan). Blok itu
+ * dihapus atas permintaan user.
+ *
+ * Fungsinya tidak hilang: dialog ini dibuka hanya setelah penghapusan yang
+ * masih menyisakan pekerjaan pembersihan, jadi tetap ada jalan mencoba ulang
+ * tanpa menaruh UI permanen di dasar halaman. Job tetap tersimpan di database
+ * (`permanent_delete_pending_cleanup`), jadi kegagalan R2 tidak pernah membuat
+ * data "kembali" atau dihapus dua kali.
+ */
+export function PermanentDeleteCleanupDialog({ open, onOpenChange }: PermanentDeleteCleanupDialogProps) {
+  return open ? <CleanupSession onOpenChange={onOpenChange} /> : null
+}
+
+function CleanupSession({ onOpenChange }: { onOpenChange: (open: boolean) => void }) {
   const [jobs, setJobs] = useState<PermanentDeleteCleanupJob[]>([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const operation = useRef(false)
-  const generation = useRef(0)
 
   const load = useCallback(async () => {
-    const request = ++generation.current
     const result = await deletion.fetchPendingCleanup()
-    if (request !== generation.current) return
     setJobs(result.data ?? [])
     setError(result.error?.message ?? null)
     setLoading(false)
@@ -191,22 +205,9 @@ export function PermanentDeleteCleanupStatus({ refreshKey }: PermanentDeleteClea
 
   useEffect(() => {
     let active = true
-    const pending = generation
     queueMicrotask(() => { if (active) void load() })
-    const refresh = () => { void load() }
-    if (typeof window !== 'undefined') {
-      window.addEventListener('permanent-delete-completed', refresh)
-      window.addEventListener('focus', refresh)
-    }
-    return () => {
-      active = false
-      pending.current++
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('permanent-delete-completed', refresh)
-        window.removeEventListener('focus', refresh)
-      }
-    }
-  }, [load, refreshKey])
+    return () => { active = false }
+  }, [load])
 
   async function retry() {
     if (operation.current || !jobs.length) return
@@ -222,24 +223,46 @@ export function PermanentDeleteCleanupStatus({ refreshKey }: PermanentDeleteClea
     setBusy(false)
   }
 
-  if (!loading && !jobs.length && !error) return null
   return (
-    <section aria-label="Status pembersihan lampiran" className="space-y-2 rounded-md border p-3 text-sm" aria-busy={loading || busy}>
-      <p className="font-medium">Status pembersihan lampiran</p>
-      {loading && <p role="status">Memuat status lampiran…</p>}
-      {error && <p role="alert" className="break-words text-destructive">{error}</p>}
-      {jobs.length > 0 && (
-        <>
-          <p>Data sudah terhapus. {jobs.length} pekerjaan pembersihan lampiran masih tertunda.</p>
-          <ul className="max-h-32 space-y-1 overflow-y-auto text-muted-foreground">
-            {jobs.map(job => <li key={job.id} className="break-words">{job.remaining} lampiran tersisa{job.lastError ? ` — ${job.lastError}` : ''}</li>)}
-          </ul>
-        </>
-      )}
-      <div className="flex flex-wrap gap-2">
-        <Button size="sm" variant="outline" disabled={busy || loading} onClick={() => { setLoading(true); void load() }}>Muat ulang status</Button>
-        {jobs.length > 0 && <Button size="sm" variant="outline" disabled={busy || loading} onClick={() => void retry()}>{busy ? 'Membersihkan…' : 'Coba bersihkan lampiran'}</Button>}
-      </div>
-    </section>
+    <AlertDialog open onOpenChange={next => { if (!operation.current) onOpenChange(next) }}>
+      <AlertDialogContent className="sm:max-w-md">
+        <AlertDialogHeader>
+          <AlertDialogTitle>Pembersihan lampiran</AlertDialogTitle>
+          <AlertDialogDescription>
+            Data sudah terhapus permanen. Berkas lampiran yang masih tertunda dibersihkan terpisah karena penyimpanan file tidak ikut transaksi database.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <div className="space-y-2 text-sm" aria-busy={loading || busy}>
+          {loading && <p role="status">Memuat status lampiran…</p>}
+          {error && <p role="alert" className="break-words text-destructive">{error}</p>}
+          {!loading && jobs.length === 0 && !error && (
+            <p className="text-muted-foreground">Tidak ada lampiran yang menunggu pembersihan.</p>
+          )}
+          {jobs.length > 0 && (
+            <>
+              <p>{jobs.length} pekerjaan pembersihan masih tertunda.</p>
+              <ul className="max-h-40 space-y-1 overflow-y-auto rounded-md border p-3 text-muted-foreground">
+                {jobs.map(job => (
+                  <li key={job.id} className="break-words">
+                    {job.remaining} lampiran tersisa{job.lastError ? ` — ${job.lastError}` : ''}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+        <AlertDialogFooter>
+          <Button variant="outline" disabled={busy} onClick={() => onOpenChange(false)}>Tutup</Button>
+          <Button variant="outline" disabled={busy || loading} onClick={() => { setLoading(true); void load() }}>
+            Muat ulang status
+          </Button>
+          {jobs.length > 0 && (
+            <Button disabled={busy || loading} onClick={() => void retry()}>
+              {busy ? 'Membersihkan…' : 'Coba bersihkan'}
+            </Button>
+          )}
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   )
 }

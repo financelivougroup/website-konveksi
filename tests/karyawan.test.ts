@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   activePenjahitNames,
+  activeKancingNames,
+  activeFinishingNames,
   isActivePenjahit,
   type KaryawanSelectionRow,
 } from '../src/lib/karyawan.ts';
@@ -62,6 +64,32 @@ test('posisi serupa tapi bukan Penjahit tetap ditolak', () => {
   assert.equal(isActivePenjahit({ picPenjahit: 'A', posisi: 'Penjahitan', status: 'Aktif' }), false);
   assert.equal(isActivePenjahit({ picPenjahit: 'A', posisi: 'Leader', status: 'Aktif' }), false);
   assert.equal(isActivePenjahit({ picPenjahit: 'A', posisi: 'Finishing', status: 'Aktif' }), false);
+});
+
+const PIC_ROWS: KaryawanSelectionRow[] = [
+  { picPenjahit: 'Jahit Aktif', posisi: 'Penjahit', status: 'Aktif' },
+  { picPenjahit: 'Finish Aktif', posisi: 'Finishing', status: 'Aktif' },
+  { picPenjahit: 'Leader', posisi: 'Leader', status: 'Aktif' },
+  { picPenjahit: 'Jahit Nonaktif', posisi: 'Penjahit', status: 'Non-Aktif' },
+  { picPenjahit: 'Finish Nonaktif', posisi: 'Finishing', status: 'Non-Aktif' },
+  { picPenjahit: 'Tanpa Posisi', posisi: null, status: 'Aktif' },
+];
+
+test('PIC Kancing berasal dari Penjahit dan Finishing aktif, bukan Leader/nonaktif', () => {
+  assert.deepEqual(activeKancingNames(PIC_ROWS), ['Jahit Aktif', 'Finish Aktif']);
+});
+
+test('PIC Finishing hanya berasal dari Finishing aktif', () => {
+  assert.deepEqual(activeFinishingNames(PIC_ROWS), ['Finish Aktif']);
+  assert.deepEqual(activePenjahitNames(PIC_ROWS), ['Jahit Aktif']);
+});
+
+test('PIC baru menerima kapitalisasi berbeda dan daftar kosong', () => {
+  const rows = [{ picPenjahit: 'Finisher', posisi: 'FINISHING', status: 'aktif' }];
+  assert.deepEqual(activeKancingNames(rows), ['Finisher']);
+  assert.deepEqual(activeFinishingNames(rows), ['Finisher']);
+  assert.deepEqual(activeKancingNames([]), []);
+  assert.deepEqual(activeFinishingNames([]), []);
 });
 
 test('tanpa baris, daftarnya kosong', () => {

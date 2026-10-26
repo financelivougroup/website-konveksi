@@ -45,6 +45,7 @@ const baseProps = {
   rowHeight: 'medium' as const,
   condColors,
   editable: true,
+  canDelete: true,
   sorts: [{ field: 'clientName', dir: 'asc' }],
   onToggleRow: noop,
   onToggleAll: noop,
@@ -103,9 +104,10 @@ check(
   firstTdCell.slice(0, 120),
 );
 
-// Action column must be last: its buttons live in the final <td>.
-const lastTd = html.match(/<td[^>]*>(?:(?!<\/td>)[\s\S])*title="Delete"[\s\S]*?<\/td>/);
-check('action column (Delete button) is present', !!lastTd);
+const tableMarkup = html.match(/<table\b[\s\S]*?<\/table>/)?.[0] ?? '';
+check('no action column is present', !html.includes('data-col-id="__actions"'));
+check('single selection shows built-in actions above the table', html.includes('aria-label="Tindakan baris terpilih"') && html.indexOf('role="toolbar"') < html.indexOf('<table') && html.includes('Hapus permanen'));
+check('built-in actions do not appear inside table cells', !tableMarkup.includes('Hapus permanen') && !tableMarkup.includes('lucide-eye'));
 
 // Partial selection must read as "some", not "all": Radix reports mixed and the
 // project Checkbox swaps the tick for a dash.
@@ -173,6 +175,26 @@ check(
 check('page 2 is not the empty state', !/No Data Available/i.test(htmlPage2));
 check('page 2 pagination info shows 11 - 12 of 12', /11\s*-\s*12\s*of\s*12/.test(htmlPage2), '');
 
+// Per-row controls belong to selection, never a dedicated column.
+for (const selected of [new Set([1]), new Set([1, 2]), new Set([999])]) {
+  const calls: unknown[] = [];
+  const markup = renderToStaticMarkup(createElement(DataTable, {
+    variant: 'plain', columns, data, selectedRows: selected, onToggleRow: noop,
+    rowActions: (row) => { calls.push(row.id); return <button type="button">ROW-ACTION:{String(row.id)}</button>; },
+    actionsLabel: 'Actions',
+  }));
+  const bodyTable = markup.match(/<table\b[\s\S]*?<\/table>/)?.[0] ?? '';
+  const singleVisible = selected.size === 1 && selected.has(1);
+  check(`selection ${[...selected]}: callback runs only for one supplied row`, calls.length === (singleVisible ? 1 : 0));
+  check(`selection ${[...selected]}: no action column/cell`, !markup.includes('__actions') && !bodyTable.includes('ROW-ACTION'));
+  check(`selection ${[...selected]}: action stays in toolbar`, !singleVisible || markup.indexOf('ROW-ACTION:') < markup.indexOf('<table'));
+}
+for (const [editable, canDelete, expected] of [[false, true, false], [true, false, false], [true, true, true]] as const) {
+  const markup = renderToStaticMarkup(createElement(DataTable, { ...baseProps, data, editable, canDelete, selectedRows: new Set([1]) }));
+  check(`built-in guards ${editable}/${canDelete}: delete authorization preserved`, markup.includes('Hapus permanen') === expected);
+  check(`built-in guards ${editable}/${canDelete}: edit authorization preserved`, /Edit<\/button>/.test(markup) === editable);
+}
+
 // --- plain variant (per-page tables) -----------------------------------------
 //
 // The plain variant is what the page tables migrate onto. It must render bare
@@ -206,17 +228,17 @@ const plainHtml = renderToStaticMarkup(
 
 check('plain: renders a table', plainHtml.includes('<table'));
 check('plain: header shows the column label', plainHtml.includes('Nama Karyawan'));
-check('plain: header shows the actions label', plainHtml.includes('Aksi'));
+check('plain: legacy actions label does not create a header', !plainHtml.includes('Aksi'));
 check('plain: custom cell renderer output is used', plainHtml.includes('STATUS:Aktif'));
-check('plain: custom row actions are used', plainHtml.includes('ACTION:1') && plainHtml.includes('ACTION:2'));
+check('plain: row actions stay hidden without a selection', !plainHtml.includes('ACTION:1') && !plainHtml.includes('ACTION:2'));
 check('plain: row click makes the row interactive', /cursor-pointer/.test(plainHtml));
 check(
-  'plain: no selection column when selectedRows is omitted',
-  !/Select all/i.test(plainHtml) && !/data-col-id="__select"/.test(plainHtml),
+  'plain: actions provide an internal selection column when controlled selection is omitted',
+  /data-col-id="__select"/.test(plainHtml),
 );
 check(
   'plain: no built-in View/Edit/Delete action buttons',
-  !/title="View"/.test(plainHtml) && !/title="Delete"/.test(plainHtml),
+  !/title="View"/.test(plainHtml) && !/title="Hapus permanen"/.test(plainHtml),
 );
 
 // A plain table that supplies NO rowActions must not grow an Actions column at
@@ -235,8 +257,8 @@ check(
   !/>Actions</.test(plainNoActionsHtml) && !plainNoActionsHtml.includes('Aksi'),
 );
 check(
-  'plain with rowActions: the actions label is rendered',
-  plainHtml.includes('Aksi'),
+  'plain with rowActions: no actions column is rendered',
+  !plainHtml.includes('data-col-id="__actions"') && !plainHtml.includes('Aksi'),
 );
 check(
   'plain: no pagination footer',
@@ -464,6 +486,11 @@ const footHtml = renderToStaticMarkup(
 check('footer: renders a <tfoot>', /<tfoot[\s\S]*?<\/tfoot>/.test(footHtml));
 check('footer: the supplied row is used verbatim', footHtml.includes('TOTAL') && footHtml.includes('99'));
 check('footer: no footer means no <tfoot>', !/<tfoot/.test(sepHtml));
+const actionFootHtml = renderToStaticMarkup(createElement(DataTable, {
+  variant: 'plain', columns: plainColumns, data: plainData, rowActions: () => 'Edit',
+  footer: <tr><td>Total</td><td>10</td><td>End</td></tr>,
+}));
+check('footer: internal action selection reserves a leading total cell', /<tfoot[\s\S]*?<tr[^>]*><td aria-hidden="true"><\/td><td>Total<\/td>/.test(actionFootHtml));
 
 // --- app-variant header: the label leads the cell ----------------------------
 //
@@ -513,8 +540,7 @@ check(
 );
 
 // --- header colour + weight --------------------------------------------------
-// The header label must read as solid black and bold, at exactly the size it
-// already had. These assert on the class list of the header ROW, which is where
+// Headers use a softer slate colour and semibold weight, at their existing size. These assert on the class list of the header ROW, which is where
 // `headerRowClass` lands — the `<th>` itself carries ReUI's own base classes, and
 // the `[&>th]:` rules reach it by descendant selector instead.
 const headRowClass = (html: string) =>
@@ -530,16 +556,13 @@ const headRowClass = (html: string) =>
 const appHeadRow = headRowClass(appHeadHtml);
 check('header style: the app header row carries its class list', appHeadRow.length > 0, appHeadRow);
 check(
-  'header style: the app header is bold',
-  /\[&>th\]:font-bold/.test(appHeadRow),
+  'header style: the app header is semibold',
+  /\[&>th\]:font-semibold/.test(appHeadRow) && !/\[&>th\]:font-bold/.test(appHeadRow),
   appHeadRow,
 );
 check(
-  // Literal `text-black` (#000), not the `text-foreground` token: the token is
-  // `hsl(240 10% 3.9%)` — rgb(9, 9, 11), a blue-tinted near-black that reads as
-  // dark grey at header size. The user asked for "hitam pekat".
-  'header style: the app header is solid black',
-  /\[&>th\]:text-black/.test(appHeadRow) && !/\[&>th\]:text-foreground/.test(appHeadRow),
+  'header style: the app header is slate-700 with readable dark foreground',
+  /\[&>th\]:text-slate-700/.test(appHeadRow) && /dark:\[&>th\]:text-foreground/.test(appHeadRow) && !/\[&>th\]:text-black/.test(appHeadRow),
   appHeadRow,
 );
 check(
@@ -562,10 +585,10 @@ const plainHeadHtml = renderToStaticMarkup(
 );
 const plainHeadRow = headRowClass(plainHeadHtml);
 check(
-  'header style: the plain header is bold and solid black at 12px',
-  /\[&>th\]:font-bold/.test(plainHeadRow) &&
-    /\[&>th\]:text-black/.test(plainHeadRow) &&
-    !/\[&>th\]:text-foreground/.test(plainHeadRow) &&
+  'header style: the plain header is semibold and slate-700 at 12px',
+  /\[&>th\]:font-semibold/.test(plainHeadRow) &&
+    /\[&>th\]:text-slate-700/.test(plainHeadRow) &&
+    /dark:\[&>th\]:text-foreground/.test(plainHeadRow) &&
     /\[&>th\]:text-\[12px\]/.test(plainHeadRow),
   plainHeadRow,
 );
@@ -585,16 +608,15 @@ check(
 
 // The second header system: `T_TH` in src/lib/tableStyles.ts styles the <th> of
 // the page tables that never moved onto this grid (ProfitLoss, OrderEntryDialog,
-// TargetJahitReportPage, StockMonitoringPage). It has to hold the same black +
-// bold contract, or those pages would drift back to grey on the next edit.
+// TargetJahitReportPage, StockMonitoringPage). It shares the softer header treatment.
 check(
-  'header style: T_TH is bold and solid black at 12px',
-  /font-bold/.test(T_TH) && /text-black/.test(T_TH) && /text-\[12px\]/.test(T_TH),
+  'header style: T_TH is semibold and slate-700 at 12px',
+  /font-semibold/.test(T_TH) && /text-slate-700/.test(T_TH) && /text-\[12px\]/.test(T_TH),
   T_TH,
 );
 check(
-  'header style: T_TH no longer uses the muted grey or the blue-tinted token',
-  !/text-muted-foreground/.test(T_TH) && !/text-foreground/.test(T_TH),
+  'header style: T_TH retains dark foreground without bold black styling',
+  !/font-bold|text-black/.test(T_TH) && /text-slate-700 dark:text-foreground/.test(T_TH),
   T_TH,
 );
 
