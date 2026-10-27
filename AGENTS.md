@@ -1,4 +1,53 @@
-# Claude Instructions — Website Konveksi
+# Agent Instructions — Website Konveksi
+
+## Project Structure
+
+- `src/pages/`: operational screens, order intake, production stages, finance and reporting.
+- `src/components/`: shared dashboard composition; `ui/` and `reui/` contain installed primitives.
+- `src/contexts/`: React context providers; `src/lib/`: auth, domain computations and shared helpers.
+- `src/services/`: persistent application IO through Supabase and media services.
+- `src/types/`: shared TypeScript contracts; `src/data/`: static configuration and fixtures, not mutable business storage.
+- `worker/`: Cloudflare Worker for R2 media access and cleanup, with its own npm dependencies.
+- `supabase/migrations/`: migration history, not authoritative evidence of live database state.
+- `tests/`: Node unit tests; `scripts/`: scoped smoke and browser harnesses.
+- `docs/`, `CONTEXT.md`, `GLOSSARY.md`, `project.md`: decisions, domain vocabulary, current context and progress.
+
+## Run, Build and Test
+
+Use Node.js 22.18+ (native TypeScript stripping for the unit tests) and npm. Vite also requires a supported modern Node release. Install the locked frontend dependencies with `npm ci`. Use `.env.example` for the required public frontend variables; keep actual credentials out of Git and browser bundles.
+
+```sh
+npm ci
+npm run dev       # Vite development server, configured in vite.config.ts
+npm run build     # TypeScript project build followed by Vite production build
+npm run preview   # Preview the built frontend locally
+npm run lint      # Repository ESLint checks
+node --test --test-concurrency=1 tests/*.test.ts
+# Run a focused unit test when working on one module:
+node --test tests/productionStatus.test.ts
+```
+
+There is no `npm test` script and the unit runner is Node, not Vitest. Inspect each harness in `scripts/` before running it: browser, service and integration smoke tests can require a running app, credentials or remote services. Fixture tests do not verify live role permissions or deployed state. Report failing or skipped checks accurately rather than treating scoped checks as proof that global lint/build/tests pass.
+
+The media Worker has a separate package:
+
+```sh
+npm --prefix worker ci
+npm --prefix worker run dev
+npm --prefix worker run typecheck
+```
+
+Running the frontend or Worker locally does not create a local Supabase database. Database work must follow the Supabase MCP rules below. Do not run deployment commands as a side effect of development or documentation work.
+
+## Code Writing Conventions
+
+- Write React components and application logic in TypeScript, using the existing shared types rather than `any` or duplicate domain contracts.
+- Match the naming, formatting, import and component patterns of nearby files; keep changes scoped and avoid unrelated reformatting.
+- Use PascalCase for component/type names and camelCase for functions and variables, following existing filenames and domain vocabulary.
+- Keep React rendering pure and side effects explicit; follow the configured ESLint React Hooks and React Refresh rules.
+- Put persistent reads/writes behind `src/services/`; keep reusable domain calculations in `src/lib/` and cover behavior changes with focused tests in `tests/`.
+- Reuse the existing Tailwind theme and shadcn/ReUI components. The UI, Figma and database requirements below remain mandatory.
+- Never commit secrets, `.env` credentials or private production data. Do not change schema, access policies or business rules just to make a test pass.
 
 This project is a **Production Monitoring Dashboard** for a garment manufacturing (konveksi) business. It tracks orders through a 5-phase production pipeline: Planning → Cutting → Sewing → Finishing → Invoicing.
 
@@ -85,4 +134,4 @@ delivery sequence — grill → spec → tickets → implement. Invoke the
 
 ## At the End of Every Completed Task
 
-Update the **"Latest Progress"** section in `project.md` so future Claude sessions can understand the current project status without starting from scratch.
+Update the **"Latest Progress"** section in `project.md` so future agent sessions can understand the current project status without starting from scratch.

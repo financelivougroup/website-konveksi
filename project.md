@@ -165,6 +165,12 @@ Dependency/script versions follow `package.json` and `package-lock.json`; exact 
 
 ## Latest Progress
 
+### 2026-10-27 — Panduan agent lintas tool: CLAUDE.md menjadi AGENTS.md
+
+- Mengganti nama panduan root `CLAUDE.md` menjadi `AGENTS.md`, mempertahankan aturan arsitektur, shadcn, Supabase MCP, persetujuan Figma, dan workflow yang sudah ada.
+- Menambahkan struktur proyek, perintah instalasi/run/build/lint/unit test serta Worker, dan konvensi penulisan TypeScript/React. Tautan aktif di README diarahkan ke `AGENTS.md`; catatan historis dibiarkan utuh.
+- Verifikasi: `node --test --test-concurrency=1 tests/*.test.ts` lulus 889/889, tanpa gagal atau skip. Perubahan hanya dokumentasi; build, lint global, deployment dan pengujian live database tidak dijalankan.
+
 ### 2026-10-26 — Persiapan commit/push dan sinkronisasi main (permintaan user)
 
 - User meminta commit seluruh perubahan proyek, push GitHub dan gabung main. Remote `origin` diverifikasi ke `financelivougroup/website-konveksi`; setelah fetch, `origin/main` dan branch awal `feat/register-client` sama-sama di70ff8fa (tidak ada commit remote yang tertinggal pada titik pemeriksaan).

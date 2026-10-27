@@ -9,7 +9,7 @@ Dashboard operasional konveksi untuk Order Produksi, Cutting, Sewing, Pasang Kan
 - [GLOSSARY.md](GLOSSARY.md) — arti istilah bisnis yang dipakai bersama.
 - [docs/README.md](docs/README.md) — indeks dokumen dan status riwayatnya.
 - [docs/adr/README.md](docs/adr/README.md) — alasan keputusan arsitektur/domain.
-- [CLAUDE.md](CLAUDE.md) — aturan kerja agent; baca sebelum melakukan perubahan.
+- [AGENTS.md](AGENTS.md) — struktur proyek, perintah pengembangan/test, dan aturan kerja agent; baca sebelum melakukan perubahan.
 
 ## Pengembangan
 
